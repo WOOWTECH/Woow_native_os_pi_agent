@@ -1,0 +1,7 @@
+# local ground-truth clones (not part of the deliverable)
+/reference/
+# build / runtime artifacts
+*.log
+node_modules/
+.DS_Store
+/dist/
