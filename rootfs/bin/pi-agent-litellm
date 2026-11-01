@@ -41,6 +41,10 @@ write_models(){
     try{ cfg=JSON.parse(fs.readFileSync(f,"utf8")); }catch{}
     cfg["$schema"]=cfg["$schema"]||"https://pi.dev/schemas/models.schema.json";
     cfg.providers=cfg.providers||{};
+    // "id" is what goes on the wire, so it stays exactly as the gateway spells
+    // it, slashes included ("apporo/gpt-6-astra"). Select with the provider
+    // prefix -- pi --model litellm/apporo/gpt-6-astra -- which resolves even
+    // when the id itself contains a slash.
     cfg.providers[process.env.PROVIDER]={
       baseUrl:process.env.BASE,
       api:"openai-completions",
