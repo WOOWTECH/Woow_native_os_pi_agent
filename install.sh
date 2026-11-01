@@ -43,8 +43,27 @@ stage_preflight() {
         die "no apt-get or dnf; install deps manually"
       fi ;;
     macos)
-      have brew || die "Homebrew required on macOS (https://brew.sh)"
-      brew install git jq python@3.12 util-linux tmux || true ;;
+      # Deliberately NOT requiring Homebrew. Everything this installer needs on
+      # macOS either ships with the OS (git, curl, python3, bsdtar -- which reads
+      # .tar.xz through libarchive, so no xz binary is needed) or is installed
+      # scoped under $PI_AGENT_HOME (its own Node, and uv's own CPython for the
+      # Omnigent venv). Asking a user to install a system-wide package manager
+      # for an app-scoped install is the wrong trade, and a non-login shell does
+      # not even have brew on PATH when it IS installed.
+      local missing=""
+      for c in git curl python3 tar; do have "$c" || missing="$missing $c"; done
+      [ -n "$missing" ] && die "missing from this macOS install:$missing (install the Xcode Command Line Tools: xcode-select --install)"
+      # tmux is needed only by Omnigent's native Pi harness, which runs the Pi
+      # TUI inside its own tmux server. Install it when brew happens to be here,
+      # and otherwise carry on: everything else works without it.
+      if ! have tmux; then
+        local brew; if brew="$(pa_brew)"; then
+          log "installing tmux via $brew (Omnigent's native Pi harness needs it)"
+          "$brew" install tmux >/dev/null 2>&1 || warn "brew install tmux failed; native Pi sessions through Omnigent will not work"
+        else
+          warn "tmux is absent and Homebrew is not installed; Omnigent's native Pi harness will not work (everything else does)"
+        fi
+      fi ;;
     *) die "unsupported OS: $OS" ;;
   esac
   mkdirs
@@ -66,7 +85,9 @@ stage_node() {
   log "download $url"
   curl -fSL --retry 5 "$url" -o "$tarball" || die "node download failed"
   rm -rf "$PA_NODE_DIR"; mkdir -p "$PA_NODE_DIR"
-  tar -xJf "$tarball" --strip-components=1 -C "$PA_NODE_DIR"
+  # -xf, not -xJf: both GNU tar and macOS bsdtar detect xz themselves, and
+  # macOS has no xz binary for GNU tar's -J to shell out to.
+  tar -xf "$tarball" --strip-components=1 -C "$PA_NODE_DIR"
   rm -f "$tarball"
   "$PA_NODE_DIR/bin/node" --version | grep -qF "v$PIN_NODE_VERSION" || die "scoped node verify failed"
   log "node $("$PA_NODE_DIR/bin/node" --version) OK"
@@ -132,9 +153,14 @@ stage_piweb() {
   ln -sf "../lib/node_modules/@agegr/pi-web/bin/pi-web.js" "$PA_PIWEB_DIR/bin/pi-web"
   # CJK path patch against the installed pi-coding-agent tool layer
   if [ -f "$HERE/rootfs/bin/fix-unicode-space-paths.mjs" ]; then
-    mapfile -d '' FILES < <(find "$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web" -path '*@earendil-works/*/dist/*/tools/path-utils.js' -print0 2>/dev/null)
-    if [ "${#FILES[@]}" -ge 1 ]; then
-      "$PA_NODE_DIR/bin/node" "$HERE/rootfs/bin/fix-unicode-space-paths.mjs" "${FILES[@]}" && log "CJK path patch applied (${#FILES[@]} file(s))"
+    # No mapfile here: macOS ships bash 3.2, which does not have it. find | xargs
+    # carries the same NUL-delimited list to the patcher on both platforms.
+    local found
+    found="$(find "$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web" -path '*@earendil-works/*/dist/*/tools/path-utils.js' -print 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "${found:-0}" -ge 1 ]; then
+      find "$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web" -path '*@earendil-works/*/dist/*/tools/path-utils.js' -print0 2>/dev/null \
+        | xargs -0 "$PA_NODE_DIR/bin/node" "$HERE/rootfs/bin/fix-unicode-space-paths.mjs" \
+        && log "CJK path patch applied ($found file(s))"
     else
       warn "CJK path-utils.js not found; skipping CJK patch (upstream layout may have changed)"
     fi

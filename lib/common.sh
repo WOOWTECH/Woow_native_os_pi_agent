@@ -40,6 +40,25 @@ fetch_verify() {
   [ "$got" = "$sha" ] || die "sha256 mismatch for $(basename "$dest"): expected $sha got $got"
 }
 
+# Portable shims for the places GNU and BSD userland differ. macOS ships bash
+# 3.2 (no mapfile), BSD stat/sed, and no GNU coreutils, so anything below is
+# what the installer uses instead of the Linux-only spelling.
+
+# File mode in octal, e.g. 600.
+pa_stat_mode() {
+  stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null
+}
+
+# Homebrew is optional, and a non-login shell (ssh, launchd) does not have it on
+# PATH even when it is installed, so look where it actually lives.
+pa_brew() {
+  if command -v brew >/dev/null 2>&1; then command -v brew; return 0; fi
+  for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    [ -x "$b" ] && { echo "$b"; return 0; }
+  done
+  return 1
+}
+
 pa_os() {
   case "$(uname -s)" in
     Linux)  if grep -qiE '(microsoft|wsl)' /proc/version 2>/dev/null; then echo wsl; else echo linux; fi ;;

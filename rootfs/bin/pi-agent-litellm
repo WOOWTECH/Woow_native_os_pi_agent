@@ -167,7 +167,9 @@ case "$cmd" in
     base="$(read_base_url || true)"
     if [ -z "$base" ]; then echo "litellm: not configured"; exit 0; fi
     echo "litellm base url  : $base"
-    echo "key file          : $ENVFILE ($( [ -f "$ENVFILE" ] && stat -c %a "$ENVFILE" || echo missing ))"
+    # GNU stat and BSD stat disagree on how to ask for the mode.
+    mode="missing"; [ -f "$ENVFILE" ] && mode="$(stat -c %a "$ENVFILE" 2>/dev/null || stat -f %Lp "$ENVFILE" 2>/dev/null)"
+    echo "key file          : $ENVFILE ($mode)"
     if [ -f "$MODELS" ]; then
       echo "models.json       : $("$NODE" -e 'const c=require(process.argv[1]);console.log(((c.providers.litellm||{}).models||[]).length)' "$MODELS") model(s); key stored $(grep -q '"apiKey": "\${LITELLM_API_KEY}"' "$MODELS" && echo 'by env reference' || echo 'CHECK')"
     fi
