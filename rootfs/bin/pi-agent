@@ -1,0 +1,36 @@
+#!/bin/bash
+# `pi-agent` — one control surface over the per-OS service (systemd --user on
+# Linux/WSL, launchd on macOS). Falls back to a foreground run if no supervisor.
+set -euo pipefail
+
+SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+: "${PI_AGENT_HOME:=$(dirname "$SELF")}"
+export PI_AGENT_HOME
+PORT="${PI_WEB_PORT:-30141}"
+UNIT="pi-web"
+PLIST="io.woowtech.pi-agent"
+
+sd() { command -v systemctl >/dev/null 2>&1 && systemctl --user "$@" 2>/dev/null; }
+is_mac() { [ "$(uname -s)" = "Darwin" ]; }
+
+case "${1:-}" in
+  start)
+    if is_mac; then launchctl load -w "$HOME/Library/LaunchAgents/${PLIST}.plist" 2>/dev/null || true
+    elif sd start "$UNIT"; then :
+    else nohup "$SELF/pi-web-start.sh" >>"$PI_AGENT_HOME/logs/pi-web.log" 2>&1 & echo "started (foreground fallback), log: $PI_AGENT_HOME/logs/pi-web.log"; fi
+    echo "pi-agent: http://127.0.0.1:$PORT" ;;
+  stop)
+    if is_mac; then launchctl unload "$HOME/Library/LaunchAgents/${PLIST}.plist" 2>/dev/null || true
+    elif sd stop "$UNIT"; then :
+    else pkill -f "pi-web/bin/pi-web.js" 2>/dev/null || true; fi ;;
+  restart) "$0" stop; "$0" start ;;
+  status)
+    if is_mac; then launchctl list | grep "$PLIST" || echo "not loaded"
+    else sd status "$UNIT" --no-pager || echo "not running under systemd"; fi ;;
+  logs)
+    if sd --version >/dev/null 2>&1; then journalctl --user -u "$UNIT" -f 2>/dev/null || tail -f "$PI_AGENT_HOME/logs/pi-web.log"
+    else tail -f "$PI_AGENT_HOME/logs/pi-web.log"; fi ;;
+  open) (xdg-open "http://127.0.0.1:$PORT" || open "http://127.0.0.1:$PORT") 2>/dev/null || echo "open http://127.0.0.1:$PORT" ;;
+  url)  echo "http://127.0.0.1:$PORT" ;;
+  *) echo "usage: pi-agent {start|stop|restart|status|logs|open|url}"; exit 1 ;;
+esac

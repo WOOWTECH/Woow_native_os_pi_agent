@@ -1,0 +1,25 @@
+#!/bin/bash
+# `pi` — launcher for the pi coding agent CLI/TUI.
+#
+# @earendil-works/pi-coding-agent declares bin.pi but ships only as a transitive
+# dep of @agegr/pi-web, so npm never links its bin. Resolve it at runtime (a
+# pi-web bump can move the nested path) and run it under the scoped Node.
+set -euo pipefail
+
+SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+: "${PI_AGENT_HOME:=$(dirname "$SELF")}"
+export PI_AGENT_HOME
+# shellcheck source=/dev/null
+. "${PI_AGENT_HOME}/bin/pi-agent-env.sh"
+
+CLI=""
+for c in \
+  "${PI_AGENT_HOME}/piweb/lib/node_modules/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent/dist/cli.js" \
+  "${PI_AGENT_HOME}/piweb/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
+do
+  [ -f "$c" ] && { CLI="$c"; break; }
+done
+[ -z "$CLI" ] && CLI="$(find "${PI_AGENT_HOME}/piweb" -path '*@earendil-works/pi-coding-agent/dist/cli.js' -print -quit 2>/dev/null || true)"
+[ -z "$CLI" ] && { echo "pi: cannot locate pi-coding-agent cli.js under ${PI_AGENT_HOME}/piweb (packaging bug)" >&2; exit 127; }
+
+exec "${PI_AGENT_HOME}/node/bin/node" "$CLI" "$@"

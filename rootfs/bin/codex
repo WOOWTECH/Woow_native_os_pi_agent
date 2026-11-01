@@ -1,0 +1,16 @@
+#!/bin/bash
+# `codex` — same contract as the claude wrapper: refresh shared Pi Web state
+# (MCP + skills) before each launch, then exec the real Codex CLI under the
+# scoped Node + scoped HOME.
+set -euo pipefail
+
+SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+: "${PI_AGENT_HOME:=$(dirname "$SELF")}"
+export PI_AGENT_HOME
+# shellcheck source=/dev/null
+. "${PI_AGENT_HOME}/bin/pi-agent-env.sh"
+
+"${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/bin/pi-agent-share-state.mjs" >/dev/null \
+  || echo "pi-agent: shared MCP/skills sync failed; starting codex with previous settings" >&2
+
+exec "${PI_AGENT_HOME}/clis/codex/node_modules/.bin/codex" "$@"
