@@ -6,8 +6,20 @@
 # models.json itself. pi-agent-env.sh sources that file for every Pi process.
 #
 #   pi-agent-litellm set --base-url https://gw.example.com/v1 [--key-stdin|--key-env]
-#   pi-agent-litellm refresh     # re-read the gateway's model list
+#   pi-agent-litellm refresh          # re-read the gateway model list
+#   pi-agent-litellm probe [--apply]  # find models that actually answer
 #   pi-agent-litellm status
+#
+# TO ALSO USE PI THROUGH OMNIGENT, two more things are required (see
+# docs/TESTING.md). Omnigent enumerates Pi models as the intersection of
+#   <agent-dir>/auth.json        -- provider ids Pi has logged in to
+#   <agent-dir>/models-store.json-- Pi catalog cache, undocumented upstream
+# and ignores models.json entirely, so:
+#   1. run `pi` and `/login` -> Sign in with an API key -> litellm -> paste key,
+#      which writes auth.json (this script cannot: Pi has no non-interactive
+#      login), and
+#   2. this script seeds models-store.json on every set/refresh/probe --apply,
+#      because Pi only writes it for providers it refreshes over the network.
 set -euo pipefail
 
 SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
@@ -18,23 +30,45 @@ export PI_AGENT_HOME
 
 ENVFILE="$PI_AGENT_HOME/litellm.env"
 MODELS="$PI_AGENT_DATA_DIR/models.json"
+STORE="$PI_AGENT_DATA_DIR/models-store.json"
+AUTH="$PI_AGENT_DATA_DIR/auth.json"
 NODE="$PI_AGENT_HOME/node/bin/node"
 PROVIDER=litellm
 
 die(){ echo "pi-agent-litellm: $*" >&2; exit 1; }
-
 read_base_url(){ [ -f "$ENVFILE" ] && sed -n 's/^LITELLM_BASE_URL=//p' "$ENVFILE" | tail -1; }
+
+# Mirror the provider catalog into models-store.json. Omnigent reads that file
+# (not models.json) when Pi runs on its own login, and Pi never writes it for a
+# statically declared provider.
+seed_store(){
+  PROVIDER="$PROVIDER" MODELS="$MODELS" STORE="$STORE" "$NODE" -e '
+    const fs=require("fs"), p=require("path");
+    const models=(JSON.parse(fs.readFileSync(process.env.MODELS,"utf8"))
+      .providers[process.env.PROVIDER]||{}).models||[];
+    let store={};
+    try{ store=JSON.parse(fs.readFileSync(process.env.STORE,"utf8")); }catch{}
+    store[process.env.PROVIDER]={
+      models: models.map(m=>({...m, name: m.name || m.id})),
+      checkedAt: Math.floor(Date.now()/1000),
+    };
+    const f=process.env.STORE, tmp=f+"."+process.pid+".tmp";
+    fs.mkdirSync(p.dirname(f),{recursive:true});
+    fs.writeFileSync(tmp,JSON.stringify(store,null,2)+"\n",{mode:0o600});
+    fs.renameSync(tmp,f);
+    console.log(models.length);
+  '
+}
 
 # Write the provider block into models.json, preserving every other provider.
 # Model ids come from the gateway itself, so the menu matches what it serves.
 write_models(){
-  local base="$1" key="$2"
-  local list; list="$(curl -fsS -m 25 -H "Authorization: Bearer $key" "${base%/}/models")" \
+  local base="$1" key="$2" list
+  list="$(curl -fsS -m 25 -H "Authorization: Bearer $key" "${base%/}/models")" \
     || die "cannot list models at ${base%/}/models (check URL and key)"
   PROVIDER="$PROVIDER" BASE="$base" MODELS="$MODELS" "$NODE" -e '
-    const fs=require("fs");
-    const list=JSON.parse(fs.readFileSync(0,"utf8"));
-    const ids=(list.data||[]).map(m=>m.id).filter(Boolean).sort();
+    const fs=require("fs"), p=require("path");
+    const ids=(JSON.parse(fs.readFileSync(0,"utf8")).data||[]).map(m=>m.id).filter(Boolean).sort();
     if(!ids.length) throw new Error("gateway returned no models");
     const f=process.env.MODELS;
     let cfg={};
@@ -42,17 +76,19 @@ write_models(){
     cfg["$schema"]=cfg["$schema"]||"https://pi.dev/schemas/models.schema.json";
     cfg.providers=cfg.providers||{};
     // "id" is what goes on the wire, so it stays exactly as the gateway spells
-    // it, slashes included ("apporo/gpt-6-astra"). Select with the provider
-    // prefix -- pi --model litellm/apporo/gpt-6-astra -- which resolves even
-    // when the id itself contains a slash.
+    // it, slashes included. Select with the provider prefix --
+    // pi --model litellm/apporo/gpt-6-astra -- which resolves even when the id
+    // itself contains a slash. Pi picks the FIRST entry as its automatic
+    // default, so a dead model sorting first makes every unqualified run fail:
+    // see the probe subcommand.
     cfg.providers[process.env.PROVIDER]={
       baseUrl:process.env.BASE,
       api:"openai-completions",
       apiKey:"${LITELLM_API_KEY}",
       models:ids.map(id=>({id})),
     };
-    fs.mkdirSync(require("path").dirname(f),{recursive:true});
     const tmp=f+"."+process.pid+".tmp";
+    fs.mkdirSync(p.dirname(f),{recursive:true});
     fs.writeFileSync(tmp,JSON.stringify(cfg,null,2)+"\n",{mode:0o600});
     fs.renameSync(tmp,f);
     console.log(ids.length);
@@ -83,29 +119,68 @@ case "$cmd" in
     umask 077
     printf 'LITELLM_BASE_URL=%s\nLITELLM_API_KEY=%s\n' "$base" "$key" > "$ENVFILE"
     chmod 600 "$ENVFILE"
-    n="$(write_models "$base" "$key")"
-    echo "pi-agent-litellm: configured $PROVIDER at $base with $n model(s); key stored in $ENVFILE (mode 600)"
-    echo "restart pi-web to pick it up:  pi-agent restart"
+    n="$(write_models "$base" "$key")"; seed_store >/dev/null
+    echo "pi-agent-litellm: configured $PROVIDER at $base with $n model(s); key in $ENVFILE (mode 600)"
+    echo "next: pi-agent-litellm probe --apply   # drop models the gateway cannot actually serve"
+    echo "      run 'pi' then /login -> API key -> $PROVIDER   # required for Omnigent"
     ;;
   refresh)
     [ -f "$ENVFILE" ] || die "not configured yet; run 'pi-agent-litellm set --base-url ...' first"
     # shellcheck source=/dev/null
     . "$ENVFILE"
-    n="$(write_models "$LITELLM_BASE_URL" "$LITELLM_API_KEY")"
+    n="$(write_models "$LITELLM_BASE_URL" "$LITELLM_API_KEY")"; seed_store >/dev/null
     echo "pi-agent-litellm: refreshed $n model(s) from $LITELLM_BASE_URL"
+    ;;
+  probe)
+    apply=0; [ "${1:-}" = "--apply" ] && apply=1
+    [ -f "$ENVFILE" ] || die "not configured yet"
+    # shellcheck source=/dev/null
+    . "$ENVFILE"
+    ids="$("$NODE" -e 'const c=require(process.argv[1]);console.log(((c.providers.litellm||{}).models||[]).map(m=>m.id).join("\n"))' "$MODELS")"
+    [ -n "$ids" ] || die "no models configured; run refresh first"
+    ok=""; bad=0
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      body="$(printf '{"model":%s,"max_tokens":96,"messages":[{"role":"user","content":"Reply with the single word OK"}]}' "$("$NODE" -e 'console.log(JSON.stringify(process.argv[1]))' "$id")")"
+      if curl -sS -m 45 -X POST "${LITELLM_BASE_URL%/}/chat/completions" \
+           -H "Authorization: Bearer $LITELLM_API_KEY" -H 'Content-Type: application/json' \
+           -d "$body" 2>/dev/null | grep -q '"content"[[:space:]]*:[[:space:]]*"'; then
+        printf '  OK   %s\n' "$id"; ok="$ok$id"$'\n'
+      else
+        printf '  dead %s\n' "$id"; bad=$((bad+1))
+      fi
+    done <<<"$ids"
+    echo "probe: $(printf '%s' "$ok" | grep -c . || true) usable, $bad unusable"
+    if [ "$apply" = 1 ]; then
+      printf '%s' "$ok" > "$PI_AGENT_HOME/.litellm-usable"
+      KEEP="$PI_AGENT_HOME/.litellm-usable" MODELS="$MODELS" "$NODE" -e '
+        const fs=require("fs");
+        const keep=new Set(fs.readFileSync(process.env.KEEP,"utf8").split("\n").map(s=>s.trim()).filter(Boolean));
+        const f=process.env.MODELS, cfg=JSON.parse(fs.readFileSync(f,"utf8"));
+        cfg.providers.litellm.models=(cfg.providers.litellm.models||[]).filter(m=>keep.has(m.id));
+        const tmp=f+"."+process.pid+".tmp";
+        fs.writeFileSync(tmp,JSON.stringify(cfg,null,2)+"\n",{mode:0o600});
+        fs.renameSync(tmp,f);
+        console.log("models.json kept "+cfg.providers.litellm.models.length+"; Pi default is now litellm/"+(cfg.providers.litellm.models[0]||{}).id);
+      '
+      rm -f "$PI_AGENT_HOME/.litellm-usable"
+      seed_store >/dev/null
+      echo "restart pi-web to pick it up:  pi-agent restart"
+    fi
     ;;
   status)
     base="$(read_base_url || true)"
     if [ -z "$base" ]; then echo "litellm: not configured"; exit 0; fi
-    echo "litellm base url : $base"
-    echo "key file         : $ENVFILE ($( [ -f "$ENVFILE" ] && stat -c %a "$ENVFILE" || echo missing ))"
+    echo "litellm base url  : $base"
+    echo "key file          : $ENVFILE ($( [ -f "$ENVFILE" ] && stat -c %a "$ENVFILE" || echo missing ))"
     if [ -f "$MODELS" ]; then
-      echo "models in config : $("$NODE" -e 'const c=require(process.argv[1]);console.log((c.providers?.litellm?.models||[]).length)' "$MODELS" 2>/dev/null || echo "?")"
-      echo "key in models.json: $(grep -q '"apiKey": "\${LITELLM_API_KEY}"' "$MODELS" && echo 'by env reference (no plaintext)' || echo 'CHECK')"
+      echo "models.json       : $("$NODE" -e 'const c=require(process.argv[1]);console.log(((c.providers.litellm||{}).models||[]).length)' "$MODELS") model(s); key stored $(grep -q '"apiKey": "\${LITELLM_API_KEY}"' "$MODELS" && echo 'by env reference' || echo 'CHECK')"
     fi
+    echo "models-store.json : $( [ -f "$STORE" ] && "$NODE" -e 'const c=require(process.argv[1]);console.log(((c.litellm||{}).models||[]).length)' "$STORE" || echo 0 ) model(s)  [Omnigent reads this]"
+    echo "auth.json login   : $( [ -f "$AUTH" ] && "$NODE" -e 'const c=require(process.argv[1]);console.log(Object.keys(c).includes("litellm")?"yes":"NO - run pi then /login")' "$AUTH" || echo 'NO - run pi then /login' )  [Omnigent requires this]"
     # shellcheck source=/dev/null
     [ -f "$ENVFILE" ] && . "$ENVFILE"
-    echo "live check       : HTTP $(curl -sS -m 10 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${LITELLM_API_KEY:-}" "${base%/}/models" 2>/dev/null || echo ERR)"
+    echo "live check        : HTTP $(curl -sS -m 10 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${LITELLM_API_KEY:-}" "${base%/}/models" 2>/dev/null || echo ERR)"
     ;;
-  *) echo "usage: pi-agent-litellm {set --base-url URL [--key-stdin|--key-env] | refresh | status}"; exit 1 ;;
+  *) echo "usage: pi-agent-litellm {set --base-url URL [--key-stdin|--key-env] | refresh | probe [--apply] | status}"; exit 1 ;;
 esac

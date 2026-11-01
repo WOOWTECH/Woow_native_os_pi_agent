@@ -80,13 +80,46 @@ Verified on the Linux host:
    mode falls back to automatic selection, which takes the alphabetically first
    catalog entry — `anthropic/claude-fable-5.1` here, one of the no-credit ones.
    Pass `--model` explicitly, or keep no-credit models out of the gateway.
-3. **Omnigent's `pi` engine stays `MODELS_UNAVAILABLE` even though Pi works.**
-   `pi-omnigent-plugin/src/runtime.mjs` refreshes the Pi model list only when
-   `nativePiLoginFingerprint()` finds a **non-empty `auth.json`** — i.e. an
-   interactive `pi /login`. A gateway configured through `models.json` (the
-   documented way to add a compatible endpoint) never trips that gate, so
-   Omnigent reports no models for `pi` while `pi auth check` says `ready` and
-   conversations work. Upstream fix would be to also accept a
-   models.json-configured provider (or consult `pi auth check`).
-   Claude and Codex are unaffected: both are `ready=true verified=true`
-   (4 and 8 models) after their own provider sign-ins.
+3. **Using Pi *through Omnigent* needs two files that `models.json` does not
+   touch.** Omnigent enumerates a self-hosted Pi's models in
+   `omnigent/harnesses/pi_native/credentials.py::pi_own_login_model_options`
+   as the **intersection** of
+   - `<agent-dir>/auth.json` — provider ids Pi has logged in to, and
+   - `<agent-dir>/models-store.json` — Pi's catalog cache, which is
+     **undocumented** (Pi's own configuration.md does not list it).
+
+   It never reads `models.json`, which is the documented way to add a
+   compatible endpoint. So a gateway wired the documented way is invisible to
+   Omnigent: `pi auth check` says `ready`, `pi --list-models` shows every model
+   and conversations work, while Omnigent reports `MODELS_UNAVAILABLE` and the
+   mobile UI shows "Models unavailable".
+
+   Note this is **not** a bug in `pi-omnigent-plugin`: its own
+   `nativePiLoginFingerprint()` gate (also `auth.json`-based) is consistent
+   with what the host requires. The gap is in the `omnigent` package itself
+   (0.16.0, Databricks, Inc.) — a third-party dependency, not ours.
+
+   **Resolution used here**, both reproducible through `pi-agent-litellm`:
+   - `pi` → `/login` → *Sign in with an API key* → `litellm` → paste the key.
+     This writes `auth.json`. Pi has no non-interactive login, so this step is
+     manual. **It stores the key in cleartext** — accepted here for testing;
+     rotate it afterwards.
+   - `pi-agent-litellm` seeds `models-store.json` from `models.json` on every
+     `set` / `refresh` / `probe --apply`. Pi only writes that file for
+     providers it refreshes over the network, and a statically declared
+     compatible endpoint is never refreshed — confirmed by removing the
+     `models` array, which left Pi with 0 models rather than discovering them.
+
+   After both, all three engines verify:
+   `claude ready+verified (4)`, `codex ready+verified (8)`,
+   `pi ready+verified (24)`, and the connection phase finally reaches
+   **`ready`** instead of `needs-verification`.
+
+4. **Prune dead models, or every unqualified Pi run fails.** Pi's automatic
+   selection takes the **first** entry in the provider's model list, and the
+   gateway's alphabetically first model (`anthropic/claude-fable-5.1`) is one
+   of the no-credit ones — so `pi -p`, and Omnigent's own verification, both
+   died with `PROVIDER_PAYMENT_REQUIRED` while 23 working models sat further
+   down the list. `pi-agent-litellm probe --apply` tests every model and keeps
+   only the ones that answer (81 → 24 here), which makes the automatic default
+   a working model and the Omnigent picker honest.
