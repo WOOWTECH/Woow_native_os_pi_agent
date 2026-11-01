@@ -99,7 +99,7 @@ replace `/proc` identity with `ps`/`sysctl` + a boot-session id). Bounded, upstr
 - **M3** Ship macOS without the Omnigent/Paseo Linux-bound features for v1 (agent + skill/MCP sharing work; tabs degraded) until M1 lands.
 
 ## 7. Phasing
-- **Phase 1 (now)**: Linux installer (engineer bootstrap), **real-tested on the wiped Ubuntu box 192.168.2.46**. Full functional alignment on Linux.
+- **Phase 1 (now)**: Linux installer (engineer bootstrap), **real-tested on an internal LAN Ubuntu host**. Full functional alignment on Linux.
 - **Phase 2**: Windows via WSL2 (reuses Linux path); macOS per the §6 decision.
 - **Phase 3 (customer track)**: prebuilt patched pi-web artifact in CI; signed native installers (.pkg/.dmg notarized, .deb, .msi); plaintext-API-key hardening; auth defaults.
 
