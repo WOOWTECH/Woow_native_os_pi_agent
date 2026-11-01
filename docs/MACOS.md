@@ -214,3 +214,25 @@ interrupt their running sessions — so the large session trees are a live
 best-effort copy while the small identity files are verified byte-for-byte
 (`tar` reported zero warnings on this run, and the critical files were checked
 again *inside* the archive).
+
+### One real near-miss, and the guard added because of it
+
+Running the model-options patch **without `--tool-dir`** during this work applied
+it to `~/.local/share/uv/tools/omnigent` — the machine owner's **own live
+Omnigent install** (python3.13), not the scoped one (python3.12). `DEFAULT_ROOTS`
+contains that path because inside the container it *is* the right target (HOME is
+the data volume there); on a workstation it is somebody's running Omnigent.
+
+It restored cleanly from the `.orig` the patch keeps — 0 residue, upstream
+function back, syntax valid, `import` returning 9 models, `Omnigent.app` never
+interrupted — but the right answer is for that to be impossible. The patch now
+refuses any root outside `PI_AGENT_HOME` when that variable is set, and says so:
+
+```
+skipping ~/.local/share/uv/tools/omnigent: outside PI_AGENT_HOME
+  (~/.local/share/pi-agent) — refusing to patch another install
+found omnigent under ~/.local/share/pi-agent/data/omnigent-plugin/uv/tools/omnigent
+```
+
+Container behaviour is unchanged: nothing sets `PI_AGENT_HOME` there, so the
+search works as before (verified — the Linux host still resolves the same path).

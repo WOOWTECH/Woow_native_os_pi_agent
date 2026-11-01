@@ -268,12 +268,25 @@ def main() -> int:
             return give_up(f"{args.site_packages} is not a directory — nothing to patch")
     else:
         roots = [*args.tool_dir, *DEFAULT_ROOTS]
+        # A scoped install must never wander into the machine owner's omnigent.
+        # DEFAULT_ROOTS includes ~/.local/share/uv/tools/omnigent, which is the
+        # right target inside the container (HOME is the data volume there) and
+        # the WRONG one on a workstation, where it is the owner's own live
+        # install -- their running Omnigent, not ours. When PI_AGENT_HOME says
+        # we are a scoped install, only roots under it are eligible.
+        scope = os.environ.get("PI_AGENT_HOME")
+        scope = os.path.realpath(scope) if scope else None
         site_packages = None
         for root in roots:
-            site_packages = find_site_packages(root)
-            if site_packages:
-                log(f"found omnigent under {root}")
-                break
+            candidate = find_site_packages(root)
+            if not candidate:
+                continue
+            if scope and not os.path.realpath(candidate).startswith(scope + os.sep):
+                log(f"skipping {root}: outside PI_AGENT_HOME ({scope}) — refusing to patch another install")
+                continue
+            site_packages = candidate
+            log(f"found omnigent under {root}")
+            break
         if site_packages is None:
             return give_up(f"no omnigent install under any of {roots} — nothing to patch")
 
