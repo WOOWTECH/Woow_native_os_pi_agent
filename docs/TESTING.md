@@ -99,21 +99,25 @@ Verified on the Linux host:
    with what the host requires. The gap is in the `omnigent` package itself
    (0.16.0, Databricks, Inc.) — a third-party dependency, not ours.
 
-   **Resolution used here**, both reproducible through `pi-agent-litellm`:
-   - `pi` → `/login` → *Sign in with an API key* → `litellm` → paste the key.
-     This writes `auth.json`. Pi has no non-interactive login, so this step is
-     manual. **It stores the key in cleartext** — accepted here for testing;
-     rotate it afterwards.
-   - `pi-agent-litellm` seeds `models-store.json` from `models.json` on every
-     `set` / `refresh` / `probe --apply`. Pi only writes that file for
-     providers it refreshes over the network, and a statically declared
-     compatible endpoint is never refreshed — confirmed by removing the
-     `models` array, which left Pi with 0 models rather than discovering them.
+   **Resolution**: `rootfs/bin/omnigent-model-options-patch.py`, applied by
+   `pi-web-start.sh` on every start (before the Omnigent host manager boots —
+   the manager holds the module in memory for its whole life). It replaces
+   `pi_own_login_model_options()` so that an empty file-pair result falls
+   through to `pi --list-models`, which already knows the gateway's models.
+   Idempotent, version-gated to omnigent 0.16.0, keeps a `.orig`, and never
+   fails the start. Shared with `Woow_k3s_pi_agent_package`
+   (`charts/pi-agent/files/`), where the same script runs from the chart's
+   postStart hook.
 
-   After both, all three engines verify:
-   `claude ready+verified (4)`, `codex ready+verified (8)`,
-   `pi ready+verified (24)`, and the connection phase finally reaches
-   **`ready`** instead of `needs-verification`.
+   **Verified on this host**: with `auth.json` and `models-store.json` BOTH
+   empty — i.e. no credential stored anywhere outside `litellm.env` — a service
+   restart applies the patch automatically and all three engines come up
+   `ready=true verified=true` (claude 4, codex 8, pi 24) with the connection
+   phase at **`ready`**; `verify --engine pi` passes on a real conversation.
+
+   An earlier workaround seeded `auth.json` via an interactive `pi /login` plus
+   a hand-written `models-store.json`. The patch makes both unnecessary, and
+   removing the `auth.json` entry takes the gateway key back out of cleartext.
 
 4. **Prune dead models, or every unqualified Pi run fails.** Pi's automatic
    selection takes the **first** entry in the provider's model list, and the

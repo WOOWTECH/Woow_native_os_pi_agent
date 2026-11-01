@@ -48,6 +48,25 @@ export PI_WEB_NO_OPEN=1
 export PORT="${PI_WEB_PORT:-30141}"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 
+# Teach Omnigent's Pi model picker about gateways configured in models.json.
+# Upstream 0.16.0 answers an own-login Pi from auth.json INTERSECT
+# models-store.json; Pi writes that store only for providers it refreshes over
+# the network, so a compatible endpoint (LiteLLM, Ollama, vLLM) declared in
+# models.json is in neither file and the picker comes up empty. The patch
+# routes that case to `pi --list-models`. It must run BEFORE the host manager
+# boots, because the manager holds the module in memory for its whole life.
+# Idempotent, version-gated, and it never fails the start.
+if [ -f "${PI_AGENT_HOME}/bin/omnigent-model-options-patch.py" ]; then
+  PY=python3
+  command -v "$PY" >/dev/null 2>&1 \
+    || PY="${PI_AGENT_HOME}/data/omnigent-plugin/uv/tools/omnigent/bin/python"
+  if command -v "$PY" >/dev/null 2>&1 || [ -x "$PY" ]; then
+    "$PY" "${PI_AGENT_HOME}/bin/omnigent-model-options-patch.py" \
+      --tool-dir "${PI_AGENT_HOME}/data/omnigent-plugin/uv/tools/omnigent" 2>&1 \
+      | while IFS= read -r line; do log "$line"; done || true
+  fi
+fi
+
 # Ensure the Omnigent host launcher shim is installed (self-heal). It lets the
 # Omnigent host manager boot together with pi-web, which is what makes the
 # connected engines get models + pass verification. Needs a real pi-web on PATH

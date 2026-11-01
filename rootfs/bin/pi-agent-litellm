@@ -10,16 +10,11 @@
 #   pi-agent-litellm probe [--apply]  # find models that actually answer
 #   pi-agent-litellm status
 #
-# TO ALSO USE PI THROUGH OMNIGENT, two more things are required (see
-# docs/TESTING.md). Omnigent enumerates Pi models as the intersection of
-#   <agent-dir>/auth.json        -- provider ids Pi has logged in to
-#   <agent-dir>/models-store.json-- Pi catalog cache, undocumented upstream
-# and ignores models.json entirely, so:
-#   1. run `pi` and `/login` -> Sign in with an API key -> litellm -> paste key,
-#      which writes auth.json (this script cannot: Pi has no non-interactive
-#      login), and
-#   2. this script seeds models-store.json on every set/refresh/probe --apply,
-#      because Pi only writes it for providers it refreshes over the network.
+# USING PI THROUGH OMNIGENT needs nothing extra here: pi-web-start.sh applies
+# omnigent-model-options-patch.py on every start, which teaches Omnigent to ask
+# `pi --list-models` instead of reading only auth.json INTERSECT
+# models-store.json (a pair this gateway is in neither half of). The store is
+# still seeded below as belt and braces for an unpatched or newer omnigent.
 set -euo pipefail
 
 SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
