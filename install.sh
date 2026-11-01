@@ -116,6 +116,15 @@ stage_fetch() {
   local got; got="$(sha256_of "$patch")"
   [ "$got" = "$PIN_OMNIGENT_UI_SHA256" ] || die "combined.adapter.patch sha256 mismatch: $got"
   rm -f "$ot" "$pt"
+  # macOS: the plugin refuses every non-Linux platform before it discovers
+  # anything, so the Omnigent tab can never leave DEPENDENCIES_MISSING. Applied
+  # here, right after extraction, because re-running this stage replaces the
+  # source. Version-gated and never fatal -- see the script's header, and
+  # docs/MACOS.md for what was measured on-device.
+  if [ "$OS" = macos ] && [ -f "$HERE/rootfs/bin/omnigent-plugin-darwin-patch.mjs" ]; then
+    PA_NODE "$HERE/rootfs/bin/omnigent-plugin-darwin-patch.mjs" "$PA_PLUGINS_DIR/pi-omnigent-plugin" \
+      2>&1 | while IFS= read -r line; do log "$line"; done || true
+  fi
   log "fetch OK (plugins verified, settings patch verified)"
 }
 
@@ -138,14 +147,20 @@ stage_piweb() {
     git apply --check "$patch" || die "settings patch does not apply to this pi-web ref"
     git apply "$patch"
     log "patch applied; npm ci (dev) — this pulls the toolchain, a few minutes"
-    NODE_ENV=development "$PA_NODE_DIR/bin/node" "$PA_NODE_DIR/bin/npm" ci --include=dev --no-audit --no-fund
-    log "npm run build (Next.js)"
-    NEXT_TELEMETRY_DISABLED=1 "$PA_NODE_DIR/bin/node" "$PA_NODE_DIR/bin/npm" run build
+    NODE_ENV=development PA_NPM ci --include=dev --no-audit --no-fund
+    # CIRCLE_NODE_TOTAL is what Next.js sizes its static-generation worker pool
+    # from, and the heap cap keeps one worker from ballooning. Both are derived
+    # from the host's RAM: the default behaviour is tuned for CI machines and
+    # will swap an 8 GB laptop into the ground.
+    local workers heap; workers="$(pa_build_workers)"; heap="$(pa_build_heap_mib)"
+    log "npm run build (Next.js) — $workers worker(s), ${heap}MiB heap cap (host has $(pa_ram_mib)MiB RAM)"
+    NEXT_TELEMETRY_DISABLED=1 CIRCLE_NODE_TOTAL="$workers" \
+      NODE_OPTIONS="--max-old-space-size=$heap" PA_NPM run build
     for f in .next/BUILD_ID .next/server/app/omnigent/page.js .next/server/app/paseo/setup/page.js .next/server/app/api/omnigent/route.js; do
       [ -e "$f" ] || die "expected built artifact missing: $f (settings routes did not compile)"
     done
     log "settings routes compiled (omnigent + paseo pages present)"
-    "$PA_NODE_DIR/bin/node" "$PA_NODE_DIR/bin/npm" prune --omit=dev --ignore-scripts
+    PA_NPM prune --omit=dev --ignore-scripts
   )
   # install the built tree as @agegr/pi-web under piweb/lib/node_modules
   rm -rf "$PA_PIWEB_DIR"; mkdir -p "$PA_PIWEB_DIR/lib/node_modules/@agegr" "$PA_PIWEB_DIR/bin"
@@ -219,7 +234,7 @@ stage_omnigent() {
 stage_wire() {
   log "stage wire — install scripts + symlinks"
   mkdirs
-  for f in pi-agent-env.sh pi claude codex pi-web-start.sh pi-agent pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py; do
+  for f in pi-agent-env.sh pi claude codex pi-web-start.sh pi-agent pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs; do
     [ -f "$HERE/rootfs/bin/$f" ] && install -m 0755 "$HERE/rootfs/bin/$f" "$PA_BIN_DIR/$f"
   done
   # register the Omnigent + Paseo plugins as pi extensions so their settings

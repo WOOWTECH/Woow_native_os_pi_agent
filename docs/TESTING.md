@@ -127,3 +127,45 @@ Verified on the Linux host:
    down the list. `pi-agent-litellm probe --apply` tests every model and keeps
    only the ones that answer (81 → 24 here), which makes the automatic default
    a working model and the Omnigent picker honest.
+
+## macOS — validated 2026-11-01 (M2 MacBook Air, macOS 26.4.1, 8 GB RAM, arm64)
+
+Clean host, no previous install, no Homebrew dependency. All nine stages ran,
+then `tests/smoke.sh`: **24 passed, 0 failed** — the same suite and the same
+score as Linux.
+
+```
+preflight (brew optional; found at /opt/homebrew, installed tmux)
+node 22.23.4 darwin-arm64 (scoped; system Node untouched)
+fetch (plugins + settings patch sha256 verified; darwin patch applied)
+piweb   (built from source, 2 workers / 2560 MiB heap for an 8 GB host,
+         both settings routes compiled, node-pty darwin-arm64 prebuild,
+         CJK patch applied)
+clis    claude 2.1.296 + codex 0.162.1, both darwin-arm64
+paseo   @getpaseo/cli 0.11.2 with darwin-arm64 packages, 0 linux packages
+omnigent 0.16.0 in a uv venv (uv's own CPython; system python3 is 3.9)
+wire + service (launchd agent, RunAtLoad + KeepAlive)
+```
+
+`tests/darwin-premises.mjs` — 11 OS-level premises the plugin port rests on,
+all passing, including that `O_EXLOCK` releases its lock when the holder is
+SIGKILLed. It also **corrected a wrong premise**: `process.title` does take
+effect on darwin, so an ownership check on `argv[0]` stays valid there. See
+[`MACOS.md`](MACOS.md).
+
+### Traps this run exposed
+
+- **A leftover SSH tunnel nearly produced a false pass.** Port 30141 on the Mac
+  was held by a `-L` forward left from an earlier session, so the first round of
+  `/`, `/api/home` and `/omnigent` returned 200 **from the Linux box**, while the
+  Mac's own pi-web was dying with `EADDRINUSE` under launchd. `/api/home` returns
+  the agent's home path, which is what gave it away. Always confirm *which* host
+  answered before calling a port test a pass.
+- **`$HOME` is scoped on purpose.** `pi-agent-env.sh` repoints `HOME` into
+  `$PI_AGENT_HOME/home`, so a test that looks for the launchd plist in
+  `~/Library` finds nothing. The smoke test captures the real home before
+  sourcing it.
+- **A flaky assertion, not a product bug.** `claude mcp list` health-checks every
+  account-level MCP server (a dozen claude.ai ones on the test hosts) and took
+  >40s before reaching the fixture. `claude mcp get <name>` answers in ~1.5s and
+  still proves claude read the shared config.

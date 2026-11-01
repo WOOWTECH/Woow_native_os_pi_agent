@@ -13,9 +13,9 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 
 | OS | State |
 |---|---|
-| **Linux** (Ubuntu/Debian; dnf-based best-effort) | ✅ installed + running + browser-verified |
+| **Linux** (Ubuntu/Debian; dnf-based best-effort) | ✅ installed + running + browser-verified · 24/24 smoke |
+| **macOS** (arm64, 26.4 verified) | ✅ installed + running under launchd · 24/24 smoke · see [`docs/MACOS.md`](docs/MACOS.md) |
 | **Windows (WSL2)** | ⏳ reuses the Linux path |
-| **macOS** | ⚠️ gated on a plugin portability item — see [`docs/DESIGN.md` §6](docs/DESIGN.md) |
 
 ## Quickstart (engineer track)
 

@@ -93,7 +93,15 @@ WOOWTECH's **own** plugins hard-code Linux:
 needs adding darwin support to these two WOOWTECH plugins (cross-platform file lock;
 replace `/proc` identity with `ps`/`sysctl` + a boot-session id). Bounded, upstreamable.
 
-**macOS options (owner to decide after Linux proof):**
+> **Measured 2026-11-01 — this section's prediction was too pessimistic.** The
+> plugins largely work on darwin: the locks and `/proc` identity code are not on
+> the install/status/activate paths, and the only real blocker was one
+> platform allow-list. macOS now passes the same 24/24 smoke suite as Linux.
+> See [`MACOS.md`](MACOS.md) for what was actually measured; keep the analysis
+> below only as the map of what *would* matter if the Paseo daemon-recovery and
+> Omnigent host-adoption paths are needed.
+
+**macOS options (superseded — M1 turned out to be far smaller than estimated):**
 - **M1** Port the plugins to darwin (true native, full alignment; real work on WOOWTECH's own repos).
 - **M2** Run the Linux stack under a lightweight VM (Lima/Colima) on macOS — fast, but a VM (not "原生"; not a container either).
 - **M3** Ship macOS without the Omnigent/Paseo Linux-bound features for v1 (agent + skill/MCP sharing work; tabs degraded) until M1 lands.

@@ -22,8 +22,38 @@ warn() { printf '\033[1;33m[pi-agent] WARN:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[pi-agent] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-PA_NODE() { "$PA_NODE_DIR/bin/node" "$@"; }
-PA_NPM()  { "$PA_NODE_DIR/bin/node" "$PA_NODE_DIR/bin/npm" "$@"; }
+# The scoped Node has to be on PATH for anything npm spawns, not just for the
+# npm process itself: a package's lifecycle script runs through `sh -c` and calls
+# a bare `node` (claude-code's install.cjs does). On a host that happens to have
+# a system Node this works by accident; on a clean macOS there is none, and the
+# install fails with `sh: node: command not found`.
+PA_NODE() { PATH="$PA_NODE_DIR/bin:$PATH" "$PA_NODE_DIR/bin/node" "$@"; }
+PA_NPM()  { PATH="$PA_NODE_DIR/bin:$PATH" "$PA_NODE_DIR/bin/node" "$PA_NODE_DIR/bin/npm" "$@"; }
+
+# Total RAM in MiB (Linux /proc/meminfo, macOS sysctl).
+pa_ram_mib() {
+  if [ -r /proc/meminfo ]; then awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo
+  else s="$(sysctl -n hw.memsize 2>/dev/null)"; [ -n "$s" ] && echo $((s / 1048576)) || echo 4096
+  fi
+}
+
+# How many parallel workers the Next.js build may use, and how big the V8 heap
+# may get. The build is the one memory-hungry step in the whole install, and the
+# machines this runs on are not CI boxes -- an 8 GB laptop with the user's own
+# work open is a normal target, and the default (one worker per core, heap sized
+# from total RAM) is what makes a build swap the machine to a standstill.
+pa_build_workers() {
+  local mib; mib="$(pa_ram_mib)"
+  if   [ "$mib" -lt 6000 ];  then echo 1
+  elif [ "$mib" -lt 12000 ]; then echo 2
+  else echo 3; fi
+}
+pa_build_heap_mib() {
+  local mib; mib="$(pa_ram_mib)"
+  if   [ "$mib" -lt 6000 ];  then echo 1536
+  elif [ "$mib" -lt 12000 ]; then echo 2560
+  else echo 4096; fi
+}
 
 sha256_of() {
   if have sha256sum; then sha256sum "$1" | awk '{print $1}'

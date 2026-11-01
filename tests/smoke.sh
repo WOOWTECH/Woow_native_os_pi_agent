@@ -10,6 +10,10 @@ export PI_AGENT_HOME
 . "$PI_AGENT_HOME/bin/pi-agent-env.sh"
 PORT="${PI_WEB_PORT:-30141}"
 BASE="http://127.0.0.1:$PORT"
+# pi-agent-env.sh (sourced above) scopes HOME to $PI_AGENT_HOME/home on purpose,
+# so anything that has to look at the real account -- the launchd agent lives in
+# the user's own ~/Library -- needs the pre-source value.
+REAL_HOME="${PA_REAL_HOME:-$(eval echo "~$(id -un)")}"
 
 # Same assertions on Linux and macOS: the service manager, the "is this port
 # listening" check and `timeout` are all spelled differently (or absent) there.
@@ -21,7 +25,7 @@ svc_active() {
   else systemctl --user is-active pi-web 2>/dev/null | grep -q '^active'; fi
 }
 svc_enabled() {   # survives a reboot / re-login
-  if [ "$PA_PLATFORM" = macos ]; then [ -f "$HOME/Library/LaunchAgents/$PLIST_LABEL.plist" ]
+  if [ "$PA_PLATFORM" = macos ]; then [ -f "$REAL_HOME/Library/LaunchAgents/$PLIST_LABEL.plist" ]
   else systemctl --user is-enabled pi-web 2>/dev/null | grep -q '^enabled'; fi
 }
 svc_restart() {

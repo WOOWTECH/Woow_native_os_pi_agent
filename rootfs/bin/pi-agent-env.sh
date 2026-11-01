@@ -23,6 +23,24 @@ export PI_SKIP_VERSION_CHECK="${PI_SKIP_VERSION_CHECK:-1}"
 # Scoped Node + our wrappers first on PATH.
 export PATH="${PI_AGENT_HOME}/bin:${PI_AGENT_HOME}/node/bin:${PATH}"
 
+# macOS only: Homebrew is not on PATH in a non-login shell or a launchd job, so
+# anything spawned from here cannot see it -- including `tmux`, which Omnigent's
+# native Pi harness runs the Pi TUI inside, and which the plugin's dependency
+# discovery reports as missing without this. Appended, not prepended: the scoped
+# Node and wrappers above must still win.
+if [ "$(uname -s)" = "Darwin" ]; then
+    for _pa_brew_bin in /opt/homebrew/bin /usr/local/bin; do
+        if [ -d "$_pa_brew_bin" ]; then
+            case ":${PATH}:" in
+                *":${_pa_brew_bin}:"*) ;;
+                *) PATH="${PATH}:${_pa_brew_bin}" ;;
+            esac
+        fi
+    done
+    unset _pa_brew_bin
+    export PATH
+fi
+
 # Plugin + runtime roots (match the k3s image ENV so the seeds/routes resolve).
 export PI_OMNIGENT_PLUGIN_ROOT="${PI_AGENT_HOME}/plugins/pi-omnigent-plugin"
 export PI_OMNIGENT_SDK_ROOT="${PI_AGENT_HOME}/piweb/lib/node_modules/@agegr/pi-web"
