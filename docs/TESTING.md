@@ -107,7 +107,10 @@ Verified on the Linux host:
    Idempotent, version-gated to omnigent 0.16.0, keeps a `.orig`, and never
    fails the start. Shared with `Woow_k3s_pi_agent_package`
    (`charts/pi-agent/files/`), where the same script runs from the chart's
-   postStart hook.
+   postStart hook. It reads only the rows under the `provider  model` header
+   of that listing (with nothing configured Pi prints a "No models available"
+   notice and exit code 0, which is not a model) and gives the CLI 12 seconds,
+   because the Omnigent server stops waiting for the host after 15.
 
    **Verified on this host**: with `auth.json` and `models-store.json` BOTH
    empty — i.e. no credential stored anywhere outside `litellm.env` — a service
