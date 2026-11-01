@@ -3,7 +3,7 @@
 # Mirrors Woow_k3s_pi_agent_package Dockerfile ARGs + cli-runtime/versions.json.
 # Bump deliberately, together, and re-run the smoke test.
 
-PIN_NODE_VERSION=22.11.0                      # scoped Node, not system
+PIN_NODE_VERSION=22.23.4                      # scoped Node, not system (>=22.19 for fs.globSync ESM export)
 
 PIN_PI_WEB_VERSION=0.10.0
 PIN_PI_WEB_REF=6fcd7d44981ab51a21d6cd6eb06d361d0e3d3068

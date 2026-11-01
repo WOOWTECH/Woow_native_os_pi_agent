@@ -105,6 +105,7 @@ stage_piweb() {
   local src="$PA_TMP_DIR/piweb-src"
   rm -rf "$src"; mkdir -p "$src"
   ( cd "$src"
+    export PATH="$PA_NODE_DIR/bin:$PATH"   # every `env node` (shebangs, next workers) must be the scoped node
     git init -q
     git fetch --depth=1 "$PIN_PI_WEB_REPO" "$PIN_PI_WEB_REF"
     git checkout --detach -q FETCH_HEAD
