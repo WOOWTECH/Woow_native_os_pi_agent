@@ -27,9 +27,13 @@ stage_preflight() {
   log "stage preflight — os=$OS arch=$ARCH home=$PI_AGENT_HOME"
   case "$OS" in
     linux|wsl)
-      if have apt-get; then
+      local need=""
+      for c in curl git gpg jq ssh xz make g++ python3 flock tmux; do have "$c" || need="$need $c"; done
+      if [ -z "$need" ]; then
+        log "build prerequisites already present; skipping package install"
+      elif have apt-get; then
         local pkgs="ca-certificates curl git gnupg jq openssh-client xz-utils build-essential python3 python3-venv python3-pip util-linux tmux procps"
-        log "installing apt deps (sudo): $pkgs"
+        log "installing apt deps (sudo; missing:$need)"
         sudo apt-get update -qq
         # shellcheck disable=SC2086
         sudo apt-get install -y --no-install-recommends $pkgs
@@ -192,10 +196,14 @@ stage_wire() {
   for f in pi-agent-env.sh pi claude codex pi-web-start.sh pi-agent pi-agent-share-state.mjs fix-unicode-space-paths.mjs; do
     [ -f "$HERE/rootfs/bin/$f" ] && install -m 0755 "$HERE/rootfs/bin/$f" "$PA_BIN_DIR/$f"
   done
-  # vendored boot seeds (best-effort)
-  for f in pi-omnigent-seed.mjs pi-paseo-seed.mjs; do
-    [ -f "$HERE/vendor/$f" ] && install -m 0755 "$HERE/vendor/$f" "$PA_BIN_DIR/$f"
-  done
+  # register the Omnigent + Paseo plugins as pi extensions so their settings
+  # tabs are enabled out of the box (seed once; never clobber a user's choice)
+  if [ -d "$PA_PLUGINS_DIR/pi-omnigent-plugin" ] && [ ! -f "$PA_DATA_DIR/settings.json" ]; then
+    mkdir -p "$PA_DATA_DIR"
+    printf '{\n  "packages": [\n    "%s",\n    "%s"\n  ]\n}\n' \
+      "$PA_PLUGINS_DIR/pi-omnigent-plugin" "$PA_PLUGINS_DIR/pi-paseo-plugin" > "$PA_DATA_DIR/settings.json"
+    log "registered Omnigent + Paseo plugins in settings.json"
+  fi
   # plugins require pi-web's node_modules (match the image symlink)
   local pw="$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web/node_modules"
   if [ -d "$pw" ]; then

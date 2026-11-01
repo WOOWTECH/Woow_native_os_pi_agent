@@ -31,14 +31,17 @@ if [ -d "${AGENT_SKILLS_DIR}" ] && [ ! -L "${AGENT_SKILLS_DIR}" ]; then
 fi
 [ -e "${AGENT_SKILLS_DIR}" ] || ln -sfn "${DATA_DIR}/skills" "${AGENT_SKILLS_DIR}"
 
-# Shared MCP/skills + plugin registration (best-effort; Settings can also do it).
+# Ensure the Omnigent + Paseo plugins are registered as pi extensions so their
+# settings tabs are enabled (self-heal on a fresh data dir; respect an existing file).
+if [ ! -f "${DATA_DIR}/settings.json" ] && [ -d "${PI_AGENT_HOME}/plugins/pi-omnigent-plugin" ]; then
+  printf '{"packages":["%s","%s"]}\n' \
+    "${PI_AGENT_HOME}/plugins/pi-omnigent-plugin" "${PI_AGENT_HOME}/plugins/pi-paseo-plugin" > "${DATA_DIR}/settings.json"
+  log "registered Omnigent + Paseo plugins in settings.json"
+fi
+
+# Shared MCP/skills sync (what the claude/codex wrappers also run before launch).
 "${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/bin/pi-agent-share-state.mjs" >/dev/null 2>&1 \
   || log "shared MCP/skills sync skipped"
-for seed in pi-paseo-seed.mjs pi-omnigent-seed.mjs; do
-  [ -f "${PI_AGENT_HOME}/bin/${seed}" ] \
-    && "${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/bin/${seed}" >/dev/null 2>&1 \
-    && log "${seed%%.mjs} seeded" || true
-done
 
 export PI_WEB_HOSTNAME="${PI_WEB_HOSTNAME:-127.0.0.1}"
 export PI_WEB_NO_OPEN=1
