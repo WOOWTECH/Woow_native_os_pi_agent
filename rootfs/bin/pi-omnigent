@@ -1,0 +1,22 @@
+#!/bin/bash
+# `pi-omnigent` — the plugin's CLI, always under this install's scoped environment.
+#
+# This used to be a symlink straight to the plugin's cli.mjs, which meant running
+# it from an ordinary shell left HOME pointing at the real account: the plugin
+# resolves its Omnigent config as $HOME/.omnigent (src/common.mjs locations(),
+# src/omnigent.py Plugin.__init__), so a `connect` or `initialize` typed in the
+# wrong shell would read and write the OWNER'S live Omnigent host instead of this
+# install's. On a workstation that already has its own Omnigent integration -- a
+# laptop, not a container -- that is somebody's running sessions.
+#
+# Sourcing pi-agent-env.sh first scopes HOME (and PI_CODING_AGENT_DIR) to
+# $PI_AGENT_HOME, so the plugin can only ever touch this install's state.
+set -euo pipefail
+
+SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+: "${PI_AGENT_HOME:=$(dirname "$SELF")}"
+export PI_AGENT_HOME
+# shellcheck source=/dev/null
+. "${PI_AGENT_HOME}/bin/pi-agent-env.sh"
+
+exec "${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/plugins/pi-omnigent-plugin/bin/cli.mjs" "$@"

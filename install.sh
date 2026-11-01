@@ -234,7 +234,7 @@ stage_omnigent() {
 stage_wire() {
   log "stage wire — install scripts + symlinks"
   mkdirs
-  for f in pi-agent-env.sh pi claude codex pi-web-start.sh pi-agent pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs; do
+  for f in pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs; do
     [ -f "$HERE/rootfs/bin/$f" ] && install -m 0755 "$HERE/rootfs/bin/$f" "$PA_BIN_DIR/$f"
   done
   # register the Omnigent + Paseo plugins as pi extensions so their settings
@@ -251,8 +251,15 @@ stage_wire() {
     for p in pi-omnigent-plugin pi-paseo-plugin; do
       [ -d "$PA_PLUGINS_DIR/$p" ] && ln -sfn "$pw" "$PA_PLUGINS_DIR/$p/node_modules"
     done
-    [ -f "$PA_PLUGINS_DIR/pi-omnigent-plugin/bin/cli.mjs" ] && ln -sf "$PA_PLUGINS_DIR/pi-omnigent-plugin/bin/cli.mjs" "$PA_BIN_DIR/pi-omnigent"
-    [ -f "$PA_PLUGINS_DIR/pi-paseo-plugin/bin/cli.mjs" ] && ln -sf "$PA_PLUGINS_DIR/pi-paseo-plugin/bin/cli.mjs" "$PA_BIN_DIR/pi-paseo"
+    # Wrappers, not symlinks: a symlink to cli.mjs runs with the caller's HOME,
+    # and the plugin resolves its Omnigent config from $HOME/.omnigent -- so
+    # `pi-omnigent connect` typed in an ordinary shell would write the machine
+    # owner's live Omnigent host rather than this install's. The wrappers source
+    # pi-agent-env.sh first. Installed from rootfs/ by the loop above; drop any
+    # symlink an older install left behind.
+    for legacy in pi-omnigent pi-paseo; do
+      [ -L "$PA_BIN_DIR/$legacy" ] && rm -f "$PA_BIN_DIR/$legacy"
+    done
   fi
   # A real pi-web on PATH so the Omnigent host launcher (install-host, run from
   # pi-web-start.sh) can find it as realWeb — this is what lets a connected

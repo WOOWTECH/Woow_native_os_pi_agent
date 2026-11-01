@@ -148,3 +148,69 @@ the same second with the same uid compares equal. macOS pids reach 99998 before
 wrapping, so this needs ~100k process creations in one second — infeasible in
 practice, but a real reduction in the PID-reuse defence, and `comm` (a full path
 on darwin) is the extra evidence that narrows it.
+
+## Testing on a workstation that already uses Omnigent
+
+A laptop is not a container: the Mac used for this already had **its own live
+Omnigent integration** — `Omnigent.app` running, a registered host
+(`ElmodeMacBook-Air.local`, its own `host_id`), 1.6 GB of session state under
+`~/.omnigent` (`codex-native` 1.0 GB, `pi-native` 512 MB, `attachments` 14 MB),
+and Claude Code sessions driven through it. None of that may be disturbed by
+installing or testing this.
+
+### The install is isolated, and that is verifiable
+
+`pi-agent-env.sh` scopes `HOME` to `$PI_AGENT_HOME/home`, and both plugin halves
+resolve the Omnigent config from `$HOME`:
+
+- `src/common.mjs` → `locations()`: `omniDir: env.OMNIGENT_CONFIG_HOME || path.join(home, '.omnigent')`, `home = env.HOME || os.homedir()`
+- `src/omnigent.py` → `Plugin.__init__`: `self.home = Path(os.environ.get("HOME", str(Path.home())))`, and it exports `OMNIGENT_CONFIG_HOME` to its children
+
+So the service's view is its own, and it is empty until someone connects it:
+
+```
+$ pi-omnigent status        # with the install's env, which is how pi-web runs it
+  host.id=null  server=null  phase=new
+```
+
+Measured against the owner's live integration: their `host_id`, server and
+credentials are **not** visible to it, and a full checksum comparison of
+`config.yaml`, `auth_tokens.json`, `install_ledger.backfill.json`,
+`telemetry.json` and `.update_check.json` before and after the whole install and
+test run came back identical, 6/6.
+
+### The footgun this exposed, and the fix
+
+`pi-omnigent` and `pi-paseo` used to be **symlinks** straight to the plugins'
+`cli.mjs`. A symlink runs with the *caller's* `HOME`, so the same command typed
+in an ordinary shell resolves `~/.omnigent` to the real account — which is
+exactly how the owner's `host_id` first showed up in a `status` probe during
+this work. `status` only reads, but `connect` or `initialize` would have written
+the owner's live host.
+
+They are now wrapper scripts that source `pi-agent-env.sh` before exec'ing the
+CLI, so the plugin can only reach this install's state no matter which shell it
+is started from. Verified from a plain shell with the real `HOME`:
+
+```
+$ ~/.local/share/pi-agent/bin/pi-omnigent status
+  host.id=null  server=null       # isolated
+```
+
+An older install's symlinks are removed by the `wire` stage.
+
+### Back up before testing on someone's machine
+
+`~/omnigent-backups/<timestamp>/` holds:
+
+| | |
+|---|---|
+| `critical/` + `critical.sha256` | identity and credentials, copied and checksum-verified — this is what a restore actually turns back on |
+| `omnigent-full.tar.gz` | the whole `~/.omnigent` tree (688 MB compressed from 1.6 GB, 16,635 entries), minus lock files |
+| `RESTORE.md` | the host id, and the exact commands for restoring either just the identity or everything |
+
+The owner's Omnigent daemon is **not** stopped for the snapshot — that would
+interrupt their running sessions — so the large session trees are a live
+best-effort copy while the small identity files are verified byte-for-byte
+(`tar` reported zero warnings on this run, and the critical files were checked
+again *inside* the archive).
