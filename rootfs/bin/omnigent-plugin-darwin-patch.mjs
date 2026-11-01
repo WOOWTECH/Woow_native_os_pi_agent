@@ -15,7 +15,20 @@
  * macOS 26.4 / M2: widening this one allow-list is enough for the plugin to
  * bootstrap its own uv + omnigent and find all three engines (`ok: true`,
  * `issues: []`). Nothing else in the plugin needed changing for that path --
- * the flock/`/proc` code the plugin also carries is not on it.
+ * the `/proc` code the plugin also carries is not on it.
+ *
+ * The lock, however, is. `locked()` in src/common.mjs looks for flock(1) at
+ * exactly ['/usr/bin/flock', '/bin/flock'] and throws LOCK_UNAVAILABLE when
+ * neither exists -- which is every Mac, and it blocks `pi-omnigent connect`
+ * outright. macOS cannot be fixed by linking one in: /usr/bin is SIP-protected.
+ * So the third edit adds a PATH fallback, which finds Homebrew's flock
+ * (discoteq/flock 0.4.0, `brew install flock`). That keeps the KERNEL lock the
+ * comment above `locked()` promises -- same binary contract, verified on macOS
+ * 26.4/M2 with the plugin's own invocation: the holder prints LOCKED and a
+ * second attempt exits 75. The `/proc`-based ownership fields degrade on their
+ * own: processIdentity() is already wrapped in try/catch returning {}, and
+ * legacyLockAlive() falls back to an mtime window, both upstream behaviour --
+ * so no security check is weakened here, and none is skipped.
  *
  * The second edit drops the bubblewrap warning on darwin: bwrap is a Linux
  * namespace tool that cannot exist on macOS, so the advice ("add it to the
@@ -39,7 +52,57 @@ const MSG_NEW = 'This plugin requires Linux or macOS on x64 or arm64';
 const BWRAP_OLD = "if (!discovery.bwrap?.available) warnings.push(";
 const BWRAP_NEW = "if (platform !== 'darwin' && !discovery.bwrap?.available) warnings.push(";
 
+// src/common.mjs: flock(1) lookup inside locked().
+const LOCK_MARKER = 'flock-path-fallback (Woow native installer)';
+const LOCK_OLD = `  const executable = ['/usr/bin/flock', '/bin/flock'].find(candidate => fs.existsSync(candidate));
+  if (!executable) throw Object.assign(new Error('Linux util-linux flock is required.'), { code: 'LOCK_UNAVAILABLE' });`;
+const LOCK_NEW = `  // ${LOCK_MARKER}: macOS ships no flock(1), and /usr/bin is SIP-protected so
+  // Homebrew's cannot be linked into the two paths below. PATH finds it there
+  // instead -- same program, same -n -E contract, so this stays a kernel lock.
+  const executable = ['/usr/bin/flock', '/bin/flock'].find(candidate => fs.existsSync(candidate))
+    ?? (process.env.PATH || '').split(path.delimiter).filter(Boolean)
+      .map(directory => path.join(directory, 'flock'))
+      .find(candidate => { try { fs.accessSync(candidate, fs.constants.X_OK); return true; } catch { return false; } });
+  if (!executable) throw Object.assign(new Error('flock(1) is required: util-linux on Linux, or \`brew install flock\` on macOS.'), { code: 'LOCK_UNAVAILABLE' });`;
+
 const log = (m) => console.log(`[omnigent-plugin-darwin-patch] ${m}`);
+
+/** Replace anchored text in one plugin file, keeping a .orig. Never throws. */
+function edit(root, relative, version, { marker, required, optional = [] }) {
+  const target = path.join(root, 'src', relative);
+  let source;
+  try { source = fs.readFileSync(target, 'utf8'); }
+  catch (error) { log(`cannot read ${target} (${error.code ?? error.message}) — skipping`); return 0; }
+
+  if (source.includes(marker)) { log(`${relative}: already patched — no change`); return 0; }
+
+  // Exact anchors, counted: a moved or re-spelled anchor must be re-inspected
+  // rather than silently half-patched.
+  for (const [name, anchor] of required) {
+    const hits = source.split(anchor).length - 1;
+    if (hits !== 1) { log(`${relative}: expected exactly 1 ${name}, found ${hits} — leaving this file alone`); return 0; }
+  }
+
+  let patched = source;
+  for (const [, anchor, replacement] of required) patched = patched.replace(anchor, replacement);
+  for (const [name, anchor, replacement] of optional) {
+    if (patched.split(anchor).length - 1 === 1) patched = patched.replace(anchor, replacement);
+    else log(`${relative}: ${name} not found in the expected shape; leaving it (cosmetic only)`);
+  }
+
+  const backup = `${target}.orig`;
+  try {
+    if (!fs.existsSync(backup)) { fs.copyFileSync(target, backup); log(`${relative}: kept the pristine file as ${path.basename(backup)}`); }
+    const tmp = `${target}.patch-tmp`;
+    fs.writeFileSync(tmp, patched);
+    fs.renameSync(tmp, target);
+  } catch (error) {
+    log(`cannot write beside ${target} (${error.code ?? error.message}) — read-only install, patch it at build time`);
+    return 0;
+  }
+  log(`patched ${target} (plugin ${version})`);
+  return 0;
+}
 
 function main() {
   const root = process.argv[2];
@@ -53,36 +116,18 @@ function main() {
     return 0;
   }
 
-  const target = path.join(root, 'src', 'installer.mjs');
-  let source;
-  try { source = fs.readFileSync(target, 'utf8'); }
-  catch (error) { log(`cannot read ${target} (${error.code ?? error.message}) — skipping`); return 0; }
+  // The lock blocks `connect` on macOS; the installer gate blocks dependency
+  // discovery. Independent files, so one failing never blocks the other.
+  edit(root, 'common.mjs', version, {
+    marker: LOCK_MARKER,
+    required: [['flock lookup', LOCK_OLD, LOCK_NEW]],
+  });
 
-  if (source.includes(GATE_NEW)) { log('already patched — no change'); return 0; }
-
-  // Exact anchors, counted: a moved or re-spelled gate must be re-inspected
-  // rather than silently half-patched.
-  for (const [name, anchor] of [['platform gate', GATE_OLD], ['refusal message', MSG_OLD]]) {
-    const hits = source.split(anchor).length - 1;
-    if (hits !== 1) { log(`expected exactly 1 ${name}, found ${hits} — leaving the plugin alone`); return 0; }
-  }
-
-  let patched = source.replace(GATE_OLD, GATE_NEW).replace(MSG_OLD, MSG_NEW);
-  if (patched.split(BWRAP_OLD).length - 1 === 1) patched = patched.replace(BWRAP_OLD, BWRAP_NEW);
-  else log('bwrap warning not found in the expected shape; leaving it (cosmetic only)');
-
-  const backup = `${target}.orig`;
-  try {
-    if (!fs.existsSync(backup)) { fs.copyFileSync(target, backup); log(`kept the pristine file as ${path.basename(backup)}`); }
-    const tmp = `${target}.patch-tmp`;
-    fs.writeFileSync(tmp, patched);
-    fs.renameSync(tmp, target);
-  } catch (error) {
-    log(`cannot write beside ${target} (${error.code ?? error.message}) — read-only install, patch it at build time`);
-    return 0;
-  }
-  log(`patched ${target} (plugin ${version})`);
-  return 0;
+  return edit(root, 'installer.mjs', version, {
+    marker: GATE_NEW,
+    required: [['platform gate', GATE_OLD, GATE_NEW], ['refusal message', MSG_OLD, MSG_NEW]],
+    optional: [['bubblewrap warning', BWRAP_OLD, BWRAP_NEW]],
+  });
 }
 
 process.exit(main());

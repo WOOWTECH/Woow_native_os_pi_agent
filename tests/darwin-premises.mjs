@@ -69,3 +69,46 @@ console.log('== 5. 另一個程序的 environ 真的讀不到嗎 ==');
 const e1 = run('/bin/ps', ['-Eww', '-o', 'command=', '-p', String(t.pid)]);
 ok('ps -E 讀不到 env（所以歸屬驗證不能靠 environ）', !/PATH=/.test(e1),
    /PATH=/.test(e1) ? 'env 竟然讀得到 → 重新評估設計' : '確認讀不到');
+
+console.log('== 6. flock(1) on PATH honours the plugin\'s -n -E 75 contract ==');
+// The plugin's locked() shells out to flock(1). macOS ships none, and /usr/bin
+// is SIP-protected, so the darwin patch teaches it to look on PATH -- where
+// Homebrew's discoteq/flock lives. That keeps locked() a KERNEL lock instead of
+// an advisory file, but only while that build honours the same two flags the
+// plugin passes: -n (fail instead of waiting) and -E 75 (exit 75 on conflict).
+// A brew upgrade that changed either would silently break `pi-omnigent connect`,
+// so the contract is asserted here rather than assumed.
+// Search what the plugin will actually see: PATH, plus the Homebrew prefixes
+// pi-agent-env.sh appends on darwin -- a non-login shell has neither by default,
+// so looking only at this process's PATH would fail for an environmental reason
+// rather than a real one.
+const flockBin = [...(process.env.PATH || '').split(path.delimiter), '/opt/homebrew/bin', '/usr/local/bin']
+  .filter(Boolean).map(d => path.join(d, 'flock'))
+  .find(c => { try { fs.accessSync(c, fs.constants.X_OK); return true; } catch { return false; } });
+console.log('  flock on PATH:', flockBin ?? '(none)');
+if (!flockBin) {
+  ok('flock(1) 可用（Omnigent connect 需要）', false, '沒找到 → brew install flock');
+} else {
+  const guard = path.join(os.tmpdir(), `pa-flock-${process.pid}.guard`);
+  fs.closeSync(fs.openSync(guard, 'a', 0o600));
+  try {
+    // Holder: prints LOCKED and keeps the lock until its stdin closes, exactly
+    // as locked() drives it.
+    const holder = spawn(flockBin, ['-n', '-E', '75', guard, process.execPath, '-e',
+      "process.stdout.write('LOCKED\\n'); process.stdin.resume();"], { stdio: ['pipe', 'pipe', 'ignore'] });
+    const first = await new Promise(r => { holder.stdout.once('data', c => r(String(c))); });
+    ok('持鎖者印出 LOCKED', first.startsWith('LOCKED'), JSON.stringify(first.trim()));
+    // Contender: must be refused with the conflict code, not block and not run.
+    const clash = spawnSync(flockBin, ['-n', '-E', '75', guard, process.execPath, '-e',
+      "process.stdout.write('RAN')"], { encoding: 'utf8' });
+    ok('競爭者以 75 退出且沒執行（-n -E 合約）', clash.status === 75 && !/RAN/.test(clash.stdout || ''),
+       `exit=${clash.status} stdout=${JSON.stringify((clash.stdout || '').trim())}`);
+    holder.stdin.end();
+    await new Promise(r => holder.once('close', r));
+    // Released on exit: the next acquirer must succeed.
+    const after = spawnSync(flockBin, ['-n', '-E', '75', guard, process.execPath, '-e',
+      "process.stdout.write('FREE')"], { encoding: 'utf8' });
+    ok('持鎖者結束後鎖被釋放', after.status === 0 && /FREE/.test(after.stdout || ''),
+       `exit=${after.status}`);
+  } finally { fs.rmSync(guard, { force: true }); }
+}

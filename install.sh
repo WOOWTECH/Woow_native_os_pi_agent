@@ -56,12 +56,27 @@ stage_preflight() {
       # tmux is needed only by Omnigent's native Pi harness, which runs the Pi
       # TUI inside its own tmux server. Install it when brew happens to be here,
       # and otherwise carry on: everything else works without it.
-      if ! have tmux; then
+      #
+      # flock is needed by the Omnigent plugin's locked(): it shells out to
+      # flock(1), which macOS does not ship at all, and /usr/bin is SIP-protected
+      # so one cannot be linked into the paths it checks. Without it every
+      # `pi-omnigent connect` fails with LOCK_UNAVAILABLE. Homebrew's
+      # discoteq/flock honours the same -n -E contract (verified), and the
+      # darwin patch teaches the plugin to look on PATH for it.
+      local want_brew=""
+      have tmux  || want_brew="$want_brew tmux"
+      have flock || want_brew="$want_brew flock"
+      if [ -n "$want_brew" ]; then
         local brew; if brew="$(pa_brew)"; then
-          log "installing tmux via $brew (Omnigent's native Pi harness needs it)"
-          "$brew" install tmux >/dev/null 2>&1 || warn "brew install tmux failed; native Pi sessions through Omnigent will not work"
+          log "installing via $brew:$want_brew"
+          for formula in $want_brew; do
+            "$brew" install "$formula" >/dev/null 2>&1 || case "$formula" in
+              tmux)  warn "brew install tmux failed; native Pi sessions through Omnigent will not work" ;;
+              flock) warn "brew install flock failed; Omnigent connect will fail with LOCK_UNAVAILABLE" ;;
+            esac
+          done
         else
-          warn "tmux is absent and Homebrew is not installed; Omnigent's native Pi harness will not work (everything else does)"
+          warn "Homebrew is not installed, so$want_brew cannot be added: tmux absent breaks Omnigent's native Pi harness, flock absent breaks Omnigent connect (everything else works)"
         fi
       fi ;;
     *) die "unsupported OS: $OS" ;;

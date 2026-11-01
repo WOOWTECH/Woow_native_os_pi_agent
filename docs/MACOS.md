@@ -236,3 +236,73 @@ found omnigent under ~/.local/share/pi-agent/data/omnigent-plugin/uv/tools/omnig
 
 Container behaviour is unchanged: nothing sets `PI_AGENT_HOME` there, so the
 search works as before (verified — the Linux host still resolves the same path).
+
+## Connecting to Omnigent on macOS
+
+`pi-omnigent connect` failed on macOS with `LOCK_UNAVAILABLE` long before any
+`/proc` code was reached. The cause is one line in the plugin's `src/common.mjs`:
+
+```js
+const executable = ['/usr/bin/flock', '/bin/flock'].find(candidate => fs.existsSync(candidate));
+if (!executable) throw Object.assign(new Error('Linux util-linux flock is required.'), { code: 'LOCK_UNAVAILABLE' });
+```
+
+macOS ships no `flock(1)` at all, and `/usr/bin` is SIP-protected, so one cannot
+be linked into either path. Upstream `main` (after PR #28) still has this line —
+that PR fixed the installer's platform gate, not the lock.
+
+### Why this is one line and not the M1 port
+
+Reading the whole of `locked()` matters here, because the obvious conclusion is
+wrong. The lock also calls `processIdentity()`, which reads `/proc/<pid>/stat`
+and `/proc/sys/kernel/random/boot_id` — so it looks like connecting needs the
+full `/proc` port. It does not:
+
+- `processIdentity()` is **already wrapped in `try { … } catch { return {} }`**, so
+  on darwin it yields `{}` and the owner record is written as `{ pid }` alone.
+- `legacyLockAlive()` degrades to a 60-second mtime window on any throw.
+
+Both are upstream behaviour on any platform where `/proc` is absent. So **no
+ownership check is weakened or skipped by this patch** — the only thing missing
+was the binary.
+
+The fix adds a PATH fallback for `flock(1)`, which finds Homebrew's
+`discoteq/flock`. That keeps `locked()` the *kernel* lock its own comment
+promises, rather than downgrading it to an advisory file. `flock` is now
+installed by the macOS preflight alongside `tmux`.
+
+The `-n -E 75` contract that `locked()` depends on is asserted by
+`tests/darwin-premises.mjs` (§6), not assumed: the holder prints `LOCKED`, a
+contender exits 75 without running, and the lock is released on holder exit. A
+Homebrew upgrade that broke either flag would otherwise break `connect` silently.
+
+### Result
+
+```
+$ pi-omnigent connect --server https://omnigent.woowtech.io --username … --password-stdin
+{ "ok": true, "phase": "needs-verification",
+  "host": { "id": "655a7a82…", "name": "ElmodeMacBook-Air.local", "connected": true } }
+```
+
+A **separate** host: the machine owner's own registration (`2b8a18bc…`) is
+untouched, and their five identity/credential files still match the pre-connect
+snapshot byte-for-byte.
+
+Two things remain before the three engines are usable through Omnigent on a Mac,
+neither caused by the installer:
+
+1. **Each engine still needs its own login** on that machine (`claude auth login`,
+   `codex login --device-auth`, `pi` → `/login`) — Omnigent registers these
+   providers as `kind: subscription`, so connecting the host grants no models.
+2. **`managerRunning` stays false.** The host manager's ownership checks in
+   `src/omnigent.py` do read `/proc` (4 sites) with no try/catch fallback, and
+   that is still the M1 port.
+
+### A naming wrinkle
+
+`connect` takes no host name, and the plugin only honours a `hostName` field
+coming from an `initialize` request, which the CLI does not expose. The name is
+the machine's, so a scoped install on a machine that already has its own host
+registers a **second host with the same display name** — distinguishable only by
+host id. Rename it in the Omnigent UI if that matters; nothing functional
+depends on it.
