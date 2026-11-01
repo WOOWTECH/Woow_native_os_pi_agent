@@ -48,12 +48,27 @@ export PI_WEB_NO_OPEN=1
 export PORT="${PI_WEB_PORT:-30141}"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 
+# Ensure the Omnigent host launcher shim is installed (self-heal). It lets the
+# Omnigent host manager boot together with pi-web, which is what makes the
+# connected engines get models + pass verification. Needs a real pi-web on PATH
+# (installed by the wire stage at ${PI_AGENT_HOME}/bin/pi-web).
+if [ ! -x "${HOME}/.local/bin/pi-web" ] \
+   && [ -x "${PI_AGENT_HOME}/bin/pi-web" ] \
+   && [ -f "${PI_AGENT_HOME}/plugins/pi-omnigent-plugin/bin/cli.mjs" ]; then
+  "${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/plugins/pi-omnigent-plugin/bin/cli.mjs" install-host >/dev/null 2>&1 \
+    && log "installed Omnigent host launcher shim" || true
+fi
+
 cd "${HOME}"
+# Prefer launching pi-web THROUGH the Omnigent launcher shim (boots the host
+# manager); fall back to launching pi-web directly if the shim isn't present.
+export PATH="${HOME}/.local/bin:${PATH}"
+if [ -x "${HOME}/.local/bin/pi-web" ]; then
+  log "starting pi-web via Omnigent launcher on ${PI_WEB_HOSTNAME}:${PORT} (data ${PI_CODING_AGENT_DIR})"
+  exec "${HOME}/.local/bin/pi-web"
+fi
 PIWEB_JS="${PI_AGENT_HOME}/piweb/lib/node_modules/@agegr/pi-web/bin/pi-web.js"
 [ -f "${PIWEB_JS}" ] || PIWEB_JS="$(find "${PI_AGENT_HOME}/piweb" -path '*@agegr/pi-web/bin/pi-web.js' -print -quit 2>/dev/null || true)"
 [ -f "${PIWEB_JS}" ] || { echo "pi-web: cannot find pi-web.js under ${PI_AGENT_HOME}/piweb" >&2; exit 127; }
-
-log "starting pi-web on ${PI_WEB_HOSTNAME}:${PORT}"
-log "  data : ${PI_CODING_AGENT_DIR}"
-log "  home : ${HOME}"
+log "starting pi-web directly on ${PI_WEB_HOSTNAME}:${PORT} (data ${PI_CODING_AGENT_DIR})"
 exec "${PI_AGENT_HOME}/node/bin/node" "${PIWEB_JS}"

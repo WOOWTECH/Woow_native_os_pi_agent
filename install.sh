@@ -213,6 +213,19 @@ stage_wire() {
     [ -f "$PA_PLUGINS_DIR/pi-omnigent-plugin/bin/cli.mjs" ] && ln -sf "$PA_PLUGINS_DIR/pi-omnigent-plugin/bin/cli.mjs" "$PA_BIN_DIR/pi-omnigent"
     [ -f "$PA_PLUGINS_DIR/pi-paseo-plugin/bin/cli.mjs" ] && ln -sf "$PA_PLUGINS_DIR/pi-paseo-plugin/bin/cli.mjs" "$PA_BIN_DIR/pi-paseo"
   fi
+  # A real pi-web on PATH so the Omnigent host launcher (install-host, run from
+  # pi-web-start.sh) can find it as realWeb — this is what lets a connected
+  # engine actually get models + pass verification. Mirrors the container's
+  # /usr/local/bin/pi-web.
+  if [ -d "$PA_PIWEB_DIR" ]; then
+    cat > "$PA_BIN_DIR/pi-web" <<'WRAP'
+#!/bin/bash
+SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+: "${PI_AGENT_HOME:=$(dirname "$SELF")}"
+exec "$PI_AGENT_HOME/node/bin/node" "$PI_AGENT_HOME/piweb/lib/node_modules/@agegr/pi-web/bin/pi-web.js" "$@"
+WRAP
+    chmod +x "$PA_BIN_DIR/pi-web"
+  fi
   log "wire OK — bin at $PA_BIN_DIR"
 }
 
