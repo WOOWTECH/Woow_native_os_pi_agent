@@ -334,26 +334,61 @@ it fails for a third unrelated reason.
 |---|---|---|
 | codex | `~/.codex/auth.json` | **Yes** — symlinked; verified `Logged in using ChatGPT` |
 | pi | `~/.pi/agent/auth.json` | **Yes** — symlinked |
-| claude | login Keychain (per-user) + `~/.claude.json` | **No** — see below |
+| claude | login Keychain (per-user) | **Yes** — but not by copying anything; see below |
 
 They are **symlinked, not copied**: these tokens refresh, and a copy silently
 pins an old one.
 
-**Claude Code cannot be adopted, and it is worth recording why.** The obvious
-theories are all wrong, each disproved by measurement in the GUI session:
+**Claude Code needed one link, not a login — and the search for it went wrong
+in an instructive way.** Every "adopt the credential" theory was disproved by
+measurement in the GUI session:
 
 | Theory | Test | Result |
 |---|---|---|
-| The Keychain is per-HOME | same binary, real HOME | `true` — so the Keychain is reachable |
-| A different binary breaks the Keychain ACL | scoped binary, real HOME | `true` — binary is irrelevant |
+| The Keychain is per-HOME | same binary, real HOME | `true` — the Keychain is reachable |
+| A different binary breaks the Keychain ACL | scoped binary, real HOME | `true` — the binary is irrelevant |
 | The account block in `.claude.json` is the gate | clean HOME + full copy of the real `.claude.json` | `false` |
 | `machineID` binds the credential | scoped HOME with the real `machineID` | `false` |
 | The whole `~/.claude` directory is the gate | clean HOME + full copy of `~/.claude` too | `false` |
 | An env var can redirect it | `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_HOME` → real | `false` |
 
-Only the real HOME **path** yields `loggedIn: true`. So on macOS a scoped-HOME
-install must run its own one-time `claude auth login`; nothing can be copied,
-linked or pointed at to inherit it.
+Every row varied something inside Claude Code while holding one variable fixed
+without noticing it: **`$HOME` is also where macOS looks for the Keychain
+itself.** `/usr/bin/security` says so directly:
+
+```
+HOME=<scoped>  security default-keychain → "A default keychain could not be found."
+HOME=<real>    security default-keychain → /Users/<user>/Library/Keychains/login.keychain-db
+```
+
+and `securityd` logs `MacOS error: -25307` (`errSecNoDefaultKeychain`) for each
+attempt. The scoped home has no `Library/Keychains`, so **no** keychain
+operation from this install can work — reads included. That is the whole bug:
+
+- "Not logged in" was a **failed read**, not an absent credential.
+- `claude auth login` failing with *"Couldn't save your login. If your Mac's
+  keychain is locked, unlock it and log in again"* was a **failed write**. The
+  keychain was neither locked nor ACL-restricted; the message sends you to the
+  wrong place, and it cost a long detour through ACL and launchd-session
+  theories before `security` was asked the plain question.
+
+The fix is one symlink, created by the `wire` stage:
+
+```
+$PI_AGENT_HOME/home/Library/Keychains -> ~/Library/Keychains
+```
+
+After it, with **no login at all**, the scoped install reports
+`loggedIn: true, authMethod: claude.ai` — the credential was always there. Only
+this one directory is shared; the data dir, sessions, `.omnigent` host identity
+and the shared skills/MCP tree stay scoped. `tests/darwin-premises.mjs` §7
+asserts it, because the failure mode impersonates a login problem.
+
+One caveat worth knowing: the Omnigent host process caches engine readiness, so
+after linking it still reported `needs-auth` until it was restarted
+(`omnigent host stop`, then pi-web through its launcher shim). Measured after
+that: `claude ready=True` with `opus, fable, sonnet, haiku`, and
+`verify --engine claude` → `ok=True` on `claude-opus-5-5`.
 
 `pi-agent-adopt-logins --undo` reverses everything it did, and it never writes
 to the real home — verified: the owner's Omnigent files stayed 6/6 after the run.

@@ -289,6 +289,30 @@ exec "$PI_AGENT_HOME/node/bin/node" "$PI_AGENT_HOME/piweb/lib/node_modules/@ageg
 WRAP
     chmod +x "$PA_BIN_DIR/pi-web"
   fi
+  # macOS: the Security framework resolves the login Keychain from
+  # $HOME/Library/Keychains, and pi-agent-env.sh scopes HOME -- so every keychain
+  # call made by this install returns errSecNoDefaultKeychain (-25307). Claude
+  # Code keeps its credentials there, so the scoped install reports
+  # "Not logged in" even when the user IS logged in, and `claude auth login`
+  # then fails with "Couldn't save your login. If your Mac's keychain is
+  # locked, unlock it and log in again." That message is misleading: the
+  # keychain is not locked, it cannot be found. Link the real one in.
+  #
+  # Only this one directory is shared, and it is the user's own keychain on
+  # their own machine -- the rest of the scoping (data, sessions, .omnigent
+  # host identity, shared skills/MCP) is untouched.
+  if [ "$OS" = macos ]; then
+    local real_home; real_home="$(eval echo "~$(id -un)")"
+    if [ -n "$real_home" ] && [ -d "$real_home/Library/Keychains" ] && [ "$real_home" != "$PI_AGENT_HOME" ]; then
+      mkdir -p "$PA_HOME_DIR/Library"
+      if [ -e "$PA_HOME_DIR/Library/Keychains" ] && [ ! -L "$PA_HOME_DIR/Library/Keychains" ]; then
+        warn "$PA_HOME_DIR/Library/Keychains exists and is not a symlink — leaving it; Claude Code will report 'Not logged in'"
+      else
+        ln -sfn "$real_home/Library/Keychains" "$PA_HOME_DIR/Library/Keychains"
+        log "linked the login Keychain into the scoped home (Claude Code reads its credentials from there)"
+      fi
+    fi
+  fi
   log "wire OK — bin at $PA_BIN_DIR"
 }
 

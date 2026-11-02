@@ -112,3 +112,36 @@ if (!flockBin) {
        `exit=${after.status}`);
   } finally { fs.rmSync(guard, { force: true }); }
 }
+
+console.log('== 7. the scoped HOME can resolve the login Keychain ==');
+// macOS resolves the login Keychain from $HOME/Library/Keychains, and
+// pi-agent-env.sh scopes HOME. Without a link every keychain call from this
+// install returns errSecNoDefaultKeychain (-25307): Claude Code then reports
+// "Not logged in" although the user IS logged in, and `claude auth login`
+// fails with "Couldn't save your login. If your Mac's keychain is locked,
+// unlock it and log in again." That message is a red herring -- the keychain
+// is neither locked nor inaccessible, it is simply not found -- and it cost a
+// long detour through ACL and launchd-session theories, all of which were
+// wrong. The wire stage links the real directory in; assert it here so the
+// regression announces itself instead of impersonating a login problem.
+const scopedHome = process.env.PI_AGENT_HOME
+  ? path.join(process.env.PI_AGENT_HOME, 'home')
+  : null;
+if (!scopedHome) {
+  ok('scoped HOME 能解析 login Keychain', false, 'PI_AGENT_HOME 未設,無法檢查');
+} else {
+  const link = path.join(scopedHome, 'Library', 'Keychains');
+  let linked = false;
+  try { linked = fs.statSync(link).isDirectory(); } catch { linked = false; }
+  ok('scoped home 有 Library/Keychains', linked, linked ? link : `缺少 ${link}`);
+  // The real check: ask the Security framework itself, under the scoped HOME.
+  const probe = spawnSync('/usr/bin/security', ['default-keychain'], {
+    encoding: 'utf8',
+    env: { ...process.env, HOME: scopedHome, LC_ALL: 'C' },
+  });
+  const out = `${probe.stdout || ''}${probe.stderr || ''}`.trim();
+  const resolved = /login\.keychain/.test(out);
+  ok('scoped HOME 下 security 找得到預設 keychain', resolved,
+     resolved ? out.replace(/\s+/g, ' ').slice(0, 70)
+              : `${out.slice(0, 80)} → Claude Code 會誤報 Not logged in`);
+}
