@@ -61,6 +61,12 @@ link_cred() {
 }
 link_cred ".codex/auth.json" codex
 link_cred ".pi/agent/auth.json" pi
+# Claude Code keeps its credentials in the login Keychain on macOS, but in a
+# plain file on Linux -- so there it is adoptable exactly like the other two,
+# and without this a scoped install reports needs-auth on a machine where the
+# user is plainly logged in. On macOS the file does not exist and link_cred
+# skips it, leaving the Keychain path below as the only claude handling.
+link_cred ".claude/.credentials.json" claude
 
 # --- claude: merge the account block (the Keychain is already shared) --------
 "$NODE" -e '

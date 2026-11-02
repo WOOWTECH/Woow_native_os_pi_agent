@@ -58,4 +58,8 @@ PIN_CLAUDE_VERSION=2.1.296
 PIN_CODEX_VERSION=0.162.1
 
 # Default listen port (container used 30141; keep it so docs/screenshots match).
-PIN_PI_WEB_PORT=30141
+# Overridable, like PI_AGENT_HOME: a machine that already serves something on
+# 30141 -- including an earlier pi-agent of its own -- needs a second install to
+# bind elsewhere, and the service unit is written from this value. pi-web-start.sh
+# and the pi-agent control script already honour PI_WEB_PORT; only this was fixed.
+PIN_PI_WEB_PORT=${PI_WEB_PORT:-30141}
