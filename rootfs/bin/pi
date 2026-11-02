@@ -10,11 +10,20 @@ SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
 : "${PI_AGENT_HOME:=$(dirname "$SELF")}"
 export PI_AGENT_HOME
 # shellcheck source=/dev/null
+_pa_caller_home="${HOME:-}"
 . "${PI_AGENT_HOME}/bin/pi-agent-env.sh"
 # Session home (docs/SESSION-HOME.md): pi-agent-env.sh scopes HOME for the
-# install itself; a harness the Omnigent host starts gets the user's own HOME
-# back, which is where its MCP servers, plugins, git identity and keys live.
-if [ -n "${PI_AGENT_SESSION_HOME:-}" ]; then export HOME="$PI_AGENT_SESSION_HOME"; fi
+# install itself. While session home is enabled, keep the HOME this wrapper was
+# called with instead: the Omnigent host now runs with the user's own HOME and
+# hands it to its harnesses, so that is where their MCP servers, plugins, git
+# identity and keys are. The state file, not an environment variable, is the
+# signal -- omnigent starts harnesses with an allowlisted environment, so a
+# variable such as PI_AGENT_SESSION_HOME never reaches this script. Keeping the
+# caller's HOME (rather than forcing one) also leaves alone the private HOME
+# omnigent gives each codex session, and the scoped HOME of pi-web's terminal.
+if [ -f "${PI_AGENT_HOME}/session-home.state" ] && [ -n "${_pa_caller_home:-}" ]; then
+  export HOME="$_pa_caller_home"
+fi
 
 CLI=""
 for c in \

@@ -44,6 +44,23 @@ its own environment), so `omnigent-plugin-session-home-patch.mjs` makes it set
 `HOME` from `PI_AGENT_SESSION_HOME` when that is present. pi-web and the plugin
 keep the scoped `HOME`: their launcher shims and state stay inside the install.
 
+### The wrappers must not rely on an environment variable
+
+The first version had the wrappers restore `HOME` from `PI_AGENT_SESSION_HOME`.
+It never arrived: omnigent starts harnesses with an allowlisted environment
+(`inner/os_env.py`), so the variable set on pi-web was dropped on the way —
+measured, 0 occurrences in the harness's tmux and in claude. The wrappers then
+re-sourced `pi-agent-env.sh` and put claude back on the scoped `HOME`, while the
+host itself ran with the real one and the restart's health check passed.
+
+The wrappers now key off `$PI_AGENT_HOME/session-home.state` and keep the `HOME`
+they were called with. That is the right value for every caller: the runner
+(the real home, once the host has it), each codex session (omnigent gives it a
+private `HOME`, which the old forced value used to overwrite), and pi-web's own
+terminal (scoped, as before). Measured with the fixed wrapper: called with the
+real home, `claude plugin list` shows the user's plugins; called with the scoped
+home, none.
+
 ## Why `~/.omnigent` becomes a link
 
 omnigent hardcodes `Path.home()/.omnigent` in about twenty places. The
