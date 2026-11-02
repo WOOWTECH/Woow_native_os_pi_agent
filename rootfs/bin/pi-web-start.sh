@@ -56,11 +56,15 @@ export LOG_LEVEL="${LOG_LEVEL:-info}"
 # routes that case to `pi --list-models`. It must run BEFORE the host manager
 # boots, because the manager holds the module in memory for its whole life.
 # Idempotent, version-gated, and it never fails the start.
+#
+# It runs under the omnigent tool's OWN interpreter -- the one that imports the
+# patched module -- not `python3`. On a Mac without the Command Line Tools,
+# /usr/bin/python3 is an installer stub that pops a dialog and fails, and this
+# runs on every service start. Until the plugin has installed omnigent there is
+# nothing to patch, so no tool interpreter simply means skip.
 if [ -f "${PI_AGENT_HOME}/bin/omnigent-model-options-patch.py" ]; then
-  PY=python3
-  command -v "$PY" >/dev/null 2>&1 \
-    || PY="${PI_AGENT_HOME}/data/omnigent-plugin/uv/tools/omnigent/bin/python"
-  if command -v "$PY" >/dev/null 2>&1 || [ -x "$PY" ]; then
+  PY="${PI_AGENT_HOME}/data/omnigent-plugin/uv/tools/omnigent/bin/python"
+  if [ -x "$PY" ]; then
     "$PY" "${PI_AGENT_HOME}/bin/omnigent-model-options-patch.py" \
       --tool-dir "${PI_AGENT_HOME}/data/omnigent-plugin/uv/tools/omnigent" 2>&1 \
       | while IFS= read -r line; do log "$line"; done || true

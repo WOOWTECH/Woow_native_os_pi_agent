@@ -43,40 +43,37 @@ stage_preflight() {
         die "no apt-get or dnf; install deps manually"
       fi ;;
     macos)
-      # Deliberately NOT requiring Homebrew. Everything this installer needs on
-      # macOS either ships with the OS (git, curl, python3, bsdtar -- which reads
-      # .tar.xz through libarchive, so no xz binary is needed) or is installed
-      # scoped under $PI_AGENT_HOME (its own Node, and uv's own CPython for the
-      # Omnigent venv). Asking a user to install a system-wide package manager
-      # for an app-scoped install is the wrong trade, and a non-login shell does
-      # not even have brew on PATH when it IS installed.
-      local missing=""
-      for c in git curl python3 tar; do have "$c" || missing="$missing $c"; done
-      [ -n "$missing" ] && die "missing from this macOS install:$missing (install the Xcode Command Line Tools: xcode-select --install)"
-      # tmux is needed only by Omnigent's native Pi harness, which runs the Pi
-      # TUI inside its own tmux server. Install it when brew happens to be here,
-      # and otherwise carry on: everything else works without it.
+      # Deliberately NOT requiring Homebrew, nor the Command Line Tools. What this
+      # installer runs on macOS either ships with the OS (curl, bsdtar -- which
+      # reads .tar.xz through libarchive, so no xz binary is needed -- and
+      # /usr/bin/perl for the flock shim) or is installed scoped under
+      # $PI_AGENT_HOME (its own Node, the uv binary, uv's own CPython).
       #
-      # flock is needed by the Omnigent plugin's locked(): it shells out to
-      # flock(1), which macOS does not ship at all, and /usr/bin is SIP-protected
-      # so one cannot be linked into the paths it checks. Without it every
-      # `pi-omnigent connect` fails with LOCK_UNAVAILABLE. Homebrew's
-      # discoteq/flock honours the same -n -E contract (verified), and the
-      # darwin patch teaches the plugin to look on PATH for it.
-      local want_brew=""
-      have tmux  || want_brew="$want_brew tmux"
-      have flock || want_brew="$want_brew flock"
-      if [ -n "$want_brew" ]; then
+      # Note what is NOT on that list: /usr/bin/git and /usr/bin/python3 exist on
+      # every Mac, but without the Command Line Tools they are only stubs that
+      # pop an installer dialog and fail. So `have python3` proves nothing, and
+      # nothing here runs either of them -- except building pi-web from source,
+      # which checks for the tools itself (stage_piweb).
+      local missing=""
+      for c in curl tar; do have "$c" || missing="$missing $c"; done
+      [ -n "$missing" ] && die "missing from this macOS install:$missing"
+      # tmux is needed only by Omnigent's native Pi harness, which runs the Pi
+      # TUI inside its own tmux server. The pkg bundles one (tools/bin/tmux, built
+      # from source) and the wire stage installs it, so Homebrew is not consulted
+      # then. A git-clone install has no bundled tmux: install it when brew
+      # happens to be here, and otherwise carry on -- everything else works.
+      #
+      # flock is NOT installed from here any more: the wire stage puts a
+      # /usr/bin/perl stand-in into $PA_BIN_DIR (rootfs/bin/flock), so Omnigent
+      # connect works on a Mac with neither Homebrew nor the Command Line Tools.
+      if [ -x "$HERE/tools/bin/tmux" ]; then
+        log "using the bundled tmux (tools/bin/tmux); Homebrew not needed"
+      elif ! have tmux; then
         local brew; if brew="$(pa_brew)"; then
-          log "installing via $brew:$want_brew"
-          for formula in $want_brew; do
-            "$brew" install "$formula" >/dev/null 2>&1 || case "$formula" in
-              tmux)  warn "brew install tmux failed; native Pi sessions through Omnigent will not work" ;;
-              flock) warn "brew install flock failed; Omnigent connect will fail with LOCK_UNAVAILABLE" ;;
-            esac
-          done
+          log "installing tmux via $brew (Omnigent's native Pi harness needs it)"
+          "$brew" install tmux >/dev/null 2>&1 || warn "brew install tmux failed; native Pi sessions through Omnigent will not work"
         else
-          warn "Homebrew is not installed, so$want_brew cannot be added: tmux absent breaks Omnigent's native Pi harness, flock absent breaks Omnigent connect (everything else works)"
+          warn "tmux is absent and Homebrew is not installed; Omnigent's native Pi harness will not work (everything else does)"
         fi
       fi ;;
     *) die "unsupported OS: $OS" ;;
@@ -242,6 +239,12 @@ stage_piweb() {
   log "stage piweb — build pi-web $PIN_PI_WEB_VERSION @ ${PIN_PI_WEB_REF:0:12} + settings patch"
   local patch="$PA_PLUGINS_DIR/pi-omnigent-plugin/integrations/pi-web/combined.adapter.patch"
   [ -f "$patch" ] || die "run 'fetch' first (settings patch not present)"
+  # The source build needs git and a compiler. On macOS both come only with the
+  # Command Line Tools; without them /usr/bin/git is a stub that opens an
+  # installer dialog and fails, which reads as a broken install. Say so plainly.
+  if [ "$OS" = macos ] && ! xcode-select -p >/dev/null 2>&1; then
+    die "building pi-web from source needs the Xcode Command Line Tools (xcode-select --install), or set PI_AGENT_PIWEB_ARTIFACT to a prebuilt tree"
+  fi
   local src="$PA_TMP_DIR/piweb-src"
   rm -rf "$src"; mkdir -p "$src"
   ( cd "$src"
@@ -311,16 +314,64 @@ stage_paseo() {
 }
 
 # ----------------------------------------------------------------- omnigent ---
+# Put the pinned uv standalone binary at $PA_BIN_DIR/uv.
+#
+# It has two consumers. This stage uses it to build the Omnigent venv. And the
+# Omnigent plugin looks for `uv` on PATH (pi-agent-env.sh puts $PA_BIN_DIR
+# first); when it finds none it bootstraps one itself with
+# `python3 -m pip install uv` (src/installer.mjs). Both of those used to depend
+# on a working python3, and on a Mac without the Command Line Tools
+# /usr/bin/python3 is only an installer stub: `have python3` succeeds, running
+# it does not. The binary is the same version the plugin pins, verified against
+# a per-triple sha256 in lib/pins.sh, and it fails closed on a mismatch.
+ensure_uv() {
+  local triple
+  case "$OS-$ARCH" in
+    macos-arm64)            triple=aarch64-apple-darwin ;;
+    macos-x64)              triple=x86_64-apple-darwin ;;
+    linux-x64|wsl-x64)      triple=x86_64-unknown-linux-gnu ;;
+    linux-arm64|wsl-arm64)  triple=aarch64-unknown-linux-gnu ;;
+    *) die "no pinned uv build for $OS-$ARCH" ;;
+  esac
+  local var="PIN_UV_SHA256_${triple//-/_}"
+  local sha="${!var:-}"
+  [ -n "$sha" ] || die "lib/pins.sh has no $var"
+
+  if [ -x "$PA_BIN_DIR/uv" ] \
+     && [ "$("$PA_BIN_DIR/uv" --version 2>/dev/null | awk '{print $2}')" = "$PIN_UV_VERSION" ]; then
+    log "uv $PIN_UV_VERSION already present"; return 0
+  fi
+
+  local url="https://github.com/astral-sh/uv/releases/download/${PIN_UV_VERSION}/uv-${triple}.tar.gz"
+  local tmp="$PA_TMP_DIR/uv-download"
+  rm -rf "$tmp"; mkdir -p "$tmp" "$PA_BIN_DIR"
+  fetch_verify "$url" "$sha" "$tmp/uv.tar.gz"
+  tar xzf "$tmp/uv.tar.gz" -C "$tmp"
+  [ -f "$tmp/uv-$triple/uv" ] || die "uv $PIN_UV_VERSION archive has no uv-$triple/uv (upstream layout changed?)"
+  install -m 0755 "$tmp/uv-$triple/uv" "$PA_BIN_DIR/uv"
+  rm -rf "$tmp"
+  [ "$("$PA_BIN_DIR/uv" --version 2>/dev/null | awk '{print $2}')" = "$PIN_UV_VERSION" ] \
+    || die "installed uv does not report version $PIN_UV_VERSION"
+  log "uv $PIN_UV_VERSION installed ($triple, sha256 verified)"
+}
+
 stage_omnigent() {
   log "stage omnigent — CLI $PIN_OMNIGENT_VERSION in a uv venv"
+  ensure_uv
   local reqs="$HERE/vendor/omnigent-requirements.lock"
   [ -f "$reqs" ] || { warn "omnigent requirements.lock not vendored; skipping omnigent (tab still renders, live-connect unavailable)"; return 0; }
   mkdir -p "$PA_OMNIGENT_DIR"
-  python3 -m venv "$PA_TMP_DIR/uv" && "$PA_TMP_DIR/uv/bin/pip" install -q "uv==$PIN_UV_VERSION"
-  local uv="$PA_TMP_DIR/uv/bin/uv"
-  UV_PYTHON_INSTALL_DIR="$PA_OMNIGENT_DIR/python" "$uv" python install "$PIN_PYTHON_VERSION"
-  UV_PYTHON_INSTALL_DIR="$PA_OMNIGENT_DIR/python" "$uv" venv --python "$PIN_PYTHON_VERSION" "$PA_OMNIGENT_DIR/venv"
-  "$uv" pip sync --python "$PA_OMNIGENT_DIR/venv/bin/python" --require-hashes "$reqs"
+  local uv="$PA_BIN_DIR/uv"
+  # Keep uv inside $PI_AGENT_HOME. By default `uv python install` links
+  # python3.12 into ~/.local/bin and every uv call caches under ~/.cache/uv --
+  # both in the user's real home, and the link dangles once this install is
+  # removed. --no-bin and a scoped cache prevent that.
+  local uv_cache="$PA_TMP_DIR/uv-cache"
+  UV_CACHE_DIR="$uv_cache" UV_PYTHON_INSTALL_DIR="$PA_OMNIGENT_DIR/python" \
+    "$uv" python install --no-bin "$PIN_PYTHON_VERSION"
+  UV_CACHE_DIR="$uv_cache" UV_PYTHON_INSTALL_DIR="$PA_OMNIGENT_DIR/python" \
+    "$uv" venv --python "$PIN_PYTHON_VERSION" "$PA_OMNIGENT_DIR/venv"
+  UV_CACHE_DIR="$uv_cache" "$uv" pip sync --python "$PA_OMNIGENT_DIR/venv/bin/python" --require-hashes "$reqs"
   "$PA_OMNIGENT_DIR/venv/bin/python" -c 'import importlib.metadata,sys; assert importlib.metadata.version("omnigent")==sys.argv[1]' "$PIN_OMNIGENT_VERSION"
   log "omnigent OK"
 }
@@ -332,6 +383,26 @@ stage_wire() {
   for f in pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs; do
     [ -f "$HERE/rootfs/bin/$f" ] && install -m 0755 "$HERE/rootfs/bin/$f" "$PA_BIN_DIR/$f"
   done
+  # macOS only: a flock(1) for the Omnigent plugin's locked(). macOS ships none,
+  # and the darwin patch makes the plugin look on PATH, where pi-agent-env.sh puts
+  # $PA_BIN_DIR first -- so this shim is what it finds, with or without Homebrew.
+  # Never on Linux: util-linux's flock is the real thing there, and a shim first
+  # on PATH would shadow it for every agent shell too.
+  if [ "$OS" = macos ]; then
+    install -m 0755 "$HERE/rootfs/bin/flock" "$PA_BIN_DIR/flock"
+    # The tmux the pkg bundles (scripts/build-macos-tmux.sh): Omnigent's native
+    # Pi harness runs the Pi TUI inside it, and Omnigent finds it with
+    # shutil.which("tmux") -- PATH order, where $PA_BIN_DIR comes first. A git
+    # clone has no tools/ and keeps the Homebrew fallback in preflight.
+    if [ -x "$HERE/tools/bin/tmux" ]; then
+      install -m 0755 "$HERE/tools/bin/tmux" "$PA_BIN_DIR/tmux"
+      if [ -d "$HERE/tools/licenses" ]; then
+        mkdir -p "$PI_AGENT_HOME/share/licenses"
+        cp -p "$HERE/tools/licenses/"* "$PI_AGENT_HOME/share/licenses/"
+      fi
+      log "installed bundled tmux ($("$PA_BIN_DIR/tmux" -V 2>/dev/null || echo '?'))"
+    fi
+  fi
   # register the Omnigent + Paseo plugins as pi extensions so their settings
   # tabs are enabled out of the box (seed once; never clobber a user's choice)
   if [ -d "$PA_PLUGINS_DIR/pi-omnigent-plugin" ] && [ ! -f "$PA_DATA_DIR/settings.json" ]; then

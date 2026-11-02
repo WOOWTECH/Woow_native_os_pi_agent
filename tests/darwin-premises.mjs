@@ -70,24 +70,35 @@ const e1 = run('/bin/ps', ['-Eww', '-o', 'command=', '-p', String(t.pid)]);
 ok('ps -E 讀不到 env（所以歸屬驗證不能靠 environ）', !/PATH=/.test(e1),
    /PATH=/.test(e1) ? 'env 竟然讀得到 → 重新評估設計' : '確認讀不到');
 
-console.log('== 6. flock(1) on PATH honours the plugin\'s -n -E 75 contract ==');
+console.log('== 6. the flock(1) the plugin will find honours its -n -E 75 contract ==');
 // The plugin's locked() shells out to flock(1). macOS ships none, and /usr/bin
-// is SIP-protected, so the darwin patch teaches it to look on PATH -- where
-// Homebrew's discoteq/flock lives. That keeps locked() a KERNEL lock instead of
-// an advisory file, but only while that build honours the same two flags the
-// plugin passes: -n (fail instead of waiting) and -E 75 (exit 75 on conflict).
-// A brew upgrade that changed either would silently break `pi-omnigent connect`,
-// so the contract is asserted here rather than assumed.
-// Search what the plugin will actually see: PATH, plus the Homebrew prefixes
-// pi-agent-env.sh appends on darwin -- a non-login shell has neither by default,
-// so looking only at this process's PATH would fail for an environmental reason
-// rather than a real one.
-const flockBin = [...(process.env.PATH || '').split(path.delimiter), '/opt/homebrew/bin', '/usr/local/bin']
-  .filter(Boolean).map(d => path.join(d, 'flock'))
-  .find(c => { try { fs.accessSync(c, fs.constants.X_OK); return true; } catch { return false; } });
-console.log('  flock on PATH:', flockBin ?? '(none)');
+// is SIP-protected, so the darwin patch teaches it to look on PATH. That keeps
+// locked() a KERNEL lock instead of an advisory file, but only while whatever
+// it finds honours the two flags the plugin passes: -n (fail instead of
+// waiting) and -E 75 (exit 75 on conflict). Anything that broke either would
+// silently break `pi-omnigent connect`, so the contract is asserted here
+// rather than assumed.
+//
+// Since the wire stage now installs rootfs/bin/flock -- a /usr/bin/perl
+// stand-in -- into $PI_AGENT_HOME/bin, and pi-agent-env.sh puts that directory
+// FIRST on PATH, the shim is what the plugin runs, with or without Homebrew.
+// Resolve flock the way the plugin will: its two hard-coded paths, then PATH as
+// pi-agent-env.sh builds it ($PI_AGENT_HOME/bin first, the Homebrew prefixes
+// appended last). Looking only at this process's PATH would test a flock the
+// plugin never runs.
+const executableFile = c => { try { fs.accessSync(c, fs.constants.X_OK); return true; } catch { return false; } };
+const agentBin = process.env.PI_AGENT_HOME ? path.join(process.env.PI_AGENT_HOME, 'bin') : null;
+const pluginPath = [agentBin, ...(process.env.PATH || '').split(path.delimiter), '/opt/homebrew/bin', '/usr/local/bin'];
+const flockBin = ['/usr/bin/flock', '/bin/flock'].find(executableFile)
+  ?? pluginPath.filter(Boolean).map(d => path.join(d, 'flock')).find(executableFile);
+console.log('  flock the plugin will run:', flockBin ?? '(none)');
+if (agentBin) {
+  ok('plugin 用的是本安裝的 flock（不依賴 Homebrew）', flockBin === path.join(agentBin, 'flock'),
+     flockBin ?? '沒找到');
+}
 if (!flockBin) {
-  ok('flock(1) 可用（Omnigent connect 需要）', false, '沒找到 → brew install flock');
+  ok('flock(1) 可用（Omnigent connect 需要）', false,
+     `沒找到 → 執行 ./install.sh wire（會裝 ${agentBin ?? '$PI_AGENT_HOME/bin'}/flock）`);
 } else {
   const guard = path.join(os.tmpdir(), `pa-flock-${process.pid}.guard`);
   fs.closeSync(fs.openSync(guard, 'a', 0o600));

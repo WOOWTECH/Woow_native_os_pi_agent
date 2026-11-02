@@ -1,0 +1,77 @@
+#!/usr/bin/perl
+# `flock` -- a macOS stand-in for util-linux flock(1), installed into
+# $PI_AGENT_HOME/bin on macOS only.
+#
+# WHY THIS EXISTS
+#
+# The Omnigent plugin's locked() (src/common.mjs) takes its lock by running
+#
+#     flock -n -E 75 <file> <command...>
+#
+# and treats the child printing LOCKED as "held" and exit 75 as "busy". macOS
+# ships no flock(1), and /usr/bin is SIP-protected so none can be linked into the
+# two paths the plugin hard-codes; the darwin patch adds a PATH fallback, and
+# pi-agent-env.sh puts $PI_AGENT_HOME/bin first on PATH, so this is what it finds.
+# Homebrew's discoteq/flock honours the same contract, but requiring Homebrew for
+# an app-scoped install is the wrong trade -- a Mac with neither Homebrew nor the
+# Command Line Tools still has /usr/bin/perl, which is all this needs.
+#
+# WHAT IT IMPLEMENTS
+#
+# Only the form the plugin uses: `flock [-n] [-x] [-E code] [--] <file> <command...>`.
+# The lock is flock(2) LOCK_EX (|LOCK_NB with -n) on <file>, created mode 0600 if
+# it does not exist. Anything else is refused with exit 64 rather than guessed at.
+#
+# One deliberate difference from util-linux: there the child inherits the locked
+# descriptor, so the lock outlives a killed flock process for as long as the
+# command runs. Here Perl marks every descriptor above stderr close-on-exec, so
+# only this process holds the lock, and it holds it until the command exits --
+# util-linux's `-o` behaviour. The plugin's helper exits when its stdin closes,
+# which is when the plugin releases the lock, so the two agree on every path
+# that matters; tests/darwin-premises.mjs section 6 asserts that contract.
+use strict;
+use warnings;
+use Fcntl qw(:flock O_RDONLY O_CREAT O_NOCTTY);
+
+sub usage {
+    print STDERR "flock: $_[0]\n" if @_;
+    print STDERR "usage: flock [-n] [-x] [-E code] [--] <file> <command> [args...]\n";
+    exit 64;
+}
+
+my ($nonblock, $conflict) = (0, 1);
+while (@ARGV && $ARGV[0] =~ /^-/) {
+    my $opt = shift @ARGV;
+    if    ($opt eq '--')                                          { last }
+    elsif ($opt eq '-n' || $opt eq '--nb' || $opt eq '--nonblock') { $nonblock = 1 }
+    elsif ($opt eq '-x' || $opt eq '-e' || $opt eq '--exclusive')  { }
+    elsif ($opt eq '-E' || $opt eq '--conflict-exit-code') {
+        my $code = shift @ARGV;
+        usage("$opt needs a value") unless defined $code;
+        usage("conflict exit code must be 0-255, got '$code'")
+            unless $code =~ /^\d+$/ && $code <= 255;
+        $conflict = $code;
+    }
+    elsif ($opt =~ /^-E(\d+)$/ && $1 <= 255)                       { $conflict = $1 }
+    else                                                          { usage("unsupported option $opt") }
+}
+usage('missing file and command') if @ARGV < 2;
+my ($file, @command) = @ARGV;
+
+my $fh;
+sysopen($fh, $file, O_RDONLY | O_CREAT | O_NOCTTY, 0600)
+    or do { print STDERR "flock: cannot open $file: $!\n"; exit 66 };
+
+unless (flock($fh, LOCK_EX | ($nonblock ? LOCK_NB : 0))) {
+    exit $conflict if $nonblock && ($!{EWOULDBLOCK} || $!{EAGAIN});
+    print STDERR "flock: cannot lock $file: $!\n";
+    exit 1;
+}
+
+system { $command[0] } @command;
+if ($? == -1) {
+    print STDERR "flock: cannot run $command[0]: $!\n";
+    exit 127;
+}
+exit 128 + ($? & 127) if $? & 127;   # killed by a signal, as util-linux reports it
+exit $? >> 8;
