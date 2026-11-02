@@ -10,6 +10,10 @@ SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
 export PI_AGENT_HOME
 # shellcheck source=/dev/null
 . "${PI_AGENT_HOME}/bin/pi-agent-env.sh"
+# Session home (docs/SESSION-HOME.md): pi-agent-env.sh scopes HOME for the
+# install itself; a harness the Omnigent host starts gets the user's own HOME
+# back, which is where its MCP servers, plugins, git identity and keys live.
+if [ -n "${PI_AGENT_SESSION_HOME:-}" ]; then export HOME="$PI_AGENT_SESSION_HOME"; fi
 
 "${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/bin/pi-agent-share-state.mjs" >/dev/null \
   || echo "pi-agent: shared MCP/skills sync failed; starting claude with previous settings" >&2

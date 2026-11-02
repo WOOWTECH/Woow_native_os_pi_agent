@@ -71,6 +71,19 @@ if [ -f "${PI_AGENT_HOME}/bin/omnigent-model-options-patch.py" ]; then
   fi
 fi
 
+# Session home (docs/SESSION-HOME.md): teach the plugin to start the Omnigent
+# host with PI_AGENT_SESSION_HOME as its HOME. Inert while that variable is
+# unset, so -- like the patch above -- it is applied on every start, which also
+# survives a plugin re-extract.
+if [ -f "${PI_AGENT_HOME}/bin/omnigent-plugin-session-home-patch.mjs" ]; then
+  "${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/bin/omnigent-plugin-session-home-patch.mjs" \
+    "${PI_AGENT_HOME}/plugins/pi-omnigent-plugin" 2>&1 \
+    | while IFS= read -r line; do log "$line"; done || true
+fi
+if [ -n "${PI_AGENT_SESSION_HOME:-}" ]; then
+  log "session home: Omnigent sessions run with HOME=${PI_AGENT_SESSION_HOME}"
+fi
+
 # Ensure the Omnigent host launcher shim is installed (self-heal). It lets the
 # Omnigent host manager boot together with pi-web, which is what makes the
 # connected engines get models + pass verification. Needs a real pi-web on PATH

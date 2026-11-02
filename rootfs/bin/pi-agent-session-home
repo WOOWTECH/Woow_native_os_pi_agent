@@ -1,0 +1,235 @@
+#!/bin/bash
+# `pi-agent-session-home` — run Omnigent sessions with the user's own HOME.
+#
+# WHY
+#
+# This install scopes HOME to $PI_AGENT_HOME/home for everything it starts,
+# sessions included. That is right for a test install that must not touch the
+# machine owner's setup. It is wrong once the install REPLACES the owner's
+# previous pi-agent: their conversations resume without the MCP servers,
+# plugins, git identity, gh auth, SSH keys and shell setup that live under the
+# real HOME. Measured on a workstation cut over from an older install: all 15
+# MCP servers and 3 plugins gone, `git commit` failing with "Author identity
+# unknown". The previous install ran its Omnigent host with the real HOME.
+#
+# WHAT `enable` DOES (see docs/SESSION-HOME.md)
+#
+#  1. A systemd drop-in exports PI_AGENT_SESSION_HOME to pi-web. The plugin
+#     passes it to the host it starts (omnigent-plugin-session-home-patch.mjs),
+#     so the host, its runners and the harnesses all run with the real HOME --
+#     they have to agree, because omnigent's claude harness resolves Claude's
+#     files from Path.home() inside the runner. pi-web and the plugin keep the
+#     scoped HOME, so their shims and state stay inside the install.
+#  2. ~/.omnigent becomes a link to this install's Omnigent directory. omnigent
+#     hardcodes Path.home()/.omnigent in ~20 places; the identity ones honour
+#     OMNIGENT_CONFIG_HOME, the rest (runner id, codex-native bridges, model
+#     catalogs, logs) do not, and would otherwise write into whatever is already
+#     there -- typically the previous install's state. An existing ~/.omnigent
+#     is parked, never deleted, and its session state (codex-native rollouts,
+#     pi-native, attachments) is hard-linked in so old conversations keep their
+#     native context.
+#  3. Backs up what sessions will now write to: ~/.claude.json,
+#     ~/.codex/config.toml, and the user's own skill directories.
+#
+# It refuses while another Omnigent host serves the real ~/.omnigent: that is
+# someone's live integration (a laptop's own Omnigent.app), not ours to move.
+#
+#   pi-agent-session-home enable | disable | status
+#   pi-agent-session-home restart [--in N]   # detached: stop host, restart pi-web,
+#                                     # health-check, auto-disable on failure
+set -euo pipefail
+
+SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+: "${PI_AGENT_HOME:=$(dirname "$SELF")}"
+PI_AGENT_HOME="$(cd "$PI_AGENT_HOME" && pwd -P)"
+export PI_AGENT_HOME
+
+log() { printf '[session-home] %s\n' "$*"; }
+die() { printf '[session-home] ERROR: %s\n' "$*" >&2; exit 1; }
+resolve() { readlink -f "$1" 2>/dev/null || printf '%s\n' "$1"; }
+
+[ "$(uname -s)" = Linux ] || die "only systemd --user is supported so far (this is $(uname -s))"
+
+REAL="$(getent passwd "$(id -un)" | cut -d: -f6)"
+[ -n "$REAL" ] && [ -d "$REAL" ] || die "cannot determine the real home of $(id -un)"
+SCOPED_HOME="$PI_AGENT_HOME/home"
+SCOPED_OMNI="$SCOPED_HOME/.omnigent"
+STATE="$PI_AGENT_HOME/session-home.state"
+DROPIN_DIR="$REAL/.config/systemd/user/pi-web.service.d"
+DROPIN="$DROPIN_DIR/session-home.conf"
+LOGFILE="$PI_AGENT_HOME/logs/session-home.log"
+OMNIGENT="$PI_AGENT_HOME/data/omnigent-plugin/uv/tools/omnigent/bin/omnigent"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+[ "$(resolve "$REAL")" != "$(resolve "$SCOPED_HOME")" ] || die "the real home IS the scoped home; nothing to do"
+
+host_pids() { pgrep -f 'omnigent( host |\.host\.service_entry)' 2>/dev/null || true; }
+proc_env() { tr '\0' '\n' < "/proc/$1/environ" 2>/dev/null | sed -n "s/^$2=//p" | head -1; }
+
+# Hosts serving the real ~/.omnigent that are not this install's.
+foreign_hosts() {
+  local p cfg want ours
+  want="$(resolve "$REAL/.omnigent")"; ours="$(resolve "$SCOPED_OMNI")"
+  for p in $(host_pids); do
+    cfg="$(proc_env "$p" OMNIGENT_CONFIG_HOME)"
+    [ -n "$cfg" ] || cfg="$(proc_env "$p" HOME)/.omnigent"
+    cfg="$(resolve "$cfg")"
+    if [ "$cfg" = "$want" ] && [ "$cfg" != "$ours" ]; then echo "$p"; fi
+  done
+}
+
+enable() {
+  local foreign; foreign="$(foreign_hosts)"
+  [ -z "$foreign" ] || die "an Omnigent host that is not this install's is serving $REAL/.omnigent (pid $foreign) — that is someone's live integration; stop it first if it is meant to go"
+
+  local ts bk parked="" prev="" sub e n
+  ts="$(date +%Y%m%d-%H%M%S)"
+  bk="$PI_AGENT_HOME/backups/session-home-$ts"
+  mkdir -p "$bk"; chmod 700 "$PI_AGENT_HOME/backups" "$bk"
+  if [ -f "$REAL/.claude.json" ]; then cp -p "$REAL/.claude.json" "$bk/claude.json"; fi
+  if [ -f "$REAL/.codex/config.toml" ]; then cp -p "$REAL/.codex/config.toml" "$bk/codex-config.toml"; fi
+  local dirs=()
+  for sub in .claude/skills .agents/skills; do if [ -e "$REAL/$sub" ]; then dirs+=("$sub"); fi; done
+  if [ "${#dirs[@]}" -gt 0 ]; then tar czf "$bk/skill-dirs.tgz" -C "$REAL" "${dirs[@]}"; fi
+  log "backed up ~/.claude.json, ~/.codex/config.toml and ${dirs[*]:-no skill dirs} to $bk"
+
+  if [ -f "$STATE" ]; then prev="$(sed -n 's/^PARKED=//p' "$STATE" | head -1)"; fi
+  if [ -L "$REAL/.omnigent" ]; then
+    [ "$(resolve "$REAL/.omnigent")" = "$(resolve "$SCOPED_OMNI")" ] \
+      || die "$REAL/.omnigent is a link to $(readlink "$REAL/.omnigent"), not to this install — leaving it"
+    log "$REAL/.omnigent already points at this install"
+  else
+    if [ -e "$REAL/.omnigent" ]; then
+      parked="$REAL/.omnigent.pre-pi-agent"
+      if [ -e "$parked" ]; then parked="$parked-$ts"; fi
+      mv "$REAL/.omnigent" "$parked"
+      log "parked the existing $REAL/.omnigent at $parked (not deleted)"
+      # Hard links: instant, no extra space, and the parked copy stays whole for
+      # a rollback. Codex keeps a conversation's real context in its rollouts
+      # under codex-native, so this is what lets old codex threads continue.
+      for sub in codex-native pi-native attachments; do
+        if [ ! -d "$parked/$sub" ]; then continue; fi
+        mkdir -p "$SCOPED_OMNI/$sub"
+        for e in "$parked/$sub"/* "$parked/$sub"/.[!.]*; do
+          if [ ! -e "$e" ] && [ ! -L "$e" ]; then continue; fi
+          n="$(basename "$e")"
+          if [ -e "$SCOPED_OMNI/$sub/$n" ]; then continue; fi
+          cp -al "$e" "$SCOPED_OMNI/$sub/$n" 2>/dev/null || cp -a "$e" "$SCOPED_OMNI/$sub/$n"
+        done
+        log "carried $sub over ($(ls -A "$parked/$sub" | wc -l | tr -d ' ') entries, hard-linked)"
+      done
+    fi
+    ln -s "$SCOPED_OMNI" "$REAL/.omnigent"
+    log "$REAL/.omnigent → $SCOPED_OMNI"
+  fi
+  if [ -z "$parked" ]; then parked="$prev"; fi
+
+  mkdir -p "$DROPIN_DIR"
+  printf '[Service]\nEnvironment=PI_AGENT_SESSION_HOME=%s\n' "$REAL" > "$DROPIN"
+  systemctl --user daemon-reload
+  printf 'REAL_HOME=%s\nPARKED=%s\nBACKUP=%s\nENABLED_AT=%s\n' "$REAL" "$parked" "$bk" "$ts" > "$STATE"
+  log "enabled. Takes effect when the host restarts: pi-agent-session-home restart"
+}
+
+disable() {
+  local parked=""
+  if [ -f "$STATE" ]; then parked="$(sed -n 's/^PARKED=//p' "$STATE" | head -1)"; fi
+  rm -f "$DROPIN"; rmdir "$DROPIN_DIR" 2>/dev/null || true
+  systemctl --user daemon-reload
+  if [ -L "$REAL/.omnigent" ] && [ "$(resolve "$REAL/.omnigent")" = "$(resolve "$SCOPED_OMNI")" ]; then
+    rm "$REAL/.omnigent"
+    if [ -n "$parked" ] && [ -d "$parked" ]; then
+      mv "$parked" "$REAL/.omnigent"
+      log "restored $REAL/.omnigent from $parked"
+    else
+      log "removed the $REAL/.omnigent link (nothing had been parked)"
+    fi
+  fi
+  rm -f "$STATE"
+  log "disabled. Takes effect when the host restarts: pi-agent-session-home restart"
+}
+
+status() {
+  if [ -f "$DROPIN" ]; then echo "drop-in:      $(sed -n 's/^Environment=//p' "$DROPIN")"; else echo "drop-in:      none (sessions use the scoped HOME)"; fi
+  if [ -L "$REAL/.omnigent" ]; then echo "~/.omnigent:  link → $(readlink "$REAL/.omnigent")"
+  elif [ -e "$REAL/.omnigent" ]; then echo "~/.omnigent:  a real directory"
+  else echo "~/.omnigent:  absent"; fi
+  if [ -f "$STATE" ]; then sed 's/^/state:        /' "$STATE"; fi
+  local p
+  for p in $(host_pids); do
+    echo "host pid $p:  HOME=$(proc_env "$p" HOME)  OMNIGENT_CONFIG_HOME=$(proc_env "$p" OMNIGENT_CONFIG_HOME)"
+  done
+}
+
+# The host serving this install, by its pinned config directory.
+our_host() {
+  local p
+  for p in $(host_pids); do
+    if [ "$(resolve "$(proc_env "$p" OMNIGENT_CONFIG_HOME)")" = "$(resolve "$SCOPED_OMNI")" ]; then echo "$p"; return 0; fi
+  done
+  return 1
+}
+
+restart_once() {
+  HOME="$SCOPED_HOME" OMNIGENT_CONFIG_HOME="$SCOPED_OMNI" OMNIGENT_DATA_DIR="$SCOPED_OMNI" \
+    "$OMNIGENT" host stop </dev/null || true
+  systemctl --user restart pi-web.service
+}
+
+# Healthy = pi-web answers, our host runs with the HOME the configuration asks
+# for, and the plugin reports the host connected to its server.
+healthy() {
+  local want="$1" port i p code
+  port="$(systemctl --user show -p Environment pi-web.service | tr ' ' '\n' | sed -n 's/^PI_WEB_PORT=//p' | head -1)"
+  port="${port:-30141}"
+  for i in $(seq 1 36); do
+    sleep 5
+    code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:$port/api/home" || true)"
+    if [ "$code" != 200 ]; then continue; fi
+    p="$(our_host)" || continue
+    if [ "$(proc_env "$p" HOME)" != "$want" ]; then continue; fi
+    if curl -s -m 15 "http://127.0.0.1:$port/api/omnigent" | "$PI_AGENT_HOME/node/bin/node" -e \
+         'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{process.exit(JSON.parse(d).host?.connected===true?0:1)}catch{process.exit(1)}})'; then
+      log "healthy: pi-web on $port, host pid $p with HOME=$want, connected"
+      return 0
+    fi
+  done
+  return 1
+}
+
+restart_worker() {
+  mkdir -p "$(dirname "$LOGFILE")"
+  exec >>"$LOGFILE" 2>&1
+  log "=== $(date '+%F %T') restart ==="
+  local want="$SCOPED_HOME"
+  if [ -f "$DROPIN" ]; then want="$REAL"; fi
+  restart_once
+  if healthy "$want"; then log "done"; return 0; fi
+  if [ "$want" = "$REAL" ]; then
+    log "UNHEALTHY with session home — reverting to the scoped HOME"
+    disable
+    restart_once
+    if healthy "$SCOPED_HOME"; then log "reverted and healthy"; return 0; fi
+  fi
+  log "STILL UNHEALTHY — see journalctl --user -u pi-web.service"
+  return 1
+}
+
+restart() {
+  # Detached in its own transient unit: restarting the host ends every session
+  # it serves, including the one that may be running this command. `--in N`
+  # delays it N seconds, so a session that asked for it can finish replying.
+  local unit="pi-agent-host-restart-$(date +%s)" delay=()
+  if [ "${1:-}" = "--in" ] && [ -n "${2:-}" ]; then delay=(--on-active="$2"); fi
+  systemd-run --user --unit="$unit" --collect --quiet "${delay[@]}" "$SELF/pi-agent-session-home" _restart-worker
+  log "restart scheduled as $unit${2:+ in ${2}s}; progress in $LOGFILE"
+}
+
+case "${1:-}" in
+  enable) enable ;;
+  disable) disable ;;
+  status) status ;;
+  restart) shift; restart "$@" ;;
+  _restart-worker) restart_worker ;;
+  *) echo "usage: pi-agent-session-home enable|disable|status|restart"; exit 2 ;;
+esac

@@ -14,6 +14,18 @@ const endMarker = "# END pi-agent shared MCP (managed)";
 const managedList = path.join(data, ".shared-mcp-managed.json");
 const previousSkillLinks = path.join(data, ".shared-plugin-skills.json");
 
+// Whose home is this? Normally HOME is scoped inside the install (or, in the
+// container images, is the data volume), and moving a real directory into the
+// shared tree is the migration those layouts rely on. With session home
+// (docs/SESSION-HOME.md) HOME is the user's own, and the same move would carry
+// their existing skills into this install's data dir -- where an uninstall
+// deletes them. So in the user's own home we only ever create what is absent,
+// and never rewrite a config whose managed content did not change.
+const installRoot = process.env.PI_AGENT_HOME ? path.resolve(process.env.PI_AGENT_HOME) : null;
+const ownHome = Boolean(installRoot) && !path.resolve(home).startsWith(installRoot + path.sep);
+function readOrNull(file) {
+  try { return readFileSync(file, "utf8"); } catch (error) { if (error.code === "ENOENT") return null; throw error; }
+}
 function ensureDir(dir) { mkdirSync(dir, { recursive: true, mode: 0o700 }); }
 function atomicWrite(file, contents) {
   ensureDir(path.dirname(file));
@@ -22,6 +34,13 @@ function atomicWrite(file, contents) {
   renameSync(tmp, file);
 }
 function linkDir(target, link) {
+  if (ownHome) {
+    try {
+      const stat = lstatSync(link);
+      if (stat.isSymbolicLink() && path.resolve(path.dirname(link), readlinkSync(link)) === path.resolve(target)) return;
+      return; // the user's own file, directory or link: leave it exactly as it is
+    } catch (error) { if (error.code !== "ENOENT") throw error; }
+  }
   ensureDir(path.dirname(link));
   try {
     const stat = lstatSync(link);
@@ -82,7 +101,7 @@ const servers = parsed.mcpServers;
 
 for (const target of [path.join(home, ".pi/agent/skills"), path.join(home, ".claude/skills"), path.join(home, ".agents/skills")]) linkDir(skills, target);
 linkDir(piExtensions, path.join(home, ".pi/agent/extensions"));
-linkDir(workspace, path.join(home, "workspace"));
+if (!ownHome) linkDir(workspace, path.join(home, "workspace"));
 
 // /usr/local/bin/claude and /usr/local/bin/codex run this script before every
 // launch. 0.14.8 and earlier wrote refresh launchers into ~/.local/bin instead,
@@ -100,6 +119,9 @@ for (const name of ["claude", "codex"]) {
 const claudeConfig = path.join(home, ".claude.json");
 let claude = {};
 if (existsSync(claudeConfig)) claude = JSON.parse(readFileSync(claudeConfig, "utf8"));
+// Claude Code rewrites this file constantly; rewriting it when nothing we own
+// changed would only race those writes and could drop one.
+const claudeServersBefore = JSON.stringify(claude.mcpServers || {});
 const previous = existsSync(managedList) ? JSON.parse(readFileSync(managedList, "utf8")) : [];
 claude.mcpServers ||= {};
 for (const name of previous) if (!(name in servers)) delete claude.mcpServers[name];
@@ -108,7 +130,7 @@ for (const [name, server] of Object.entries(servers)) {
     ? { type: "http", url: server.url, ...(server.headers ? { headers: server.headers } : {}) }
     : server;
 }
-atomicWrite(claudeConfig, `${JSON.stringify(claude, null, 2)}\n`);
+if (JSON.stringify(claude.mcpServers) !== claudeServersBefore) atomicWrite(claudeConfig, `${JSON.stringify(claude, null, 2)}\n`);
 
 // Codex uses TOML. Replace only our marked block and retain the user's other
 // settings and MCP entries. The same mcp.json remains Pi's native source.
@@ -134,6 +156,10 @@ for (const line of lines) {
 }
 codexText = retained.join("\n").trimEnd();
 if (Object.keys(servers).length) codexText = `${codexText}${codexText ? "\n\n" : ""}${managedBlock}\n`;
-atomicWrite(codexConfig, codexText);
-atomicWrite(managedList, `${JSON.stringify(Object.keys(servers))}\n`);
+const codexBefore = readOrNull(codexConfig);
+// Unchanged apart from trailing whitespace: leave the user's file alone. Absent
+// and nothing to manage: don't create an empty one.
+if (!(codexBefore === null ? codexText === "" : codexBefore.trimEnd() === codexText.trimEnd())) atomicWrite(codexConfig, codexText);
+const managedText = `${JSON.stringify(Object.keys(servers))}\n`;
+if (readOrNull(managedList) !== managedText) atomicWrite(managedList, managedText);
 console.log(`Shared agent state ready: ${Object.keys(servers).length} Pi Web global MCP server(s), ${skills}, ${workspace}`);
