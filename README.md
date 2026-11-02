@@ -19,27 +19,36 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 
 ## Install
 
-### Fast path — prebuilt pi-web (recommended)
+### macOS — download and double-click
+
+[WoowPiAgent-0.2.1-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.1/WoowPiAgent-0.2.1-macos-arm64.pkg)
+is signed with a Developer ID and notarized, so Gatekeeper opens it without a
+warning. It fetches the rest of the stack while it installs.
+
+### Linux — prebuilt pi-web (recommended)
 
 The slow part of an install is building pi-web from source: ~15 minutes and a
 full toolchain. Releases ship that tree prebuilt per platform, so no compiler is
 needed and the build disappears entirely.
 
-Unpacking the artifact takes **6s on macOS / 4s on Linux** (measured after
-deleting the built tree). From a URL you also pay the download — the asset is
-136 MB (macOS) / 180 MB (Linux), so the real total is however long that takes on
-your connection; a local file path skips it.
-
 ```bash
 git clone https://github.com/WOOWTECH/Woow_native_os_pi_agent
 cd Woow_native_os_pi_agent
-PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.0/piweb-0.10.0-macos-arm64.tar.gz \
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.1/piweb-0.10.0-linux-x64.tar.gz \
   ./install.sh
 ```
 
-Use the asset matching your platform (`macos-arm64`, `linux-x64`). The installer
-verifies its published `.sha256` and refuses an artifact built for another
-platform. A local file path works too.
+The installer verifies the asset's published `.sha256` and refuses one built for
+another platform (a Mac without the pkg uses `piweb-0.10.0-macos-arm64.tar.gz`).
+Unpacking takes **4s on Linux / 6s on macOS** (measured after deleting the built
+tree); from a URL you also pay the download, 180 MB (Linux) / 136 MB (macOS). A
+local file path works too.
+
+- **Port 30141 already taken** — for example by an earlier pi-agent you want to
+  keep running while you try this one: prefix `PI_WEB_PORT=30142`.
+- **Replacing a pi-agent your Omnigent conversations already use** — they expect
+  your own MCP servers, plugins, git identity and keys; see
+  [`docs/SESSION-HOME.md`](docs/SESSION-HOME.md).
 
 ### From source
 
