@@ -45,11 +45,14 @@ log() { printf '[adopt-logins] %s\n' "$*"; }
 undo=0; [ "${1:-}" = "--undo" ] && undo=1
 
 # --- file-based credentials: codex, pi ---------------------------------------
+# link_cred <path under the real home> <engine> [<where this install reads it>]
+# The third argument defaults to the same path under the scoped home.
 link_cred() {
   local relative="$1" engine="$2"
-  local source="$REAL_HOME/$relative" target="$SCOPED_HOME/$relative"
+  local source="$REAL_HOME/$relative" target="${3:-$SCOPED_HOME/$relative}"
   if [ "$undo" = 1 ]; then
-    [ -L "$target" ] && { rm -f "$target"; log "$engine: removed link"; } || log "$engine: no link to remove"
+    # Only ever remove a link this script made, i.e. one pointing at the user's file.
+    if [ -L "$target" ] && [ "$(readlink "$target")" = "$source" ]; then rm -f "$target"; log "$engine: removed link"; else log "$engine: no link to remove"; fi
     return 0
   fi
   [ -e "$source" ] || { log "$engine: the user has no $relative — skipping (log in once, then re-run)"; return 0; }
@@ -60,7 +63,11 @@ link_cred() {
   log "$engine: linked $relative -> the user's"
 }
 link_cred ".codex/auth.json" codex
-link_cred ".pi/agent/auth.json" pi
+# Pi reads its credentials from PI_CODING_AGENT_DIR, which pi-agent-env.sh sets
+# to this install's data dir -- not from $HOME/.pi/agent. A link in the scoped
+# home was never read (on a Mac it left pi not_ready under every HOME). So the
+# user's login goes where pi actually looks, unless that already holds one.
+link_cred ".pi/agent/auth.json" pi "$PI_AGENT_DATA_DIR/auth.json"
 # Claude Code keeps its credentials in the login Keychain on macOS, but in a
 # plain file on Linux -- so there it is adoptable exactly like the other two,
 # and without this a scoped install reports needs-auth on a machine where the
