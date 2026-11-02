@@ -51,13 +51,32 @@ Note that a non-login shell (ssh, launchd) does **not** have Homebrew on `PATH`
 even when it is installed, so the installer looks in `/opt/homebrew` and
 `/usr/local` rather than trusting `PATH`.
 
-**One leftover touch of the stub.** The plugin's dependency discovery still
-probes `python3 --version` on every refresh, and a failed probe is not cached
-(`src/installer.mjs`, `probe()`). On a Mac without the Command Line Tools that
-probe runs the stub. Nothing depends on the result once `uv` is on `PATH`, but
-it may surface the "install command line developer tools?" dialog. Fixing it
-means shadowing `python3`, which would also change the `python3` that agent
-sessions see — so it is left for the plugin to fix upstream.
+**The plugin's python3 probe.** The Omnigent plugin's dependency discovery
+resolves `python3` by walking `PATH` and runs `python3 --version` on every
+refresh; a failed probe is not cached (`src/installer.mjs`, `locate()` and
+`probe()`). On a Mac without the Command Line Tools the first `python3` it meets
+is the `/usr/bin` stub, so every refresh of the Omnigent tab would open the
+"install command line developer tools?" dialog. On exactly that kind of Mac, the
+`wire` stage links `$PI_AGENT_HOME/bin/python3` to the uv-managed CPython the
+omnigent stage installed (the base interpreter, not the omnigent venv).
+Discovery searches the plugin's own state dirs first (`bin/`, `bootstrap/bin/`
+— no `python3` in either) and then pi-web's `PATH`, where `$PI_AGENT_HOME/bin`
+leads, so the link is what it runs.
+
+"That kind of Mac" is decided without touching the stub: no
+`/Library/Developer/CommandLineTools/usr/bin/python3`, and no `usr/bin/python3`
+under the directory `xcode-select -p` reports (`pa_macos_python3_is_stub` in
+`lib/common.sh`). `/usr/bin/python3`, `xcrun` and `git` are never run to find
+out. A Mac with a real python3 gets no link — one in `$PI_AGENT_HOME/bin` would
+shadow it for every agent shell too — and re-running `wire` after installing the
+tools removes an earlier link. A `python3` there that the installer did not
+create is left alone.
+
+Measured on a simulated tools-less Mac (logging stubs for `python3`, `git`,
+`xcrun` and a no-developer-dir `xcode-select`, ahead of `/usr/bin`): a full,
+fresh discovery (`pi-omnigent status`, `doctor --json` and `discover({fresh:
+true})`) makes **0** stub calls and reports Python 3.12.12 from the link;
+without the link the same discovery calls the stub 3 times.
 
 ## Bundled tmux
 
@@ -72,12 +91,12 @@ an older macOS), and it links four Homebrew dylibs — utf8proc, ncursesw 6,
 libevent_core and jemalloc — at `/opt/homebrew` paths that do not exist on a
 user's Mac.
 
-**What is built.** tmux 3.8 with libevent 2.1.13-stable (core only, no OpenSSL)
-and utf8proc 2.12.0 linked **statically**, the system ncurses from `/usr/lib`,
-for arm64, `MACOSX_DEPLOYMENT_TARGET=13.0`. Every source tarball is pinned in
-`lib/pins.sh` by the sha256 Homebrew records for the same formula. The build
-runs with `PATH=/usr/bin:/bin`, so Homebrew's pkg-config cannot hand configure
-its ncursesw.
+**What is built.** tmux 3.8 with libevent 2.1.13-stable (core only, no OpenSSL),
+utf8proc 2.12.0 and jemalloc 5.4.0 linked **statically**, the system ncurses
+from `/usr/lib`, for arm64, `MACOSX_DEPLOYMENT_TARGET=13.0`. Every source
+tarball is pinned in `lib/pins.sh` by the sha256 Homebrew records for the same
+formula. The build runs with `PATH=/usr/bin:/bin`, so Homebrew's pkg-config
+cannot hand configure its ncursesw.
 
 **utf8proc is not optional.** Without it tmux takes character widths from the
 system `wcwidth()`, which gets East Asian widths wrong — and the people using
@@ -86,16 +105,72 @@ configure: the utf8proc symbols must be in the binary, and a private server
 must echo `台灣報告` with the cursor at column 8 (four characters, two columns
 each), then return it intact from `capture-pane`.
 
-**jemalloc: left out, against upstream's advice.** Since 3.7c, tmux's configure
-refuses to choose on darwin by itself and recommends `--enable-jemalloc` "to
-avoid what appears to be a bug in calloc" (tmux issue 5385). This build passes
-`--disable-jemalloc`, by decision. If that bug ever shows up as corrupt panes or
-crashes, link jemalloc statically the same way as libevent; the binary's
-dependencies would stay inside `/usr/lib`.
+**jemalloc is not optional either.** On macOS, `calloc(3)` sometimes returns a
+large allocation that is not zeroed (tmux issue 5385, macOS 26 on Apple
+silicon). tmux checks for it — `grid_create()` asserts the fresh grid is clear —
+so a tmux on the system allocator aborts now and then, mostly on entering copy
+mode, and every session on that server dies with it. One report is "three
+aborts in 10 days" at history-limit 50000, which is what Omnigent sets.
+Upstream made jemalloc the macOS default in 3.7c.
 
-**The resulting binary** (2026-11-02): 1,749,960 bytes, `Mach-O 64-bit
-executable arm64`, minos 13.0, linker-signed ad hoc; it links only
-`/usr/lib/libncurses.5.4.dylib`, `/usr/lib/libSystem.B.dylib` and
+How it is wired matters. Homebrew builds jemalloc with an **empty** prefix: its
+dylib exports plain `malloc`/`calloc`/`free`, so tmux's own calls bind to
+jemalloc by symbol while libc's internal allocations (`strdup`, `asprintf`, …)
+stay with libc's allocator — and tmux frees pointers libc allocated. This build
+keeps jemalloc's macOS defaults instead: the `je_` prefix and the **zone
+allocator**. A constructor (`zone_register`, jemalloc's `src/zone.c`) registers
+`jemalloc_zone` and promotes it to the *default* malloc zone, so every
+`malloc`/`calloc`/`free` in the process, tmux's and libc's alike, is dispatched
+to jemalloc by libc's own zone machinery; pointers handed out before the
+promotion are still freed by the zone that owns them. Two details make that
+true, and the build checks both:
+
+- the archive is linked with `-Wl,-force_load`. Nothing references the object
+  file holding the constructor, so a plain static link drops it — tmux links,
+  runs, and keeps Apple's `calloc`;
+- tmux's single call into jemalloc's own API, `mallctl("version")` in
+  `proc.c`, is mapped to `je_mallctl` (`-Dmallctl=je_mallctl`). Nothing else is
+  renamed.
+
+The build refuses a binary unless `_je_zone_register` is in it and no
+`malloc`/`calloc`/`realloc`/`free` is defined in it, and unless jemalloc
+reports serving allocations during `tmux -V` with `JE_MALLOC_CONF=stats_print:true`
+— `tmux -V` never calls jemalloc's API, so those can only have arrived through
+the default zone.
+
+**Proof at runtime** (2026-11-02, macOS 26.4.1, M2), one private server per
+build, history-limit 50000, a pane holding 60,000 lines, then copy mode:
+
+| | jemalloc build | without jemalloc |
+|---|---|---|
+| `heap <pid>` zones | `jemalloc_zone_0x…` + system zone | system zone only |
+| system `DefaultMallocZone` | 169 allocations, 9 KB | 107,813 allocations, 28.9 MB |
+| server `-v` log | `using jemalloc 5.4.0-0-g7a34f18…` | — |
+
+The whole history lives in `jemalloc_zone` (which `heap` cannot walk — jemalloc
+does not implement zone enumeration — and says so).
+
+**Stress** (`tests/tmux-stress.sh`, 5 minutes each, both builds in parallel):
+panes refilling a 50000-line history with wide CJK lines, split/kill/respawn
+churn, copy mode walking the full history (top, search, bottom) every
+iteration, full captures, clear-history.
+
+| | iterations | copy-mode entries | aborts |
+|---|---|---|---|
+| jemalloc build | 401 | 371 | **0** |
+| without jemalloc | 405 | 375 | **1** |
+
+The abort is issue 5385 exactly: `SIGABRT` from `__assert_rtn` in
+`grid_check_is_clear` ← `grid_create` ← `screen_init` ←
+`window_copy_clone_screen` ← `window_copy_init` ← `cmd_copy_mode_exec`, at
+iteration 27, under half a minute in. Footprint at the end was 132 MB (jemalloc)
+vs 176 MB; with a single pane just after entering copy mode it was 63.7 MB vs
+31.6 MB, so jemalloc's retained pages can cost memory on a lightly used server.
+
+**The resulting binary** (2026-11-02): 2,449,640 bytes, sha256
+`9eb513223ffde23c4662da7ad92f9ad41551abd6ba5a733050f2d0c1e0276f2c`,
+`Mach-O 64-bit executable arm64`, minos 13.0, linker-signed ad hoc; it links
+only `/usr/lib/libncurses.5.4.dylib`, `/usr/lib/libSystem.B.dylib` and
 `/usr/lib/libresolv.9.dylib`. `scripts/build-macos-pkg.sh --sign-app` replaces
 the ad-hoc signature with Developer ID + hardened runtime + a secure timestamp.
 And the pkg build refuses any payload where `tools/bin/tmux` is not the only

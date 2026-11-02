@@ -110,11 +110,16 @@ fails if anything other than `tools/bin/tmux` in the payload is a Mach-O binary.
 
 **The `.pkg` install needs neither Homebrew nor the Xcode Command Line Tools.**
 uv is a pinned standalone binary rather than a pip install. `flock` is a
-`/usr/bin/perl` shim. And **tmux is bundled**, built from source rather than
-copied from Homebrew. Homebrew's tmux is built for macOS 26 only and links four
-`/opt/homebrew` dylibs. Ours targets macOS 13+, links only `/usr/lib`, and
-includes utf8proc, without which tmux gets Traditional Chinese character widths
-wrong. Details in [`docs/MACOS.md`](docs/MACOS.md#bundled-tmux).
+`/usr/bin/perl` shim. On a Mac without the tools, `python3` is linked to the
+uv-managed CPython, so the Omnigent tab's dependency check never runs the
+`/usr/bin/python3` stub and its install dialog. And **tmux is bundled**, built
+from source rather than copied from Homebrew. Homebrew's tmux is built for
+macOS 26 only and links four `/opt/homebrew` dylibs. Ours targets macOS 13+,
+links only `/usr/lib`, and includes utf8proc, without which tmux gets
+Traditional Chinese character widths wrong. It also includes jemalloc as the
+default malloc zone, without which tmux aborts in copy mode now and then on
+macOS (tmux issue 5385; reproduced here in a 5-minute stress run). Details in
+[`docs/MACOS.md`](docs/MACOS.md#bundled-tmux).
 
 Signing: without `--sign-app`/`--sign` the pkg is unsigned and Gatekeeper
 refuses it on other Macs. A public `.pkg` needs both Developer ID certificates
