@@ -36,8 +36,10 @@ PIN_UV_SHA256_aarch64_unknown_linux_gnu=9ff6b9d4665edcdd3a88dcc73cd1eb641754deb9
 
 # tmux bundled into the macOS pkg, built from source by scripts/build-macos-tmux.sh.
 # Each sha256 matches the checksum Homebrew records for the same formula
-# (`brew info --json=v2 tmux libevent utf8proc`, checked 2026-11-02). libevent is
-# 2.1.13-stable because that is the stable release Homebrew ships and records.
+# (`brew info --json=v2 tmux libevent utf8proc jemalloc`, checked 2026-11-02).
+# libevent is 2.1.13-stable because that is the stable release Homebrew ships
+# and records. jemalloc uses Homebrew's tarball but NOT Homebrew's build: see
+# scripts/build-macos-tmux.sh for why the prefix and the zone allocator matter.
 PIN_TMUX_VERSION=3.8
 PIN_TMUX_URL="https://github.com/tmux/tmux/releases/download/${PIN_TMUX_VERSION}/tmux-${PIN_TMUX_VERSION}.tar.gz"
 PIN_TMUX_SHA256=e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e
@@ -47,6 +49,9 @@ PIN_LIBEVENT_SHA256=f7e9383b8c0baa81b687e5b5eecc01beefaf1b19b64151d95ed61647fe7a
 PIN_UTF8PROC_VERSION=2.12.0
 PIN_UTF8PROC_URL="https://github.com/JuliaStrings/utf8proc/archive/refs/tags/v${PIN_UTF8PROC_VERSION}.tar.gz"
 PIN_UTF8PROC_SHA256=f564011d38b2888d583d510b08e69ffa15aa117155db1b9b49ef1dfe1fa25111
+PIN_JEMALLOC_VERSION=5.4.0
+PIN_JEMALLOC_URL="https://github.com/jemalloc/jemalloc/releases/download/${PIN_JEMALLOC_VERSION}/jemalloc-${PIN_JEMALLOC_VERSION}.tar.bz2"
+PIN_JEMALLOC_SHA256=200776fac271093e7c2f21edd6d62657ecd2be578d9328633f2a86bfa6ef4f1d
 PIN_TMUX_MACOS_MIN=13.0
 
 PIN_CLAUDE_VERSION=2.1.296
