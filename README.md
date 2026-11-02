@@ -90,16 +90,32 @@ are derived from WOOWTECH's `Woow_ha_pi_agent_add_on` / `Woow_k3s_pi_agent_packa
 ## Packaging (maintainers)
 
 ```bash
-scripts/build-piweb-artifact.sh dist                      # prebuilt pi-web for THIS platform
-scripts/build-macos-pkg.sh dist/piweb-*-macos-arm64.tar.gz dist   # .pkg bundling it
+scripts/build-piweb-artifact.sh dist          # prebuilt pi-web for THIS platform (CI does this)
+scripts/build-macos-tmux.sh                   # bundled tmux -> dist/tools-macos-arm64/
+scripts/build-macos-pkg.sh \
+    --artifact-url    https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/<tag>/piweb-<ver>-macos-arm64.tar.gz \
+    --artifact-sha256 <that asset's .sha256> \
+    [--sign-app "Developer ID Application: …"] [--sign "Developer ID Installer: …"] \
+    [--notary-key AuthKey_….p8 --notary-key-id … --notary-issuer …]
 ```
 
-`.github/workflows/release.yml` does both on a `v*` tag and attaches them to the
-release.
+`.github/workflows/release.yml` builds and attaches the prebuilt pi-web trees on
+a `v*` tag. The `.pkg` is **not** built in CI: it is signed and notarized on the
+maintainer's Mac, where the Developer ID certificates are.
 
-> **The macOS `.pkg` is currently unsigned.** Signing a package for public
-> download needs a *Developer ID Installer* certificate plus notarization; this
-> account has only *Apple Development* and *Apple Distribution* (App Store
-> track), so Gatekeeper will refuse the pkg on any other Mac. The builder signs
-> automatically once such an identity is present. See
-> [`docs/MACOS.md`](docs/MACOS.md).
+The `.pkg` is under a megabyte. It carries the installer and the bundled tools,
+and it **pins** the prebuilt pi-web tree by URL and sha256 rather than embedding
+it. Postinstall downloads the tree, and `install.sh` verifies it. The pkg build
+fails if anything other than `tools/bin/tmux` in the payload is a Mach-O binary.
+
+**The `.pkg` install needs neither Homebrew nor the Xcode Command Line Tools.**
+uv is a pinned standalone binary rather than a pip install. `flock` is a
+`/usr/bin/perl` shim. And **tmux is bundled**, built from source rather than
+copied from Homebrew. Homebrew's tmux is built for macOS 26 only and links four
+`/opt/homebrew` dylibs. Ours targets macOS 13+, links only `/usr/lib`, and
+includes utf8proc, without which tmux gets Traditional Chinese character widths
+wrong. Details in [`docs/MACOS.md`](docs/MACOS.md#bundled-tmux).
+
+Signing: without `--sign-app`/`--sign` the pkg is unsigned and Gatekeeper
+refuses it on other Macs. A public `.pkg` needs both Developer ID certificates
+(Application for `tools/`, Installer for the pkg) plus notarization.

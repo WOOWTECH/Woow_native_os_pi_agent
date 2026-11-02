@@ -18,20 +18,88 @@ Status as of 2026-11-01, verified on an **M2 MacBook Air, macOS 26.4.1, 8 GB RAM
 
 ## Host requirements
 
-**Homebrew is not required.** Everything is either part of macOS and the Xcode
-Command Line Tools (`git`, `curl`, `python3`, `bsdtar` — which reads `.tar.xz`
-through libarchive, so no `xz` binary is needed, and `cc`, which `node-pty`
-needs) or installed scoped under `$PI_AGENT_HOME`: its own Node, and uv's own
-CPython for the Omnigent venv. Asking someone to install a system-wide package
-manager for an app-scoped install is the wrong trade.
+**Neither Homebrew nor the Command Line Tools is required for the `.pkg`
+install** (the prebuilt pi-web path). What runs is part of macOS itself —
+`curl`, `bsdtar` (which reads `.tar.xz` through libarchive, so no `xz` binary is
+needed) and `/usr/bin/perl` — or is installed scoped under `$PI_AGENT_HOME`:
+its own Node, the pinned **uv** binary, uv's own CPython for the Omnigent venv,
+a `flock` shim and the bundled `tmux`.
 
-`tmux` is the one optional extra: Omnigent's native Pi harness runs the Pi TUI
-inside its own tmux server. The installer installs it when Homebrew happens to
-be present and warns otherwise; nothing else needs it.
+Be careful what "part of macOS" means here: `/usr/bin/git` and
+`/usr/bin/python3` exist on every Mac, but without the Command Line Tools they
+are **installer stubs** that open a dialog and fail. So `command -v python3`
+proves nothing. The installer and the service avoid both:
+
+- **uv** is the pinned standalone binary from astral-sh/uv releases, verified per
+  target triple against `lib/pins.sh`, and installed to `$PI_AGENT_HOME/bin/uv`.
+  It used to be bootstrapped with `python3 -m venv` + pip. Being on `PATH` also
+  matters for the Omnigent plugin: when it finds no `uv`, it bootstraps one with
+  `python3 -m pip` itself (`src/installer.mjs`), which on a stub-only Mac blocks
+  the Omnigent tab.
+- **`pi-web-start.sh`** runs the model-options patch under the omnigent tool's
+  own interpreter rather than `python3`.
+- **Building pi-web from source** (the git-clone track) does need git and a
+  compiler, and says so up front instead of tripping the stub.
+
+`tmux` is **bundled in the `.pkg`**: Omnigent's native Pi harness runs the Pi
+TUI inside a private tmux server, and Omnigent finds it with
+`shutil.which("tmux")` — plain `PATH` order, where `$PI_AGENT_HOME/bin` comes
+first. See [Bundled tmux](#bundled-tmux). A git-clone install has no bundled
+tmux and falls back to Homebrew when present.
 
 Note that a non-login shell (ssh, launchd) does **not** have Homebrew on `PATH`
 even when it is installed, so the installer looks in `/opt/homebrew` and
 `/usr/local` rather than trusting `PATH`.
+
+**One leftover touch of the stub.** The plugin's dependency discovery still
+probes `python3 --version` on every refresh, and a failed probe is not cached
+(`src/installer.mjs`, `probe()`). On a Mac without the Command Line Tools that
+probe runs the stub. Nothing depends on the result once `uv` is on `PATH`, but
+it may surface the "install command line developer tools?" dialog. Fixing it
+means shadowing `python3`, which would also change the `python3` that agent
+sessions see — so it is left for the plugin to fix upstream.
+
+## Bundled tmux
+
+`scripts/build-macos-tmux.sh` builds the tmux that ships in the `.pkg`, into
+`dist/tools-macos-arm64/` (`bin/tmux`, `licenses/`, `BUILDINFO`). The pkg
+builder takes that directory as `tools/`, and the wire stage installs
+`tools/bin/tmux` to `$PI_AGENT_HOME/bin/tmux`.
+
+**Why not Homebrew's.** It cannot be redistributed: its binary is built for the
+host it was poured on (minos 26.0 on the release host, so it will not start on
+an older macOS), and it links four Homebrew dylibs — utf8proc, ncursesw 6,
+libevent_core and jemalloc — at `/opt/homebrew` paths that do not exist on a
+user's Mac.
+
+**What is built.** tmux 3.8 with libevent 2.1.13-stable (core only, no OpenSSL)
+and utf8proc 2.12.0 linked **statically**, the system ncurses from `/usr/lib`,
+for arm64, `MACOSX_DEPLOYMENT_TARGET=13.0`. Every source tarball is pinned in
+`lib/pins.sh` by the sha256 Homebrew records for the same formula. The build
+runs with `PATH=/usr/bin:/bin`, so Homebrew's pkg-config cannot hand configure
+its ncursesw.
+
+**utf8proc is not optional.** Without it tmux takes character widths from the
+system `wcwidth()`, which gets East Asian widths wrong — and the people using
+this write Traditional Chinese. The build checks it rather than trusting
+configure: the utf8proc symbols must be in the binary, and a private server
+must echo `台灣報告` with the cursor at column 8 (four characters, two columns
+each), then return it intact from `capture-pane`.
+
+**jemalloc: left out, against upstream's advice.** Since 3.7c, tmux's configure
+refuses to choose on darwin by itself and recommends `--enable-jemalloc` "to
+avoid what appears to be a bug in calloc" (tmux issue 5385). This build passes
+`--disable-jemalloc`, by decision. If that bug ever shows up as corrupt panes or
+crashes, link jemalloc statically the same way as libevent; the binary's
+dependencies would stay inside `/usr/lib`.
+
+**The resulting binary** (2026-11-02): 1,749,960 bytes, `Mach-O 64-bit
+executable arm64`, minos 13.0, linker-signed ad hoc; it links only
+`/usr/lib/libncurses.5.4.dylib`, `/usr/lib/libSystem.B.dylib` and
+`/usr/lib/libresolv.9.dylib`. `scripts/build-macos-pkg.sh --sign-app` replaces
+the ad-hoc signature with Developer ID + hardened runtime + a secure timestamp.
+And the pkg build refuses any payload where `tools/bin/tmux` is not the only
+Mach-O.
 
 ## Portability bugs this found
 
@@ -266,15 +334,28 @@ Both are upstream behaviour on any platform where `/proc` is absent. So **no
 ownership check is weakened or skipped by this patch** — the only thing missing
 was the binary.
 
-The fix adds a PATH fallback for `flock(1)`, which finds Homebrew's
-`discoteq/flock`. That keeps `locked()` the *kernel* lock its own comment
-promises, rather than downgrading it to an advisory file. `flock` is now
-installed by the macOS preflight alongside `tmux`.
+The fix adds a PATH fallback for `flock(1)`. That keeps `locked()` the *kernel*
+lock its own comment promises, rather than downgrading it to an advisory file.
+
+What it finds is `rootfs/bin/flock`, a `/usr/bin/perl` stand-in that the wire
+stage installs into `$PI_AGENT_HOME/bin` on macOS only. On Linux it would shadow
+util-linux's real flock for every agent shell. It implements exactly the form
+the plugin uses — `flock [-n] [-x] [-E code] [--] <file> <command...>` with
+flock(2) `LOCK_EX|LOCK_NB` — and refuses anything else with exit 64. Homebrew's
+`discoteq/flock` honours the same contract, but requiring Homebrew for an
+app-scoped install is the wrong trade, and every Mac has `/usr/bin/perl`. One
+deliberate difference: Perl marks descriptors close-on-exec, so the command does
+not inherit the lock. This process holds it until the command exits, which is
+util-linux's `-o` behaviour. The plugin's helper exits when its stdin closes, so
+the two agree on every path the plugin uses.
 
 The `-n -E 75` contract that `locked()` depends on is asserted by
-`tests/darwin-premises.mjs` (§6), not assumed: the holder prints `LOCKED`, a
-contender exits 75 without running, and the lock is released on holder exit. A
-Homebrew upgrade that broke either flag would otherwise break `connect` silently.
+`tests/darwin-premises.mjs` (§6), not assumed. It resolves flock the way the
+plugin will (its two hard-coded paths, then `PATH` with `$PI_AGENT_HOME/bin`
+first) and asserts three things: that the shim is the one picked, ahead of any
+Homebrew flock; that the holder prints `LOCKED`; and that a contender exits 75
+without running, with the lock released when the holder exits. A change that
+broke either flag would otherwise break `connect` silently.
 
 ### Result
 
