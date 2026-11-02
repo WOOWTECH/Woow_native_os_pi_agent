@@ -104,7 +104,29 @@ KC_ARGS=()
 ID="io.woowtech.pi-agent"
 PAYLOAD="/usr/local/lib/woow-pi-agent"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/pa-pkg.XXXXXX")"
-cleanup() { [ -n "${WORK:-}" ] && [ -d "$WORK" ] && rm -rf "$WORK"; }
+
+# codesign finds an identity in a separate keychain only when that keychain is
+# on the user's search list, even with --keychain (docs/OPERATIONS-GOTCHAS.md
+# §11). And under a scoped $HOME -- which this project sets -- it finds nothing
+# whichever list was edited. Measured on the build Mac, three ways:
+#   list edited in scoped home, codesign with scoped HOME  -> no identity found
+#   list edited in REAL home,   codesign with scoped HOME  -> no identity found
+#   list edited in REAL home,   codesign with REAL HOME    -> signs
+# So every keychain-facing tool here runs with the account's real home, and the
+# search list is restored on exit, including on failure. Assumes keychain paths
+# without spaces (true for ~/Library/Keychains and electron-builder's cache).
+REAL_HOME="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+as_real_home() { HOME="${REAL_HOME:-$HOME}" "$@"; }
+real_home_security() { as_real_home security "$@"; }
+ORIG_SEARCH_LIST=""
+
+cleanup() {
+  [ -n "${WORK:-}" ] && [ -d "$WORK" ] && rm -rf "$WORK"
+  if [ -n "$ORIG_SEARCH_LIST" ]; then
+    # shellcheck disable=SC2086  # whitespace-separated keychain paths
+    real_home_security list-keychains -d user -s $ORIG_SEARCH_LIST || true
+  fi
+}
 trap cleanup EXIT
 ROOT="$WORK/root"; SCRIPTS="$WORK/scripts"
 mkdir -p "$ROOT$PAYLOAD" "$SCRIPTS"
@@ -125,13 +147,19 @@ printf '%s\n' "$ART_URL" > "$ROOT$PAYLOAD/piweb-artifact-url"
 printf '%s\n' "$ART_SHA" > "$ROOT$PAYLOAD/piweb-artifact-sha256"
 
 if [ -n "$SIGN_APP" ]; then
+  if [ -n "$KEYCHAIN" ]; then
+    ORIG_SEARCH_LIST="$(real_home_security list-keychains -d user | tr -d '"' | xargs)"
+    # shellcheck disable=SC2086
+    real_home_security list-keychains -d user -s "$KEYCHAIN" $ORIG_SEARCH_LIST
+    say "signing keychain added to the search list for codesign (restored on exit)"
+  fi
   # Developer ID + hardened runtime + secure timestamp: what notarization asks of
   # every Mach-O in a package. Replaces the linker's ad-hoc signature.
   while IFS= read -r -d '' f; do
     file -b "$f" | grep -q 'Mach-O' || continue
     say "codesign ${f#"$ROOT"}"
-    codesign --force --options runtime --timestamp --sign "$SIGN_APP" ${KC_ARGS[@]+"${KC_ARGS[@]}"} "$f"
-    codesign --verify --strict --verbose=2 "$f"
+    as_real_home codesign --force --options runtime --timestamp --sign "$SIGN_APP" ${KC_ARGS[@]+"${KC_ARGS[@]}"} "$f"
+    as_real_home codesign --verify --strict --verbose=2 "$f"
   done < <(find "$ROOT$PAYLOAD/tools" -type f -print0)
 else
   say "tools/ keeps the linker's ad-hoc signature (pass --sign-app for distribution)"
@@ -225,7 +253,7 @@ say "payload verified: tools/bin/tmux is the only Mach-O; artifact pin and vendo
 
 # --- sign and notarize --------------------------------------------------------
 if [ -n "$SIGN_PKG" ]; then
-  productsign --timestamp --sign "$SIGN_PKG" ${KC_ARGS[@]+"${KC_ARGS[@]}"} "$PKG" "$PKG.signed"
+  as_real_home productsign --timestamp --sign "$SIGN_PKG" ${KC_ARGS[@]+"${KC_ARGS[@]}"} "$PKG" "$PKG.signed"
   mv "$PKG.signed" "$PKG"
   pkgutil --check-signature "$PKG"
   say "signed with: $SIGN_PKG"
