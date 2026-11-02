@@ -22,8 +22,13 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 ### Fast path — prebuilt pi-web (recommended)
 
 The slow part of an install is building pi-web from source: ~15 minutes and a
-full toolchain. Releases ship that tree prebuilt per platform, so the install
-finishes in seconds (measured: **6s on macOS**, versus ~15 min from source).
+full toolchain. Releases ship that tree prebuilt per platform, so no compiler is
+needed and the build disappears entirely.
+
+Unpacking the artifact takes **6s on macOS / 4s on Linux** (measured after
+deleting the built tree). From a URL you also pay the download — the asset is
+136 MB (macOS) / 180 MB (Linux), so the real total is however long that takes on
+your connection; a local file path skips it.
 
 ```bash
 git clone https://github.com/WOOWTECH/Woow_native_os_pi_agent
