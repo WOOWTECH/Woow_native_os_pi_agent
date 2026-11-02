@@ -1,0 +1,98 @@
+#!/bin/bash
+# `pi-agent-adopt-logins` — let this scoped install use the engine logins the
+# machine's user already has.
+#
+# WHY THIS EXISTS
+#
+# In a container HOME *is* the data dir, so the engines' credentials and the
+# agent's state are the same tree and nothing has to be shared. Natively they
+# are not: pi-agent-env.sh scopes HOME to $PI_AGENT_HOME/home so the install
+# cannot disturb the machine owner's files -- and that same scoping hides the
+# logins the user already performed in their real home:
+#
+#   codex   ~/.codex/auth.json          (file)
+#   pi      ~/.pi/agent/auth.json       (file)
+#   claude  login Keychain (per-USER, already shared) + the account block in
+#           ~/.claude.json, which is per-HOME -- without it Claude Code reports
+#           loggedIn:false even though the Keychain entry is right there.
+#
+# Measured on macOS 26.4 in the GUI session (`launchctl asuser`, where the login
+# Keychain is readable -- over SSH it is not, and every check there is a false
+# negative): the SAME claude binary reports loggedIn:true under the real HOME and
+# false under the scoped one. So the gate is HOME, not the login.
+#
+# The file-based credentials are SYMLINKED, not copied: these tokens refresh, and
+# a copy would silently pin an old one (the same trap as pinning a key into
+# auth.json). The claude account block is merged, because that file is also
+# written by the install (shared MCP) and cannot simply be a link to the user's.
+#
+# Idempotent, reversible (--undo), and it never writes to the real home.
+set -euo pipefail
+
+SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+: "${PI_AGENT_HOME:=$(dirname "$SELF")}"
+export PI_AGENT_HOME
+# shellcheck source=/dev/null
+. "${PI_AGENT_HOME}/bin/pi-agent-env.sh"      # sets HOME to the scoped home
+
+REAL_HOME="$(eval echo "~$(id -un)")"
+SCOPED_HOME="$HOME"
+NODE="${PI_AGENT_HOME}/node/bin/node"
+log() { printf '[adopt-logins] %s\n' "$*"; }
+
+[ "$REAL_HOME" = "$SCOPED_HOME" ] && { log "scoped HOME is the real HOME; nothing to adopt"; exit 0; }
+
+undo=0; [ "${1:-}" = "--undo" ] && undo=1
+
+# --- file-based credentials: codex, pi ---------------------------------------
+link_cred() {
+  local relative="$1" engine="$2"
+  local source="$REAL_HOME/$relative" target="$SCOPED_HOME/$relative"
+  if [ "$undo" = 1 ]; then
+    [ -L "$target" ] && { rm -f "$target"; log "$engine: removed link"; } || log "$engine: no link to remove"
+    return 0
+  fi
+  [ -e "$source" ] || { log "$engine: the user has no $relative — skipping (log in once, then re-run)"; return 0; }
+  [ -L "$target" ] && [ "$(readlink "$target")" = "$source" ] && { log "$engine: already linked"; return 0; }
+  [ -e "$target" ] && [ ! -L "$target" ] && { log "$engine: $target exists and is NOT a link — leaving it alone"; return 0; }
+  mkdir -p "$(dirname "$target")"
+  ln -sfn "$source" "$target"
+  log "$engine: linked $relative -> the user's"
+}
+link_cred ".codex/auth.json" codex
+link_cred ".pi/agent/auth.json" pi
+
+# --- claude: merge the account block (the Keychain is already shared) --------
+"$NODE" -e '
+const fs = require("node:fs"), path = require("node:path");
+const [realHome, scopedHome, undo] = process.argv.slice(1);
+const src = path.join(realHome, ".claude.json"), dst = path.join(scopedHome, ".claude.json");
+// machineID matters as much as the account block: the Keychain entry Claude
+// Code stores is bound to it, so a scoped config carrying its own machineID
+// cannot read that credential even though the entry is per-user and sitting
+// right there. Same physical machine, so presenting the same id is accurate.
+const KEYS = ["oauthAccount", "hasAvailableSubscription", "userID", "machineID"];
+const read = f => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
+const write = o => {
+  const tmp = `${dst}.${process.pid}.tmp`;
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  fs.writeFileSync(tmp, JSON.stringify(o, null, 2) + "\n", { mode: 0o600 });
+  fs.renameSync(tmp, dst);
+};
+const target = read(dst) || {};
+if (undo === "1") {
+  let changed = false;
+  for (const k of ["oauthAccount", "hasAvailableSubscription", "machineID"]) if (k in target) { delete target[k]; changed = true; }
+  if (changed) { write(target); console.log("[adopt-logins] claude: account block removed"); }
+  else console.log("[adopt-logins] claude: nothing to remove");
+  process.exit(0);
+}
+const source = read(src);
+if (!source || !source.oauthAccount) { console.log("[adopt-logins] claude: the user has no oauthAccount in ~/.claude.json — skipping"); process.exit(0); }
+if (KEYS.every(k => JSON.stringify(target[k]) === JSON.stringify(source[k]))) { console.log("[adopt-logins] claude: already adopted"); process.exit(0); }
+for (const k of KEYS) if (k in source) target[k] = source[k];
+write(target);
+console.log(`[adopt-logins] claude: adopted the account block (${source.oauthAccount.emailAddress || "account"})`);
+' "$REAL_HOME" "$SCOPED_HOME" "$undo"
+
+log "done. The login Keychain is per-user, so Claude Code reads the same entry; only its account block is per-HOME."

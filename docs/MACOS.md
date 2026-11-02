@@ -306,3 +306,54 @@ the machine's, so a scoped install on a machine that already has its own host
 registers a **second host with the same display name** — distinguishable only by
 host id. Rename it in the Omnigent UI if that matters; nothing functional
 depends on it.
+
+## Adopting the user's existing engine logins
+
+A workstation usually already has these engines logged in — and the scoped HOME
+that keeps this install out of the owner's files is exactly what hides those
+logins from it. `pi-agent-adopt-logins` closes the gap where it safely can.
+
+**First, a measurement trap.** Over SSH every engine looks logged out:
+
+```
+$ claude auth status          # over ssh, the user's own binary and HOME
+  loggedIn: false
+$ security show-keychain-info ~/Library/Keychains/login.keychain-db
+  User interaction is not allowed.
+```
+
+The login Keychain is locked for a non-GUI session, so that `false` is a **false
+negative** — the same command in the GUI session (`launchctl asuser <uid>`)
+returns `true`. Any claim about engine auth that was measured over SSH is void.
+`codex` is worse: its shebang needs a `node` that an SSH PATH does not have, so
+it fails for a third unrelated reason.
+
+**What can be adopted, measured in the GUI session:**
+
+| Engine | Where the credential lives | Adoptable? |
+|---|---|---|
+| codex | `~/.codex/auth.json` | **Yes** — symlinked; verified `Logged in using ChatGPT` |
+| pi | `~/.pi/agent/auth.json` | **Yes** — symlinked |
+| claude | login Keychain (per-user) + `~/.claude.json` | **No** — see below |
+
+They are **symlinked, not copied**: these tokens refresh, and a copy silently
+pins an old one.
+
+**Claude Code cannot be adopted, and it is worth recording why.** The obvious
+theories are all wrong, each disproved by measurement in the GUI session:
+
+| Theory | Test | Result |
+|---|---|---|
+| The Keychain is per-HOME | same binary, real HOME | `true` — so the Keychain is reachable |
+| A different binary breaks the Keychain ACL | scoped binary, real HOME | `true` — binary is irrelevant |
+| The account block in `.claude.json` is the gate | clean HOME + full copy of the real `.claude.json` | `false` |
+| `machineID` binds the credential | scoped HOME with the real `machineID` | `false` |
+| The whole `~/.claude` directory is the gate | clean HOME + full copy of `~/.claude` too | `false` |
+| An env var can redirect it | `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_HOME` → real | `false` |
+
+Only the real HOME **path** yields `loggedIn: true`. So on macOS a scoped-HOME
+install must run its own one-time `claude auth login`; nothing can be copied,
+linked or pointed at to inherit it.
+
+`pi-agent-adopt-logins --undo` reverses everything it did, and it never writes
+to the real home — verified: the owner's Omnigent files stayed 6/6 after the run.

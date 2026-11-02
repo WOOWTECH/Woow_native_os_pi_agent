@@ -249,7 +249,7 @@ stage_omnigent() {
 stage_wire() {
   log "stage wire — install scripts + symlinks"
   mkdirs
-  for f in pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs; do
+  for f in pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs; do
     [ -f "$HERE/rootfs/bin/$f" ] && install -m 0755 "$HERE/rootfs/bin/$f" "$PA_BIN_DIR/$f"
   done
   # register the Omnigent + Paseo plugins as pi extensions so their settings
