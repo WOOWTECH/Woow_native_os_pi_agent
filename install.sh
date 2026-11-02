@@ -402,6 +402,34 @@ stage_wire() {
       fi
       log "installed bundled tmux ($("$PA_BIN_DIR/tmux" -V 2>/dev/null || echo '?'))"
     fi
+    # python3 for the Omnigent plugin's dependency discovery, only on a Mac
+    # whose /usr/bin/python3 is the Command Line Tools stub. Discovery resolves
+    # `python3` by walking PATH and runs `python3 --version` on every refresh,
+    # and a failed probe is not cached -- so on such a Mac every refresh hits
+    # the stub and opens the "install developer tools?" dialog. $PA_BIN_DIR is
+    # first on pi-web's PATH (after the plugin's own state dirs, which hold no
+    # python3), so a link here is what discovery finds. It points at the
+    # uv-managed CPython the omnigent stage installed -- the base interpreter,
+    # not the omnigent venv. A Mac with a real python3 keeps it: a python3 here
+    # would shadow it for every agent shell too, so an earlier link is removed.
+    local py_link="$PA_BIN_DIR/python3" py_base="" py_cand
+    if pa_macos_python3_is_stub; then
+      for py_cand in "$PA_OMNIGENT_DIR/python/cpython-$PIN_PYTHON_VERSION-"*/bin/"python${PIN_PYTHON_VERSION%.*}"; do
+        [ -x "$py_cand" ] && { py_base="$py_cand"; break; }
+      done
+      if [ -e "$py_link" ] && [ ! -L "$py_link" ]; then
+        warn "$py_link exists and is not a link -- leaving it; it is what Omnigent's discovery will run"
+      elif [ -n "$py_base" ] && [ "$("$py_base" --version 2>&1)" = "Python $PIN_PYTHON_VERSION" ]; then
+        ln -sfn "$py_base" "$py_link"
+        log "linked python3 to the uv-managed CPython $PIN_PYTHON_VERSION (/usr/bin/python3 is only the Command Line Tools stub)"
+      else
+        warn "/usr/bin/python3 is the Command Line Tools stub and the uv-managed CPython is missing (run the omnigent stage); Omnigent's dependency check may open the developer-tools dialog"
+      fi
+    elif [ -L "$py_link" ]; then
+      case "$(readlink "$py_link")" in
+        "$PA_OMNIGENT_DIR"/python/*) rm -f "$py_link"; log "removed the python3 link: this Mac has a real python3 now" ;;
+      esac
+    fi
   fi
   # register the Omnigent + Paseo plugins as pi extensions so their settings
   # tabs are enabled out of the box (seed once; never clobber a user's choice)

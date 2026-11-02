@@ -89,6 +89,24 @@ pa_brew() {
   return 1
 }
 
+# True when this Mac's /usr/bin/python3 is only the Command Line Tools stub: no
+# python3 in the Command Line Tools, and none in the developer directory
+# xcode-select points at (CLT or Xcode.app). Running the stub opens the
+# "install the command line developer tools?" dialog, and so do xcrun and git
+# on such a Mac -- so none of them is run to find out; this only looks at files
+# and asks xcode-select, which reports and never prompts.
+# PI_AGENT_CLT_DIR exists for tests, to stand in for a Mac without the tools.
+pa_macos_python3_is_stub() {
+  [ "$(uname -s)" = Darwin ] || return 1
+  [ -e /usr/bin/python3 ] || return 1
+  local clt="${PI_AGENT_CLT_DIR:-/Library/Developer/CommandLineTools}" dev
+  [ -x "$clt/usr/bin/python3" ] && return 1
+  if dev="$(xcode-select -p 2>/dev/null)" && [ -n "$dev" ] && [ -x "$dev/usr/bin/python3" ]; then
+    return 1
+  fi
+  return 0
+}
+
 pa_os() {
   case "$(uname -s)" in
     Linux)  if grep -qiE '(microsoft|wsl)' /proc/version 2>/dev/null; then echo wsl; else echo linux; fi ;;
