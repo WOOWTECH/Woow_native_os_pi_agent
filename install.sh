@@ -147,7 +147,98 @@ stage_fetch() {
 # Build pi-web from the pinned source commit with the Omnigent/Paseo settings
 # patch applied, then apply the CJK path-corruption patch. This is the heaviest
 # step and the one that must be proven native.
+# Steps that must run whatever produced the pi-web tree -- a source build or a
+# prebuilt artifact. The CJK patch in particular is a data-loss fix, so an
+# artifact path that skipped it would silently reintroduce the corruption.
+piweb_postbuild() {
+  local w="$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web"
+  # CJK path patch against the installed pi-coding-agent tool layer. Idempotent:
+  # the patcher marks what it edits and skips anything already marked, so
+  # running it over an artifact that was patched at build time is safe.
+  if [ -f "$HERE/rootfs/bin/fix-unicode-space-paths.mjs" ]; then
+    # No mapfile here: macOS ships bash 3.2, which does not have it. find | xargs
+    # carries the same NUL-delimited list to the patcher on both platforms.
+    local found
+    found="$(find "$w" -path '*@earendil-works/*/dist/*/tools/path-utils.js' -print 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "${found:-0}" -ge 1 ]; then
+      find "$w" -path '*@earendil-works/*/dist/*/tools/path-utils.js' -print0 2>/dev/null \
+        | xargs -0 "$PA_NODE_DIR/bin/node" "$HERE/rootfs/bin/fix-unicode-space-paths.mjs" \
+        && log "CJK path patch applied ($found file(s))"
+    else
+      warn "CJK path-utils.js not found; skipping CJK patch (upstream layout may have changed)"
+    fi
+  fi
+  # node-pty load assertion. On the artifact path this is also the check that the
+  # tree was built for THIS platform: a foreign native build fails to load here.
+  PA_NODE -e 'const p=require(process.argv[1]); if(typeof p.spawn!=="function") throw Error("node-pty has no spawn()"); console.log("node-pty OK")' \
+    "$w/node_modules/node-pty" || warn "node-pty check failed (browser terminal may not work)"
+  log "piweb OK"
+}
+
+# Install a prebuilt pi-web tree instead of building one. Returns 1 when no
+# artifact was requested, so the caller falls through to the source build.
+#
+# Building pi-web from source takes ~15 minutes and needs a full toolchain --
+# acceptable for the engineer track, not for someone running an installer they
+# downloaded. CI publishes the finished tree per platform; this consumes it.
+piweb_from_artifact() {
+  local art="${PI_AGENT_PIWEB_ARTIFACT:-}"
+  [ -n "$art" ] || return 1
+
+  local want_os="$OS"; [ "$want_os" = wsl ] && want_os=linux
+  local tarball="$PA_TMP_DIR/piweb-artifact.tar.gz"
+  mkdir -p "$PA_TMP_DIR"
+
+  case "$art" in
+    http://*|https://*)
+      # A tree built for another platform cannot work here: node_modules holds
+      # native builds (node-pty). Catch it by name before downloading 300 MB.
+      case "$art" in
+        *"-${want_os}-${ARCH}.tar.gz") : ;;
+        *) die "artifact $(basename "$art") is not for ${want_os}-${ARCH}" ;;
+      esac
+      log "downloading prebuilt pi-web: $art"
+      curl -fSL --retry 5 --retry-all-errors "$art" -o "$tarball" || die "could not download $art"
+      # Prefer a published checksum; accept an explicit one; refuse silence.
+      local sha="${PI_AGENT_PIWEB_ARTIFACT_SHA256:-}"
+      if [ -z "$sha" ]; then
+        sha="$(curl -fsSL --retry 3 "${art}.sha256" 2>/dev/null | awk '{print $1}' || true)"
+      fi
+      [ -n "$sha" ] || die "no checksum for $art — publish <asset>.sha256 or set PI_AGENT_PIWEB_ARTIFACT_SHA256"
+      local got; got="$(sha256_of "$tarball")"
+      [ "$got" = "$sha" ] || die "prebuilt pi-web checksum mismatch: expected $sha got $got"
+      log "checksum verified"
+      ;;
+    *)
+      [ -f "$art" ] || die "prebuilt pi-web not found: $art"
+      case "$(basename "$art")" in
+        *"-${want_os}-${ARCH}.tar.gz") : ;;
+        *) warn "artifact $(basename "$art") is not named for ${want_os}-${ARCH}; continuing because it is a local file" ;;
+      esac
+      tarball="$art"
+      ;;
+  esac
+
+  log "installing prebuilt pi-web (no build, no toolchain)"
+  rm -rf "$PA_PIWEB_DIR"; mkdir -p "$PA_PIWEB_DIR"
+  tar xzf "$tarball" -C "$PA_PIWEB_DIR"
+  [ "$tarball" = "$PA_TMP_DIR/piweb-artifact.tar.gz" ] && rm -f "$tarball"
+
+  # The same assertion the source build makes: the settings routes must exist,
+  # or the Omnigent/Paseo tabs silently will not be there.
+  local w="$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web"
+  for f in .next/BUILD_ID .next/server/app/omnigent/page.js .next/server/app/paseo/setup/page.js; do
+    [ -e "$w/$f" ] || die "prebuilt pi-web is missing $f — rebuild the artifact"
+  done
+  log "prebuilt pi-web installed"
+  return 0
+}
+
 stage_piweb() {
+  if piweb_from_artifact; then
+    piweb_postbuild
+    return 0
+  fi
   log "stage piweb — build pi-web $PIN_PI_WEB_VERSION @ ${PIN_PI_WEB_REF:0:12} + settings patch"
   local patch="$PA_PLUGINS_DIR/pi-omnigent-plugin/integrations/pi-web/combined.adapter.patch"
   [ -f "$patch" ] || die "run 'fetch' first (settings patch not present)"
@@ -176,29 +267,18 @@ stage_piweb() {
     done
     log "settings routes compiled (omnigent + paseo pages present)"
     PA_NPM prune --omit=dev --ignore-scripts
+    # Next.js leaves its build cache in .next/cache -- 611 MB of a 1.2 GB tree
+    # measured on macOS, and never read at runtime (pi-web serves fine without
+    # it, verified). The reference container image drops it for the same reason;
+    # this installer did not, so every install carried it. Halves the install,
+    # and halves the prebuilt artifact built from it.
+    rm -rf .next/cache .next/trace
   )
   # install the built tree as @agegr/pi-web under piweb/lib/node_modules
   rm -rf "$PA_PIWEB_DIR"; mkdir -p "$PA_PIWEB_DIR/lib/node_modules/@agegr" "$PA_PIWEB_DIR/bin"
   mv "$src" "$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web"
   ln -sf "../lib/node_modules/@agegr/pi-web/bin/pi-web.js" "$PA_PIWEB_DIR/bin/pi-web"
-  # CJK path patch against the installed pi-coding-agent tool layer
-  if [ -f "$HERE/rootfs/bin/fix-unicode-space-paths.mjs" ]; then
-    # No mapfile here: macOS ships bash 3.2, which does not have it. find | xargs
-    # carries the same NUL-delimited list to the patcher on both platforms.
-    local found
-    found="$(find "$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web" -path '*@earendil-works/*/dist/*/tools/path-utils.js' -print 2>/dev/null | wc -l | tr -d ' ')"
-    if [ "${found:-0}" -ge 1 ]; then
-      find "$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web" -path '*@earendil-works/*/dist/*/tools/path-utils.js' -print0 2>/dev/null \
-        | xargs -0 "$PA_NODE_DIR/bin/node" "$HERE/rootfs/bin/fix-unicode-space-paths.mjs" \
-        && log "CJK path patch applied ($found file(s))"
-    else
-      warn "CJK path-utils.js not found; skipping CJK patch (upstream layout may have changed)"
-    fi
-  fi
-  # node-pty load assertion
-  PA_NODE -e 'const p=require(process.argv[1]); if(typeof p.spawn!=="function") throw Error("node-pty has no spawn()"); console.log("node-pty OK")' \
-    "$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web/node_modules/node-pty" || warn "node-pty check failed (browser terminal may not work)"
-  log "piweb OK"
+  piweb_postbuild
 }
 
 # --------------------------------------------------------------------- clis ---

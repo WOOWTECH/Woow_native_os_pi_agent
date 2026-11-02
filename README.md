@@ -17,6 +17,27 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 | **macOS** (arm64, 26.4 verified) | ✅ installed + running under launchd · 24/24 smoke · see [`docs/MACOS.md`](docs/MACOS.md) |
 | **Windows (WSL2)** | ⏳ reuses the Linux path |
 
+## Install
+
+### Fast path — prebuilt pi-web (recommended)
+
+The slow part of an install is building pi-web from source: ~15 minutes and a
+full toolchain. Releases ship that tree prebuilt per platform, so the install
+finishes in seconds (measured: **6s on macOS**, versus ~15 min from source).
+
+```bash
+git clone https://github.com/WOOWTECH/Woow_native_os_pi_agent
+cd Woow_native_os_pi_agent
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.0/piweb-0.10.0-macos-arm64.tar.gz \
+  ./install.sh
+```
+
+Use the asset matching your platform (`macos-arm64`, `linux-x64`). The installer
+verifies its published `.sha256` and refuses an artifact built for another
+platform. A local file path works too.
+
+### From source
+
 ## Quickstart (engineer track)
 
 ```bash
@@ -60,3 +81,20 @@ versions, the per-OS plan, and the macOS portability analysis.
 MIT. Vendored helper files under `vendor/` and `rootfs/bin/pi-agent-share-state.mjs`
 are derived from WOOWTECH's `Woow_ha_pi_agent_add_on` / `Woow_k3s_pi_agent_package`
 (MIT).
+
+## Packaging (maintainers)
+
+```bash
+scripts/build-piweb-artifact.sh dist                      # prebuilt pi-web for THIS platform
+scripts/build-macos-pkg.sh dist/piweb-*-macos-arm64.tar.gz dist   # .pkg bundling it
+```
+
+`.github/workflows/release.yml` does both on a `v*` tag and attaches them to the
+release.
+
+> **The macOS `.pkg` is currently unsigned.** Signing a package for public
+> download needs a *Developer ID Installer* certificate plus notarization; this
+> account has only *Apple Development* and *Apple Distribution* (App Store
+> track), so Gatekeeper will refuse the pkg on any other Mac. The builder signs
+> automatically once such an identity is present. See
+> [`docs/MACOS.md`](docs/MACOS.md).
