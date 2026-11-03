@@ -44,6 +44,15 @@ find_python() {
   return 1
 }
 PY="$(find_python)" || { echo "SKIP: needs a python with PyYAML (set PI_SH_TEST_PYTHON)"; exit 0; }
+
+# Hermetic: nothing of a surrounding Omnigent session or install may leak into the fake hosts and
+# services below. A shell that runs inside an Omnigent conversation on a host this tool cut over
+# carries OMNIGENT_CONFIG_HOME / OMNIGENT_DATA_DIR / OMNIGENT_RUNNER_* and the install's own
+# PI_AGENT_* / PI_CODING_AGENT_DIR -- which the unpinned "decoy" host in section 3 would inherit,
+# so it would no longer be unpinned (found when this suite first ran from such a conversation).
+# PI_AGENT_HOME is deliberately kept: it is only read for find_python above, then exported afresh.
+for _v in $(env | sed -n 's/^\(OMNIGENT[A-Za-z0-9_]*\)=.*/\1/p') PI_AGENT_DATA_DIR PI_AGENT_SESSION_HOME PI_AGENT_TAKEOVER_HOST_ID PI_CODING_AGENT_DIR PI_WEB_PORT LITELLM_API_KEY; do unset "$_v"; done
+unset _v
 UIDN="$(id -u)"
 
 # `ps eww` must show this python's environment (it does for uv/brew pythons, not for Apple's).
