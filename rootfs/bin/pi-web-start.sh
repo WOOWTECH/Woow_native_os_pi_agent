@@ -84,6 +84,17 @@ if [ -n "${PI_AGENT_SESSION_HOME:-}" ]; then
   log "session home: Omnigent sessions run with HOME=${PI_AGENT_SESSION_HOME}"
 fi
 
+# Host-name guard (docs/OPERATIONS-GOTCHAS.md section 13): the plugin refuses to
+# start a host under a name another host of the account already holds. Applied on
+# every start, like the patches above, so a plugin tree that was re-extracted
+# outside install.sh is covered again at once. Idempotent, version-gated, and it
+# never fails the start; a skipped patch is logged with a WARN: prefix.
+if [ -f "${PI_AGENT_HOME}/bin/omnigent-plugin-host-name-guard-patch.mjs" ]; then
+  "${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/bin/omnigent-plugin-host-name-guard-patch.mjs" \
+    "${PI_AGENT_HOME}/plugins/pi-omnigent-plugin" 2>&1 \
+    | while IFS= read -r line; do log "$line"; done || true
+fi
+
 # Ensure the Omnigent host launcher shim is installed (self-heal). It lets the
 # Omnigent host manager boot together with pi-web, which is what makes the
 # connected engines get models + pass verification. Needs a real pi-web on PATH
