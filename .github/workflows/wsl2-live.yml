@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: The five secrets are set?
+      - name: The secrets are set?
         shell: pwsh
         env:
           OMNIGENT_SERVER: ${{ secrets.OMNIGENT_SERVER }}
@@ -37,13 +37,16 @@ jobs:
           LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
           LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
         run: |
-          $names = @('OMNIGENT_SERVER', 'OMNIGENT_USERNAME', 'OMNIGENT_PASSWORD', 'LITELLM_BASE_URL', 'LITELLM_API_KEY')
+          # The three Omnigent ones are required. The LiteLLM pair is optional: without it Pi logs in with its own
+          # subscription (pi, then /login), like Claude Code and Codex.
+          $names = @('OMNIGENT_SERVER', 'OMNIGENT_USERNAME', 'OMNIGENT_PASSWORD')
           $missing = @($names | Where-Object { [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($_)) })
           if ($missing.Count -gt 0) {
             Write-Host ('::error title=missing repository secrets::' + ($missing -join ', '))
             exit 1
           }
-          Write-Host 'all five secrets are set (values are not shown)'
+          $gw = (-not [string]::IsNullOrEmpty($env:LITELLM_BASE_URL)) -and (-not [string]::IsNullOrEmpty($env:LITELLM_API_KEY))
+          Write-Host ('the three Omnigent secrets are set; the LiteLLM pair is ' + $(if ($gw) { 'set' } else { 'not set (Pi will use its own login)' }) + ' (values are not shown)')
 
       - name: Build the installer bundle
         shell: bash
@@ -65,12 +68,16 @@ jobs:
           & $script -Yes -NoAutostart -SkipSmoke -BundlePath $bundle -PiWebArtifact 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.4/piweb-0.10.0-linux-x64.tar.gz' *>&1 | ForEach-Object { "$_" }
           exit $LASTEXITCODE
 
-      - name: Point Pi at the LiteLLM gateway
+      - name: Point Pi at the LiteLLM gateway (only if the optional secrets are set)
         shell: pwsh
         env:
           LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
           LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
         run: |
+          if ([string]::IsNullOrEmpty($env:LITELLM_BASE_URL) -or [string]::IsNullOrEmpty($env:LITELLM_API_KEY)) {
+            Write-Host 'no LiteLLM secrets: Pi will use its own subscription login (run pi, then /login)'
+            exit 0
+          }
           $env:WSL_UTF8 = '1'
           $env:WSLENV = 'LITELLM_BASE_URL:LITELLM_API_KEY'
           $envs = @('XDG_RUNTIME_DIR=/run/user/1000', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus')
