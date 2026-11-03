@@ -520,18 +520,28 @@ old host's registration so that its conversations follow. In this order:
    ([`SESSION-HOME.md`](SESSION-HOME.md)), so the conversations run with the user's
    own HOME rather than the scoped one.
 
-**Mode B is not available on macOS in this release.** Step 4 is the obstacle:
-`pi-agent-session-home` supports Linux with `systemd --user` only — on a Mac every
-subcommand (`status`, `enable`, …) exits at once with `[session-home] ERROR: only
-systemd --user is supported so far (this is Darwin)` and changes nothing (measured
-here). Steps 1–3 would work on a Mac, since the guard is the same code on both
-platforms, but they would move the conversations to a daemon that runs them under
-the **scoped HOME** — the situation `SESSION-HOME.md` measured on a Linux
+**On macOS, mode B is `pi-agent-session-home cutover`, not the four manual steps.**
+Step 4 used to be the obstacle (`pi-agent-session-home` was Linux/systemd only), and
+doing steps 1–3 without it would move the conversations to a daemon that runs them
+under the **scoped HOME** — the situation `SESSION-HOME.md` measured on a Linux
 workstation: MCP servers 15 → 0, Claude Code plugins 3 → 0, no git identity, no
-`gh` or SSH keys. The same mechanism applies on a Mac but has not been measured
-there. So on macOS use **mode A**, and keep the previous host for the
-conversations that live on it; a cutover on a Mac is not supported until the
-session-home script has a macOS port.
+`gh` or SSH keys. A Mac that has used Omnigent for a while runs its own host as the
+launchd job `ai.omnigent.host`, and `cutover` replaces that job by *adopting its
+identity*: this install's host takes over the old `host_id` **and** name, so the
+server sees the same host reconnect and every conversation stays bound to it. It also
+retires the old launchd jobs reversibly (the plists are moved, never deleted), runs the
+plugin's own `repair` so its connection receipt follows the new identity, starts the
+host with session home, and verifies on the **server** that the host is online under
+its old name with every conversation still bound. Any failure rolls everything back;
+`uncutover` undoes it later. Start with `pi-agent-session-home cutover --dry-run`
+(read-only); the order, the rollback and the runbook are in
+[`MACOS-CUTOVER.md`](MACOS-CUTOVER.md). The plugin guard accepts it: a server row
+that carries this host's own id is not a collision.
+
+*Status:* exercised in a sandbox (real launchd jobs, fake hosts, a stub of the server
+API), and its read-only preflight has been run against a real Mac. It has **not yet**
+been run for real against a live Omnigent server and a live `ai.omnigent.host`; until
+it has, treat the first run as a test and keep the backups it writes.
 
 What the guard does and does not cover (it covers the hosts the *plugin* starts,
 not one started by hand), and why it fails closed when the server cannot be asked,

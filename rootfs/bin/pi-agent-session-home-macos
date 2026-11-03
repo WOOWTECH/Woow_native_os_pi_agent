@@ -1,0 +1,1302 @@
+#!/bin/bash
+# `pi-agent-session-home-macos` -- session home, and the hand-over cutover, for macOS.
+#
+# Reached through `pi-agent-session-home` on Darwin; same command line as on Linux
+#
+#   pi-agent-session-home enable | disable | status
+#   pi-agent-session-home restart [--in N]
+#
+# plus the part that only exists on a Mac that already runs its own Omnigent host
+# under launchd:
+#
+#   pi-agent-session-home cutover [--dry-run] [--apply] [--force]
+#                                 [--allow-running ID[,ID...]] [--in N]
+#   pi-agent-session-home uncutover [--in N]
+#
+# WHAT IS DIFFERENT FROM LINUX (docs/SESSION-HOME.md, docs/MACOS-CUTOVER.md)
+#
+#  * No systemd drop-in. `enable` writes $PI_AGENT_HOME/session-home.state, and
+#    pi-web-start.sh exports PI_AGENT_SESSION_HOME from the REAL_HOME= line in it.
+#    The wrappers already key off that same file.
+#  * No /proc. A process's environment is read with `ps eww`, which only shows it
+#    for same-user processes that are not Apple system binaries -- true of the
+#    python Omnigent hosts, and the reason an unreadable host environment counts
+#    as "unknown" here, never as "fine".
+#  * Detached work (restart, cutover) is a one-shot LaunchAgent that removes its
+#    own plist, because restarting the host ends every session it serves, the one
+#    that ran this command included.
+#
+# THE CUTOVER
+#
+# `enable` refuses while a host that is not this install's serves the real
+# ~/.omnigent, and on a Mac that is exactly the usual state: Omnigent's own host
+# runs as the launchd job ai.omnigent.host. `cutover` replaces it, and keeps every
+# conversation bound to it, by ADOPTING ITS IDENTITY: this install's host takes
+# over the old host_id and name, so the server sees the same host reconnect.
+# The alternative (a new id under the old name) makes the server delete the old
+# registration and re-create it, repointing conversations on the way; see
+# docs/MACOS-CUTOVER.md for why that is worse, and what it did to this project
+# once already.
+#
+# Order, with the reason for each:  preflight (abort on any doubt) -> back up ->
+# retire the old launchd jobs (bootout, disable, MOVE the plists; never delete) ->
+# wait until the SERVER shows the old host offline -> take this install's service
+# and host down -> park ~/.omnigent and link it here -> adopt the identity in
+# config.yaml and in the plugin's connection receipt -> start the service with
+# session home -> verify on the SERVER (same host id online, same name, every
+# conversation still bound). Any failure rolls the whole thing back. Every step
+# is journalled in $PI_AGENT_HOME/cutover.journal, so `uncutover` can undo it
+# later, even after a crash in the middle.
+#
+# The test overrides (PI_SH_*) are for tests/session-home-macos.sh only.
+set -u -o pipefail
+umask 077
+
+# ------------------------------------------------------------------ locations ---
+resolve() { readlink -f "$1" 2>/dev/null || printf '%s\n' "$1"; }
+SELF="$(cd "$(dirname "$(resolve "$0")")" && pwd)"
+: "${PI_AGENT_HOME:=$(dirname "$SELF")}"
+PI_AGENT_HOME="$(cd "$PI_AGENT_HOME" && pwd -P)"
+export PI_AGENT_HOME
+
+stamp() { date '+%H:%M:%S'; }
+log()  { printf '[session-home] %s\n' "$*"; }
+warn() { printf '[session-home] WARN: %s\n' "$*" >&2; }
+die()  { printf '[session-home] ERROR: %s\n' "$*" >&2; exit 1; }
+
+[ "$(uname -s)" = Darwin ] || die "this is the macOS implementation (this is $(uname -s))"
+
+UID_N="$(id -u)"
+USER_N="$(id -un)"
+REAL="${PI_SH_REAL_HOME:-}"
+if [ -z "$REAL" ]; then
+  REAL="$(dscl . -read "/Users/$USER_N" NFSHomeDirectory 2>/dev/null | sed -n 's/^NFSHomeDirectory: //p')"
+fi
+[ -n "$REAL" ] && [ -d "$REAL" ] || die "cannot determine the real home of $USER_N"
+SCOPED_HOME="$PI_AGENT_HOME/home"
+SCOPED_OMNI="$SCOPED_HOME/.omnigent"
+[ "$(resolve "$REAL")" != "$(resolve "$SCOPED_HOME")" ] || die "the real home IS the scoped home; nothing to do"
+
+OLD_OMNI="$REAL/.omnigent"
+STATE="$PI_AGENT_HOME/session-home.state"
+JOURNAL="$PI_AGENT_HOME/cutover.journal"
+RUNFILE="$PI_AGENT_HOME/session-home.run"
+RESULT_FILE="$PI_AGENT_HOME/session-home.result"
+LOCKDIR="$PI_AGENT_HOME/session-home.lock"
+LOGFILE="$PI_AGENT_HOME/logs/session-home.log"
+PLUGIN_STATE="$PI_AGENT_HOME/data/omnigent-plugin"          # where pi-web-start.sh points the plugin (PI_CODING_AGENT_DIR/omnigent-plugin)
+RECEIPT="$PLUGIN_STATE/connection.json"                        # the plugin's consent: which host it may resume
+PSTATE="$PLUGIN_STATE/state.json"                               # login confirmed, server, phase
+WRAPPER="$PI_AGENT_HOME/bin/pi-omnigent"                       # the plugin CLI under this install's scoped environment
+
+LA_DIR="$REAL/Library/LaunchAgents"
+PARK_DIR="$LA_DIR/.pre-pi-agent"
+SVC_LABEL="${PI_SH_SERVICE_LABEL:-io.woowtech.pi-agent}"
+SVC_PLIST="$LA_DIR/$SVC_LABEL.plist"
+OLD_HOST_LABEL="${PI_SH_OLD_HOST_LABEL:-ai.omnigent.host}"
+OLD_AUX_LABELS="${PI_SH_OLD_AUX_LABELS:-ai.omnigent.og016watch}"
+WORKER_PREFIX="${PI_SH_WORKER_PREFIX:-io.woowtech.pi-agent.session-home}"
+
+OMNIGENT="${PI_SH_OMNIGENT:-$PI_AGENT_HOME/data/omnigent-plugin/uv/tools/omnigent/bin/omnigent}"
+PY="${PI_SH_PYTHON:-$PI_AGENT_HOME/data/omnigent-plugin/uv/tools/omnigent/bin/python}"
+
+# Waits. Defaults are for a real Mac; the tests shrink them.
+POLL="${PI_SH_POLL:-5}"                     # seconds between server / health polls
+T_HEALTH="${PI_SH_HEALTH_TRIES:-36}"        # local health: pi-web + host
+T_OFFLINE="${PI_SH_OFFLINE_TRIES:-48}"      # server shows a stopped host offline
+T_ONLINE="${PI_SH_ONLINE_TRIES:-48}"        # server shows a started host online
+T_EXIT="${PI_SH_EXIT_TRIES:-40}"            # a stopped process is gone (x 1 s)
+T_REPAIR="${PI_SH_REPAIR_SECS:-300}"          # the plugin's repair, which also waits for the host to connect
+MIN_FREE_MB="${PI_SH_MIN_FREE_MB:-500}"
+
+UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36'
+HOST_RE='omnigent( host |[.]host[.]service_entry)'
+HOST_FILTER="${PI_SH_HOST_FILTER:-}"             # tests only: also require this text in the command line
+
+TS="$(date +%Y%m%d-%H%M%S)"
+TMPD=""
+cleanup_tmp() { [ -z "$TMPD" ] || rm -rf "$TMPD"; }
+trap cleanup_tmp EXIT
+mktmp() { [ -n "$TMPD" ] || TMPD="$(mktemp -d "${TMPDIR:-/tmp}/pi-sh.XXXXXX")" || die "cannot create a temporary directory"; }
+
+# --------------------------------------------------------------------- python ---
+# One helper, many small jobs; written out once per run. Nothing here talks to the
+# network: HTTP is curl's job (python's urllib gets Cloudflare error 1010).
+py_helper() {
+  mktmp
+  if [ ! -f "$TMPD/h.py" ]; then
+    cat > "$TMPD/h.py" <<'PYEOF'
+import copy, json, os, sys, tempfile
+
+def die(msg, code=2):
+    sys.stderr.write(msg + "\n")
+    sys.exit(code)
+
+def jload(p):
+    with open(p) as f:
+        return json.load(f)
+
+def norm_url(u):
+    return (u or "").strip().rstrip("/").lower()
+
+def atomic_write(path, text, mode=0o600):
+    d = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(prefix="." + os.path.basename(path) + ".", dir=d)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+def cmd_jget(path, dotted):
+    try:
+        v = jload(path)
+    except Exception:
+        return
+    for k in dotted.split("."):
+        v = v.get(k) if isinstance(v, dict) else None
+    if v is not None:
+        print(v)
+
+def load_yaml(path):
+    import yaml
+    with open(path) as f:
+        d = yaml.safe_load(f)
+    if d is None:
+        return {}
+    if not isinstance(d, dict):
+        die("%s is not a YAML mapping" % path, 3)
+    return d
+
+def cmd_cfg_read(path):
+    d = load_yaml(path)
+    h = d.get("host")
+    if not isinstance(h, dict) or not h.get("host_id") or not h.get("name"):
+        die("%s has no host.host_id / host.name" % path, 3)
+    print("%s\t%s\t%s" % (h["host_id"], h["name"], d.get("server") or ""))
+
+def add_missing(dst, src, path, rep):
+    for k, v in src.items():
+        here = path + "." + str(k)
+        if k not in dst:
+            dst[k] = copy.deepcopy(v)
+            rep["added"].append(here)
+        elif isinstance(v, dict) and isinstance(dst[k], dict):
+            add_missing(dst[k], v, here, rep)
+        elif dst[k] != v:
+            rep["kept"].append(here)
+
+def cmd_cfg_merge(old_path, new_path, out_path):
+    """Adopt the old host identity into the new config; add what the new one lacks.
+    Never overwrites a value the new config has. out_path '-' only reports."""
+    import yaml
+    old, new = load_yaml(old_path), load_yaml(new_path)
+    oh = old.get("host")
+    if not isinstance(oh, dict) or not oh.get("host_id") or not oh.get("name"):
+        die("old config has no host.host_id / host.name", 3)
+    if old.get("server") and new.get("server") and norm_url(old["server"]) != norm_url(new["server"]):
+        die("the two configs name different servers (%s vs %s)" % (old["server"], new["server"]), 3)
+    nh = new.get("host")
+    if nh is None:
+        nh = new["host"] = {}
+    if not isinstance(nh, dict):
+        die("new config: host is not a mapping", 3)
+    rep = {"host_id": oh["host_id"], "name": oh["name"],
+           "prev_host_id": nh.get("host_id"), "prev_name": nh.get("name"),
+           "added": [], "kept": []}
+    nh["host_id"], nh["name"] = oh["host_id"], oh["name"]
+    if not new.get("server") and old.get("server"):
+        new["server"] = old["server"]
+    for k, v in old.items():
+        if k in ("host", "server") or v is None:
+            continue
+        if k == "providers" and isinstance(v, dict) and isinstance(new.get(k), dict):
+            for name, entry in v.items():
+                if name not in new[k]:
+                    e = copy.deepcopy(entry)
+                    if isinstance(e, dict):
+                        # A second 'default' for a family would be ambiguous; the new
+                        # install's defaults stay the defaults.
+                        e.pop("default", None)
+                    new[k][name] = e
+                    rep["added"].append("providers." + str(name))
+                elif new[k][name] != entry:
+                    rep["kept"].append("providers." + str(name))
+        elif k not in new:
+            new[k] = copy.deepcopy(v)
+            rep["added"].append(str(k))
+        elif isinstance(v, dict) and isinstance(new[k], dict):
+            add_missing(new[k], v, str(k), rep)
+        elif new[k] != v:
+            rep["kept"].append(str(k))
+    if out_path != "-":
+        atomic_write(out_path, yaml.safe_dump(new, default_flow_style=False, sort_keys=True))
+        chk = load_yaml(out_path)
+        if chk["host"]["host_id"] != oh["host_id"] or chk["host"]["name"] != oh["name"]:
+            die("the written config does not read back with the adopted identity", 3)
+    print(json.dumps(rep))
+
+def cmd_sessions(path, host_id):
+    d = jload(path)
+    for s in d.get("data") or []:
+        if s.get("host_id") == host_id:
+            print("S\t%s\t%s" % (s.get("id"), s.get("status")))
+    if d.get("has_more") and d.get("last_id"):
+        print("NEXT\t%s" % d["last_id"])
+    else:
+        print("END")
+
+def cmd_norm(url):
+    print(norm_url(url))
+
+CMDS = {"jget": cmd_jget, "cfg-read": cmd_cfg_read, "cfg-merge": cmd_cfg_merge,
+        "sessions": cmd_sessions, "norm": cmd_norm}
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2 or sys.argv[1] not in CMDS:
+        die("usage: h.py %s ..." % "|".join(sorted(CMDS)))
+    CMDS[sys.argv[1]](*sys.argv[2:])
+PYEOF
+  fi
+}
+pyh() { py_helper; "$PY" -I -B "$TMPD/h.py" "$@"; }
+jget() { pyh jget "$1" "$2" 2>/dev/null; }                       # jget FILE dotted.key
+have_python() { [ -x "$PY" ] && "$PY" -I -B -c 'import yaml' >/dev/null 2>&1; }
+
+# -------------------------------------------------------------------- journal ---
+# KEY=VALUE lines, last one wins. Rollback reads it to learn what was done.
+j_set() { printf '%s=%s\n' "$1" "$2" >> "$JOURNAL"; }
+j_get() { sed -n "s/^$1=//p" "$JOURNAL" 2>/dev/null | tail -1; }
+s_get() { sed -n "s/^$1=//p" "$STATE" 2>/dev/null | head -1; }
+run_get() { sed -n "s/^$1=//p" "$RUNFILE" 2>/dev/null | tail -1; }
+run_set() { printf '%s=%s\n' "$1" "$2" >> "$RUNFILE"; }
+
+# Progress that survives the process: the result file's last line is "RESULT: ...".
+say() {
+  printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$RESULT_FILE" 2>/dev/null || true
+  log "$*"
+}
+
+# ------------------------------------------------------------------ processes ---
+# Hosts: python running `omnigent host ...` or `-m omnigent.host.service_entry`.
+# Editors, pagers and shell -c wrappers that merely mention the words do not count.
+host_pids() {
+  ps -axo pid=,command= 2>/dev/null | awk -v re="$HOST_RE" -v self="$$" -v must="$HOST_FILTER" '
+    $1 == self { next }
+    $0 !~ re { next }
+    must != "" && index($0, must) == 0 { next }
+    {
+      c = $2; sub(/^.*\//, "", c)
+      if (c ~ /^(grep|egrep|pgrep|rg|ag|tail|less|more|cat|vim|nvim|nano|sed|awk|ps|watch|ssh|launchctl)$/) next
+      if (c ~ /^(sh|bash|zsh|dash|ksh)$/ && $3 ~ /^-[a-z]*c$/) next
+      print $1
+    }'
+}
+# proc_env PID NAME: the value of NAME in that process's environment, or nothing.
+proc_env() {
+  LC_ALL=C ps eww -p "$1" -o command= 2>/dev/null | awk -v want="$2" '
+    { n = split($0, t, " "); val = ""; found = 0
+      for (i = 1; i <= n; i++) {
+        if (t[i] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) {
+          if (found) break
+          eq = index(t[i], "=")
+          if (substr(t[i], 1, eq - 1) == want) { found = 1; val = substr(t[i], eq + 1) }
+        } else if (found) { val = val " " t[i] }
+      }
+      if (found) print val }'
+}
+pid_alive() { kill -0 "$1" 2>/dev/null; }
+proc_cmd() { ps -p "$1" -o command= 2>/dev/null | cut -c1-120; }      # for messages only
+wait_gone() {   # wait_gone PID [TRIES]  (1 s each)
+  local i
+  for i in $(seq 1 "${2:-$T_EXIT}"); do pid_alive "$1" || return 0; sleep 1; done
+  return 1
+}
+# Classify every host process:
+#   ours:<pid>      pinned to this install's directory (OMNIGENT_CONFIG_HOME) -- the plugin always
+#                   pins it, on a host it starts from pi-web and from its CLI alike
+#   old:<pid>       not pinned, and its HOME/.omnigent is the real, pre-cutover directory
+#   unknown:<pid>:why   anything else, which includes a host that reaches this install's
+#                   directory only through the ~/.omnigent link without being pinned to it
+#                   (Omnigent.app, or a terminal): the plugin did not start it and will not
+#                   bring it back, so it must never count as "ours"
+OURS_RESOLVED=""; OLD_RESOLVED=""
+classify_hosts() {
+  local p pin h cfg
+  OURS_RESOLVED="$(resolve "$SCOPED_OMNI")"; OLD_RESOLVED="$(resolve "$OLD_OMNI")"
+  for p in $(host_pids); do
+    pin="$(proc_env "$p" OMNIGENT_CONFIG_HOME)"
+    if [ -n "$pin" ]; then
+      cfg="$(resolve "$pin")"
+      if [ "$cfg" = "$OURS_RESOLVED" ]; then echo "ours:$p"
+      elif [ "$cfg" = "$OLD_RESOLVED" ] && [ "$OLD_RESOLVED" != "$OURS_RESOLVED" ]; then echo "old:$p"
+      else echo "unknown:$p:serves-$cfg"; fi
+      continue
+    fi
+    h="$(proc_env "$p" HOME)"
+    if [ -z "$h" ]; then echo "unknown:$p:environment-hidden"; continue; fi
+    cfg="$(resolve "$h/.omnigent")"
+    if [ "$cfg" = "$OURS_RESOLVED" ]; then echo "unknown:$p:unpinned-but-serves-this-installs-directory-through-the-link"
+    elif [ "$cfg" = "$OLD_RESOLVED" ]; then echo "old:$p"
+    else echo "unknown:$p:serves-$cfg"; fi
+  done
+}
+our_host() {
+  local line
+  for line in $(classify_hosts); do case "$line" in ours:*) echo "${line#ours:}"; return 0 ;; esac; done
+  return 1
+}
+
+# -------------------------------------------------------------------- launchd ---
+lc_target() { echo "gui/$UID_N/$1"; }
+lc_loaded() { launchctl print "$(lc_target "$1")" >/dev/null 2>&1; }
+lc_pid() { launchctl print "$(lc_target "$1")" 2>/dev/null | sed -n 's/^[[:space:]]*pid = \([0-9][0-9]*\)[[:space:]]*$/\1/p' | head -1; }
+lc_bootout() { lc_loaded "$1" || return 0; launchctl bootout "$(lc_target "$1")" >/dev/null 2>&1 || true; }
+lc_bootstrap() { launchctl bootstrap "gui/$UID_N" "$1" 2>&1; }
+lc_disable() { launchctl disable "$(lc_target "$1")" >/dev/null 2>&1; }
+lc_enable() { launchctl enable "$(lc_target "$1")" >/dev/null 2>&1; }
+plist_get() { /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null; }
+svc_port() { local p; p="$(plist_get "$SVC_PLIST" EnvironmentVariables:PI_WEB_PORT)"; echo "${p:-30141}"; }
+
+# --------------------------------------------------------------------- server ---
+SERVER=""; HDR=""
+server_setup() {   # server_setup URL  -> header file for curl, so the token never shows in `ps`
+  local tok
+  SERVER="${PI_SH_SERVER:-$1}"
+  mktmp
+  HDR="$TMPD/hdr"
+  tok="$("$PY" -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]]["token"])' \
+         "$SCOPED_OMNI/auth_tokens.json" "$SERVER" 2>/dev/null)" || return 1
+  [ -n "$tok" ] || return 1
+  ( umask 077; printf 'Authorization: Bearer %s\n' "$tok" > "$HDR" )
+}
+# api PATH OUTFILE -> prints the HTTP status; 000 after three transport failures.
+api() {
+  local n code
+  for n in 1 2 3; do
+    code="$(curl -sS -m 30 -o "$2" -w '%{http_code}' -A "$UA" -H 'Accept: application/json' -H "@$HDR" "$SERVER$1" 2>/dev/null)" || code=000
+    if [ "$code" != 000 ]; then printf '%s\n' "$code"; return 0; fi
+    sleep 1
+  done
+  printf '000\n'
+}
+host_status() {   # host_status ID -> "<http> <status> <name>"; the row is left in $TMPD/host.json
+  local f code
+  mktmp; f="$TMPD/host.json"
+  code="$(api "/v1/hosts/$1" "$f")"
+  if [ "$code" = 200 ]; then echo "200 $(jget "$f" status) $(jget "$f" name)"; else echo "$code - -"; fi
+}
+# All sessions bound to HOST_ID: writes "id<TAB>status" lines to OUT. 0 ok / 1 failed.
+bound_sessions() {   # bound_sessions HOST_ID OUT
+  local after="" q page code line n=0
+  mktmp; page="$TMPD/page.json"; : > "$2"
+  while [ "$n" -lt 400 ]; do
+    q="/v1/sessions?limit=100"; [ -z "$after" ] || q="$q&after=$after"
+    code="$(api "$q" "$page")"
+    [ "$code" = 200 ] || return 1
+    after=""
+    while IFS="$(printf '\t')" read -r line id st; do
+      case "$line" in S) printf '%s\t%s\n' "$id" "$st" >> "$2" ;; NEXT) after="$id" ;; esac
+    done <<EOF
+$(pyh sessions "$page" "$1")
+EOF
+    [ -n "$after" ] || return 0
+    n=$((n + 1))
+  done
+  return 1
+}
+
+# -------------------------------------------------------------------- helpers ---
+resolves_to_ours() { [ -L "$1" ] && [ "$(resolve "$1")" = "$(resolve "$SCOPED_OMNI")" ]; }
+free_mb() { df -k "$1" 2>/dev/null | awk 'NR==2 { print int($4 / 1024) }'; }
+
+# Hard-link a tree (no space, and the original stays whole); copy where linking fails.
+link_tree() {
+  local src="$1" dst="$2"
+  if [ -d "$src" ] && [ ! -L "$src" ]; then
+    mkdir -p "$dst" && { (cd "$src" && pax -rwl . "$dst") 2>/dev/null || cp -Rp "$src/." "$dst/"; }
+  else
+    cp -P -p "$src" "$dst" 2>/dev/null && return 0
+    return 1
+  fi
+}
+carry_state() {   # carry_state PARKED_DIR
+  local parked="$1" sub e n cnt
+  for sub in codex-native pi-native attachments; do
+    [ -d "$parked/$sub" ] || continue
+    mkdir -p "$SCOPED_OMNI/$sub"
+    cnt=0
+    for e in "$parked/$sub"/* "$parked/$sub"/.[!.]*; do
+      { [ -e "$e" ] || [ -L "$e" ]; } || continue
+      n="${e##*/}"
+      [ -e "$SCOPED_OMNI/$sub/$n" ] && continue
+      if [ -d "$e" ] && [ ! -L "$e" ]; then link_tree "$e" "$SCOPED_OMNI/$sub/$n"
+      else ln "$e" "$SCOPED_OMNI/$sub/$n" 2>/dev/null || cp -P -p "$e" "$SCOPED_OMNI/$sub/$n"; fi
+      cnt=$((cnt + 1))
+    done
+    log "carried $sub over ($cnt entries, hard-linked)"
+  done
+}
+# What sessions will now write to, backed up like the Linux `enable` does.
+backup_user_files() {   # backup_user_files DIR
+  local bk="$1" dirs="" sub
+  [ ! -f "$REAL/.claude.json" ] || cp -p "$REAL/.claude.json" "$bk/claude.json"
+  [ ! -f "$REAL/.codex/config.toml" ] || cp -p "$REAL/.codex/config.toml" "$bk/codex-config.toml"
+  for sub in .claude/skills .agents/skills; do [ ! -e "$REAL/$sub" ] || dirs="$dirs $sub"; done
+  # shellcheck disable=SC2086
+  if [ -n "$dirs" ]; then tar czf "$bk/skill-dirs.tgz" -C "$REAL" $dirs; fi
+  log "backed up ~/.claude.json, ~/.codex/config.toml and${dirs:- no skill dirs} to $bk"
+}
+# The PATH the old launchd host ran with: its sessions found the user's tools there.
+old_host_path() {
+  local p
+  for p in "$LA_DIR/$OLD_HOST_LABEL.plist" "$PARK_DIR/$OLD_HOST_LABEL.plist"; do
+    [ -f "$p" ] || continue
+    plist_get "$p" EnvironmentVariables:PATH; return 0
+  done
+}
+# extend_path BASE EXTRAS: BASE with the directories of EXTRAS that exist appended, once each.
+# The rule pi-web-start.sh applies, so a host the plugin's CLI starts sees the PATH one started
+# from pi-web sees.
+extend_path() {
+  local out="$1" d ifs="$IFS"
+  IFS=:
+  for d in $2; do
+    if [ -n "$d" ] && [ -d "$d" ]; then case ":$out:" in *":$d:"*) ;; *) out="$out:$d" ;; esac; fi
+  done
+  IFS="$ifs"
+  printf '%s\n' "$out"
+}
+# run_bounded SECONDS OUTFILE CMD...: run it with its output in OUTFILE; kill it after SECONDS.
+# Returns its status, or 124 when it had to be killed.
+run_bounded() {
+  local secs="$1" out="$2" pid wd rc
+  shift 2
+  "$@" </dev/null >"$out" 2>&1 &
+  pid=$!
+  ( sleep "$secs"; kill -TERM "$pid" 2>/dev/null; sleep 3; kill -KILL "$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  wd=$!
+  wait "$pid" 2>/dev/null; rc=$?
+  if kill -0 "$wd" 2>/dev/null; then pkill -P "$wd" 2>/dev/null; kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null; else rc=124; fi
+  return "$rc"
+}
+write_state() {   # write_state PARKED BACKUP [extra KEY=VALUE lines on stdin-free args]
+  local parked="$1" bk="$2"; shift 2
+  {
+    printf 'REAL_HOME=%s\nPARKED=%s\nBACKUP=%s\nENABLED_AT=%s\n' "$REAL" "$parked" "$bk" "$TS"
+    local kv; for kv in "$@"; do printf '%s\n' "$kv"; done
+  } > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+}
+
+# ---------------------------------------------------------------- enable etc. ---
+foreign_report() {   # prints blockers for `enable`: any host that is not ours and serves the real ~/.omnigent
+  local line n
+  for line in $(classify_hosts); do
+    case "$line" in
+      old:*) echo "an Omnigent host (pid ${line#old:}) is serving $OLD_OMNI" ;;
+      unknown:*) n="${line#unknown:}"; echo "an Omnigent host I cannot place ($n; $(proc_cmd "${n%%:*}"))" ;;
+    esac
+  done
+}
+
+enable() {
+  local report; report="$(foreign_report)"
+  if [ -n "$report" ]; then
+    printf '%s\n' "$report" | sed 's/^/[session-home]   /' >&2
+    die "that is someone's live integration, not this install's to move. To REPLACE it on purpose and keep its conversations: pi-agent-session-home cutover --dry-run"
+  fi
+  if lc_loaded "$OLD_HOST_LABEL"; then
+    die "the launchd job $OLD_HOST_LABEL is loaded (no host of it is running right now, but it would start one from $OLD_OMNI/bin/host-service.sh, which is gone once that is a link). Retire it, with its conversations kept, by: pi-agent-session-home cutover --dry-run -- or boot it out yourself first"
+  fi
+  [ ! -f "$JOURNAL" ] || die "a cutover journal exists ($JOURNAL); run: pi-agent-session-home status"
+  local bk parked="" prev=""
+  bk="$PI_AGENT_HOME/backups/session-home-$TS"
+  mkdir -p "$bk"; chmod 700 "$PI_AGENT_HOME/backups" "$bk"
+  backup_user_files "$bk"
+  if [ -f "$STATE" ]; then prev="$(s_get PARKED)"; fi
+  if [ -L "$OLD_OMNI" ]; then
+    resolves_to_ours "$OLD_OMNI" || die "$OLD_OMNI is a link to $(readlink "$OLD_OMNI"), not to this install -- leaving it"
+    log "$OLD_OMNI already points at this install"
+  else
+    if [ -e "$OLD_OMNI" ]; then
+      parked="$REAL/.omnigent.pre-pi-agent"; [ ! -e "$parked" ] || parked="$parked-$TS"
+      mv "$OLD_OMNI" "$parked"
+      log "parked the existing $OLD_OMNI at $parked (not deleted)"
+      carry_state "$parked"
+    fi
+    ln -s "$SCOPED_OMNI" "$OLD_OMNI"
+    log "$OLD_OMNI -> $SCOPED_OMNI"
+  fi
+  [ -n "$parked" ] || parked="$prev"
+  write_state "$parked" "$bk"
+  log "enabled. Takes effect when the host restarts: pi-agent-session-home restart"
+}
+
+disable() {
+  if [ "$(s_get CUTOVER)" = yes ] || [ -f "$JOURNAL" ]; then
+    die "this install was set up by a cutover; undo all of it, old services included, with: pi-agent-session-home uncutover"
+  fi
+  local parked=""
+  if [ -f "$STATE" ]; then parked="$(s_get PARKED)"; fi
+  if resolves_to_ours "$OLD_OMNI"; then
+    rm "$OLD_OMNI"
+    if [ -n "$parked" ] && [ -d "$parked" ]; then mv "$parked" "$OLD_OMNI"; log "restored $OLD_OMNI from $parked"
+    else log "removed the $OLD_OMNI link (nothing had been parked)"; fi
+  fi
+  rm -f "$STATE"
+  log "disabled. Takes effect when the host restarts: pi-agent-session-home restart"
+}
+
+status() {
+  if [ -f "$STATE" ]; then sed 's/^/state:        /' "$STATE"; else echo "state:        none (sessions use the scoped HOME)"; fi
+  if [ -L "$OLD_OMNI" ]; then echo "~/.omnigent:  link -> $(readlink "$OLD_OMNI")"
+  elif [ -e "$OLD_OMNI" ]; then echo "~/.omnigent:  a real directory"
+  else echo "~/.omnigent:  absent"; fi
+  local l p
+  for l in $OLD_HOST_LABEL $OLD_AUX_LABELS; do
+    p="$(lc_pid "$l")"
+    echo "old job:      $l  plist=$([ -f "$LA_DIR/$l.plist" ] && echo present || { [ -f "$PARK_DIR/$l.plist" ] && echo parked || echo absent; })  loaded=$(lc_loaded "$l" && echo yes || echo no)${p:+  pid=$p}"
+  done
+  echo "service:      $SVC_LABEL  loaded=$(lc_loaded "$SVC_LABEL" && echo yes || echo no)"
+  local line
+  for line in $(classify_hosts); do
+    p="${line#*:}"; p="${p%%:*}"
+    echo "host pid $p:  ${line%%:*}  HOME=$(proc_env "$p" HOME)  OMNIGENT_CONFIG_HOME=$(proc_env "$p" OMNIGENT_CONFIG_HOME)"
+  done
+  if [ -f "$JOURNAL" ]; then echo "journal:      $JOURNAL (status=$(j_get STATUS))"; fi
+  if [ -f "$RESULT_FILE" ]; then echo "last result:  $(grep 'RESULT:' "$RESULT_FILE" | tail -1 | sed 's/^[^R]*//')"; fi
+}
+
+
+# ------------------------------------------------------- detached one-shot jobs ---
+lock_held() { local pid; pid="$(cat "$LOCKDIR/pid" 2>/dev/null)"; [ -n "$pid" ] && pid_alive "$pid"; }
+lock_acquire() {
+  if mkdir "$LOCKDIR" 2>/dev/null; then echo $$ > "$LOCKDIR/pid"; return 0; fi
+  lock_held && return 1
+  rm -rf "$LOCKDIR"; mkdir "$LOCKDIR" 2>/dev/null && echo $$ > "$LOCKDIR/pid"
+}
+lock_release() { rm -rf "$LOCKDIR"; }
+xml_esc() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+
+# schedule MODE DELAY [KEY=VALUE ...] : a one-shot LaunchAgent that runs `_worker MODE`.
+# The extra lines go into the run file BEFORE the job can start, so it never races them.
+schedule() {
+  local mode="$1" delay="$2" run_id label plist k kv out
+  shift 2
+  run_id="$TS-$$"
+  label="$WORKER_PREFIX.$run_id"
+  plist="$LA_DIR/$label.plist"
+  mkdir -p "$LA_DIR" "$(dirname "$LOGFILE")"
+  if [ -f "$RUNFILE" ] && [ "$(run_get STATUS)" != finished ] && lock_held; then
+    die "another session-home job is running (run $(run_get RUN_ID)); see $LOGFILE"
+  fi
+  : > "$RUNFILE"
+  run_set RUN_ID "$run_id"; run_set MODE "$mode"; run_set STATUS scheduled
+  run_set LABEL "$label"; run_set PLIST "$plist"; run_set SCHEDULED_AT "$TS"
+  for kv in "$@"; do printf '%s\n' "$kv" >> "$RUNFILE"; done
+  rm -f "$plist"
+  {
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+      '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' '<plist version="1.0"><dict>'
+    printf '<key>Label</key><string>%s</string>\n' "$(xml_esc "$label")"
+    printf '<key>ProgramArguments</key><array>'
+    for k in /bin/bash "$SELF/pi-agent-session-home-macos" _worker "$mode" "$run_id" "$delay"; do printf '<string>%s</string>' "$(xml_esc "$k")"; done
+    # No ProcessType: the host the plugin's repair starts is a child of this job and would inherit
+    # a background priority for the rest of its life.
+    printf '</array>\n<key>RunAtLoad</key><true/>\n'
+    printf '<key>StandardOutPath</key><string>%s</string><key>StandardErrorPath</key><string>%s</string>\n' "$(xml_esc "$LOGFILE")" "$(xml_esc "$LOGFILE")"
+    printf '<key>EnvironmentVariables</key><dict>'
+    printf '<key>PI_AGENT_HOME</key><string>%s</string>' "$(xml_esc "$PI_AGENT_HOME")"
+    printf '<key>PATH</key><string>%s</string>' "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin"
+    # Test overrides travel with the job; in production none are set.
+    for k in $(env | sed -n 's/^\(PI_SH_[A-Z0-9_]*\)=.*/\1/p'); do
+      printf '<key>%s</key><string>%s</string>' "$k" "$(xml_esc "$(printenv "$k")")"
+    done
+    printf '</dict></dict></plist>\n'
+  } > "$plist" || die "cannot write $plist"
+  chmod 600 "$plist"
+  plutil -lint "$plist" >/dev/null || { rm -f "$plist"; die "the worker plist I wrote does not validate"; }
+  out="$(lc_bootstrap "$plist")" || { rm -f "$plist"; die "launchctl bootstrap of $label failed: $out"; }
+  log "scheduled $mode as $label (starts in ${delay}s); progress: tail -f $LOGFILE ; result: tail -1 $RESULT_FILE"
+}
+
+WORKER_LABEL=""; WORKER_PLIST=""
+# Last statement of every worker path. Removes the plist BEFORE booting itself out:
+# a job left behind with RunAtLoad would run again at the next login.
+finish() {
+  say "RESULT: $1"
+  run_set STATUS finished
+  [ -z "$WORKER_PLIST" ] || rm -f "$WORKER_PLIST"
+  lock_release
+  cleanup_tmp
+  [ -z "$WORKER_LABEL" ] || launchctl bootout "$(lc_target "$WORKER_LABEL")" >/dev/null 2>&1
+  exit 0
+}
+
+# ------------------------------------------------------------- restart worker ---
+scoped_host_stop() {
+  HOME="$SCOPED_HOME" OMNIGENT_CONFIG_HOME="$SCOPED_OMNI" OMNIGENT_DATA_DIR="$SCOPED_OMNI" \
+    "$OMNIGENT" host stop </dev/null >/dev/null 2>&1 || true
+}
+service_up() {   # (re)start the pi-web service, loading it when it is not loaded
+  if lc_loaded "$SVC_LABEL"; then launchctl kickstart -k "$(lc_target "$SVC_LABEL")" >/dev/null 2>&1 && return 0; fi
+  lc_bootstrap "$SVC_PLIST" >/dev/null
+}
+restart_once() { scoped_host_stop; service_up; }
+
+# Healthy = pi-web answers, our host runs with the HOME the configuration asks for,
+# and the plugin reports the host connected to its server.
+HEALTH_WHY="pi-web did not answer"
+healthy() {   # healthy WANT_HOME
+  local want="$1" port i p code h
+  port="$(svc_port)"
+  for i in $(seq 1 "$T_HEALTH"); do
+    sleep "$POLL"
+    code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:$port/api/home" || true)"
+    [ "$code" = 200 ] || { HEALTH_WHY="pi-web does not answer on port $port"; continue; }
+    p="$(our_host)" || { HEALTH_WHY="this install's host process is not running"; continue; }
+    h="$(proc_env "$p" HOME)"
+    if [ -z "$h" ]; then HEALTH_WHY="cannot read the environment of host pid $p"; continue; fi
+    if [ "$h" != "$want" ]; then HEALTH_WHY="host pid $p runs with HOME=$h, wanted $want"; continue; fi
+    if [ "$(curl -s -m 15 "http://127.0.0.1:$port/api/omnigent" | plutil -extract host.connected raw -o - - 2>/dev/null)" = true ]; then
+      log "healthy: pi-web on $port, host pid $p with HOME=$want, connected"
+      return 0
+    fi
+    HEALTH_WHY="pi-web does not report the host connected"
+  done
+  return 1
+}
+
+restart_worker() {
+  say "=== restart ==="
+  local want="$SCOPED_HOME"
+  if [ -f "$STATE" ]; then want="$(s_get REAL_HOME)"; fi
+  restart_once
+  if healthy "$want"; then finish "OK - restarted; host runs with HOME=$want"; fi
+  say "UNHEALTHY ($HEALTH_WHY)"
+  if [ "$want" != "$SCOPED_HOME" ] && [ ! -f "$JOURNAL" ]; then
+    say "reverting to the scoped HOME"
+    disable >/dev/null 2>&1
+    restart_once
+    if healthy "$SCOPED_HOME"; then finish "REVERTED - session home was unhealthy ($HEALTH_WHY); the scoped HOME is back and healthy"; fi
+  fi
+  finish "FAILED - still unhealthy ($HEALTH_WHY); see $PI_AGENT_HOME/logs/pi-web.log"
+}
+
+# ------------------------------------------------------------------- cutover ---
+PF_PROBLEMS=0; PF_WARNINGS=0
+pf_fail() { PF_PROBLEMS=$((PF_PROBLEMS + 1)); log "BLOCKED: $*"; }
+pf_warn() { PF_WARNINGS=$((PF_WARNINGS + 1)); log "note:    $*"; }
+PF_OLD_ID=""; PF_OLD_NAME=""; PF_CFG_SERVER=""; PF_NEW_ID=""; PF_NEW_NAME=""; PF_OLD_PID=""; PF_PSERVER=""
+PF_BOUND=""; PF_BOUND_N=0; PF_RUNNING_N=0; PF_MERGE=""; PF_OLD_PATH=""; PF_USER=""
+OPT_FORCE=0; OPT_ALLOW=""
+
+# A conversation that is doing something. Strict on purpose: only the states known to be
+# at rest count as at rest, so a status I have never seen blocks instead of being cut off.
+session_at_rest() { case "$1" in idle|failed|completed|done|stopped|archived|cancelled|canceled|closed) return 0 ;; esac; return 1; }
+
+# Read-only. Reports EVERY blocker, not just the first.
+preflight() {
+  PF_PROBLEMS=0; PF_WARNINGS=0
+  local line rec code n id st f old_job_pid
+
+  launchctl print "gui/$UID_N" >/dev/null 2>&1 || pf_fail "no GUI launchd session for uid $UID_N (run this from the logged-in user's session)"
+  have_python || pf_fail "no python with PyYAML at $PY (the omnigent tool the plugin installs)"
+  [ -x "$OMNIGENT" ] || pf_fail "no omnigent binary at $OMNIGENT"
+
+  # This install's own service must be up, so a later failure is not a pre-existing one.
+  [ -f "$SVC_PLIST" ] || pf_fail "$SVC_PLIST is missing: this install has no launchd service to restart"
+  lc_loaded "$SVC_LABEL" || pf_fail "the service $SVC_LABEL is not loaded"
+  code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:$(svc_port)/api/home" || true)"
+  [ "$code" = 200 ] || pf_fail "pi-web is not answering on port $(svc_port) (HTTP $code); fix that first, so a failure afterwards can be told apart"
+
+  # Not already done, not half done.
+  { [ -d "$OLD_OMNI" ] && [ ! -L "$OLD_OMNI" ]; } || pf_fail "$OLD_OMNI is not a real directory (a link, or absent): nothing to take over"
+  [ ! -e "$STATE" ] || pf_fail "$STATE exists: session home or a cutover is already set up (pi-agent-session-home status)"
+  [ ! -e "$JOURNAL" ] || pf_fail "$JOURNAL exists: an earlier cutover is unfinished or done (status / uncutover)"
+  [ -f "$SCOPED_OMNI/config.yaml" ] || pf_fail "$SCOPED_OMNI/config.yaml is missing: this install has never connected"
+  [ -f "$RECEIPT" ] || pf_fail "$RECEIPT is missing: the plugin has no consented connection to move"
+  [ -f "$SCOPED_OMNI/auth_tokens.json" ] || pf_fail "this install is not logged in ($SCOPED_OMNI/auth_tokens.json is missing)"
+
+  # The cutover refreshes the plugin's connection receipt by running the plugin's own
+  # `pi-omnigent repair`, which reuses the stored login and so needs no password -- but
+  # only if the plugin considers that login confirmed, for the server it is set up for.
+  PF_PSERVER=""
+  if [ -f "$PSTATE" ] && have_python; then
+    PF_PSERVER="$(jget "$PSTATE" server)"
+    [ "$(jget "$PSTATE" loginConfirmed)" = True ] || pf_fail "the plugin's login is not confirmed ($PSTATE): sign in again in Settings -> Omnigent first, or the repair step would ask for a password"
+    [ "$(jget "$PSTATE" enabled)" != False ] || pf_fail "the Omnigent plugin is switched off ($PSTATE)"
+    [ -n "$PF_PSERVER" ] || pf_fail "$PSTATE names no server"
+  else
+    [ -f "$PSTATE" ] || pf_fail "$PSTATE is missing: the plugin has never been set up"
+  fi
+  [ -x "$WRAPPER" ] || pf_fail "$WRAPPER is missing or not executable: it is the plugin CLI the cutover runs"
+  # This install must already be new enough for session home. Both pieces are applied by
+  # an update of the install (pi-web-start.sh patches the plugin at every service start).
+  grep -q 'session-home.state' "$PI_AGENT_HOME/bin/pi-web-start.sh" 2>/dev/null \
+    || pf_fail "the installed pi-web-start.sh predates macOS session home (it does not read $STATE): update the install (v0.2.2 or later) and restart the service once"
+  grep -q 'session-home (Woow native installer)' "$PI_AGENT_HOME/plugins/pi-omnigent-plugin/src/omnigent.py" 2>/dev/null \
+    || pf_fail "the Omnigent plugin is not patched to start its host with the real HOME yet: update the install and restart the service once (pi-web-start.sh patches the plugin at start)"
+
+  # Identities.
+  PF_OLD_ID=""; PF_OLD_NAME=""; PF_CFG_SERVER=""; PF_NEW_ID=""; PF_NEW_NAME=""
+  if [ ! -f "$OLD_OMNI/config.yaml" ]; then pf_fail "$OLD_OMNI/config.yaml is missing"
+  elif have_python; then
+    rec="$(pyh cfg-read "$OLD_OMNI/config.yaml" 2>&1)" && {
+      PF_OLD_ID="$(printf '%s' "$rec" | cut -f1)"; PF_OLD_NAME="$(printf '%s' "$rec" | cut -f2)"; PF_CFG_SERVER="$(printf '%s' "$rec" | cut -f3)"
+    } || pf_fail "old config unusable: $rec"
+  fi
+  if [ -f "$SCOPED_OMNI/config.yaml" ] && have_python; then
+    rec="$(pyh cfg-read "$SCOPED_OMNI/config.yaml" 2>&1)" && {
+      PF_NEW_ID="$(printf '%s' "$rec" | cut -f1)"; PF_NEW_NAME="$(printf '%s' "$rec" | cut -f2)"
+      if [ -n "$PF_CFG_SERVER" ] && [ "$(pyh norm "$PF_CFG_SERVER")" != "$(pyh norm "$(printf '%s' "$rec" | cut -f3)")" ]; then
+        pf_fail "the two installs talk to different servers ($PF_CFG_SERVER vs $(printf '%s' "$rec" | cut -f3)): different accounts, not a hand-over"
+      fi
+    } || pf_fail "this install's config unusable: $rec"
+  fi
+  if [ -n "$PF_OLD_ID" ] && [ "$PF_OLD_ID" = "$PF_NEW_ID" ]; then pf_fail "both installs already have host id $PF_OLD_ID"; fi
+  if [ -n "$PF_PSERVER" ] && [ -n "$PF_CFG_SERVER" ] && [ "$(pyh norm "$PF_PSERVER")" != "$(pyh norm "$PF_CFG_SERVER")" ]; then
+    pf_fail "the plugin is set up for $PF_PSERVER but the old host talks to $PF_CFG_SERVER"
+  fi
+
+  # Who is running. Anything that is not the old launchd host or us is not mine to stop.
+  old_job_pid="$(lc_pid "$OLD_HOST_LABEL")"
+  PF_OLD_PID=""
+  for line in $(classify_hosts); do
+    case "$line" in
+      ours:*) ;;
+      old:*) n="${line#old:}"
+             if [ -n "$old_job_pid" ] && [ "$n" = "$old_job_pid" ]; then PF_OLD_PID="$n"
+             else pf_fail "host pid $n serves $OLD_OMNI but is not the launchd job $OLD_HOST_LABEL (started by hand, or by Omnigent.app?): stop it yourself first"; fi ;;
+      unknown:*) n="${line#unknown:}"; pf_fail "an Omnigent host I cannot place ($n; $(proc_cmd "${n%%:*}")): stop it, or run this from a shell that can see its environment" ;;
+    esac
+  done
+  if [ -z "$PF_OLD_PID" ]; then
+    if [ -z "$old_job_pid" ]; then pf_fail "the old host is not running (no pid for $OLD_HOST_LABEL): there is nothing to hand over. Only want session home? pi-agent-session-home enable"
+    else pf_fail "launchd runs $OLD_HOST_LABEL as pid $old_job_pid, but that is not an Omnigent host process I can identify"; fi
+  fi
+  [ -f "$LA_DIR/$OLD_HOST_LABEL.plist" ] || pf_fail "$LA_DIR/$OLD_HOST_LABEL.plist is missing, so the old job cannot be retired reversibly"
+  # Any other launchd job that manages an Omnigent host would bring one back.
+  for f in "$LA_DIR"/*.plist; do
+    [ -f "$f" ] || continue
+    n="$(basename "$f" .plist)"
+    case " $OLD_HOST_LABEL $OLD_AUX_LABELS $SVC_LABEL " in *" $n "*) continue ;; esac
+    case "$n" in "$WORKER_PREFIX".*) continue ;; esac
+    if grep -aqE "$HOST_RE|[.]omnigent/bin/host-service" "$f" 2>/dev/null; then pf_fail "another launchd job ($n) starts an Omnigent host: unknown to me, so not retired"; fi
+  done
+  [ ! -e "$PARK_DIR/$OLD_HOST_LABEL.plist" ] || pf_fail "$PARK_DIR/$OLD_HOST_LABEL.plist exists already (a previous cutover?)"
+
+  # Disk.
+  for f in "$PI_AGENT_HOME" "$REAL"; do
+    n="$(free_mb "$f")"
+    [ "${n:-0}" -ge "$MIN_FREE_MB" ] || pf_fail "only ${n:-?} MB free under $f (need $MIN_FREE_MB)"
+  done
+
+  # The server is the evidence.
+  PF_BOUND_N=0; PF_RUNNING_N=0
+  if have_python && [ -f "$SCOPED_OMNI/auth_tokens.json" ] && [ -n "$PF_OLD_ID" ]; then
+    if ! server_setup "$PF_CFG_SERVER"; then
+      pf_fail "no stored login for $PF_CFG_SERVER in $SCOPED_OMNI/auth_tokens.json"
+    else
+      mktmp
+      code="$(api /v1/me "$TMPD/me.json")"
+      if [ "$code" != 200 ]; then pf_fail "the server answered HTTP $code to /v1/me (login expired, or unreachable)"
+      else
+        PF_USER="$(jget "$TMPD/me.json" user_id)"
+        rec="$(host_status "$PF_OLD_ID")"
+        case "$rec" in
+          "200 online "*)
+            if [ "${rec#200 online }" != "$PF_OLD_NAME" ]; then pf_fail "the server calls the old host '${rec#200 online }', its config says '$PF_OLD_NAME'"; fi
+            if [ -n "$PF_USER" ] && [ "$(jget "$TMPD/host.json" owner)" != "$PF_USER" ]; then pf_fail "the old host row belongs to '$(jget "$TMPD/host.json" owner)', this login is '$PF_USER'"; fi ;;
+          "200 "*) pf_fail "the server shows the old host ${PF_OLD_ID:0:8} as '$(echo "$rec" | cut -d' ' -f2)', not online" ;;
+          "404 "*) pf_fail "the server has no host ${PF_OLD_ID:0:8}: nothing to keep conversations bound to" ;;
+          *) pf_fail "cannot read host ${PF_OLD_ID:0:8} from the server (HTTP ${rec%% *})" ;;
+        esac
+        PF_BOUND="$TMPD/bound.tsv"
+        if bound_sessions "$PF_OLD_ID" "$PF_BOUND"; then
+          PF_BOUND_N="$(wc -l < "$PF_BOUND" | tr -d ' ')"
+          while IFS="$(printf '\t')" read -r id st; do
+            session_at_rest "$st" && continue
+            case ",$OPT_ALLOW," in *",$id,"*) pf_warn "conversation $id is $st and will be cut off (allowed)"; continue ;; esac
+            if [ "$OPT_FORCE" = 1 ]; then pf_warn "conversation $id is $st and will be cut off (--force)"
+            else PF_RUNNING_N=$((PF_RUNNING_N + 1)); pf_fail "conversation $id is $st on the old host; wait for it, or --allow-running $id"; fi
+          done < "$PF_BOUND"
+        else
+          pf_fail "cannot list conversations from the server"
+        fi
+      fi
+    fi
+  fi
+
+  # The merge it would do, without writing.
+  PF_MERGE=""
+  if have_python && [ -n "$PF_OLD_ID" ] && [ -f "$SCOPED_OMNI/config.yaml" ] && [ -f "$OLD_OMNI/config.yaml" ]; then
+    PF_MERGE="$(pyh cfg-merge "$OLD_OMNI/config.yaml" "$SCOPED_OMNI/config.yaml" - 2>&1)" || { pf_fail "config merge would fail: $PF_MERGE"; PF_MERGE=""; }
+  fi
+  PF_OLD_PATH="$(old_host_path)"
+  # Omnigent.app does not manage a service, but it adopts or spawns a host; say so.
+  if pgrep -f '/Applications/Omnigent.app/Contents/MacOS/Omnigent' >/dev/null 2>&1; then
+    pf_warn "Omnigent.app is running. It adopts the live host it finds in ~/.omnigent/daemons (this install's, after the cutover) instead of starting its own; quit it for the few minutes of the cutover if you can"
+  fi
+  [ "$PF_PROBLEMS" -eq 0 ]
+}
+
+print_plan() {
+  local added kept
+  added="$(printf '%s' "$PF_MERGE" | "$PY" -I -B -c 'import json,sys; print(", ".join(json.load(sys.stdin)["added"]) or "-")' 2>/dev/null)"
+  kept="$(printf '%s' "$PF_MERGE" | "$PY" -I -B -c 'import json,sys; print(", ".join(json.load(sys.stdin)["kept"]) or "-")' 2>/dev/null)"
+  cat <<EOF
+
+PLAN  (what \`cutover --apply\` would do; nothing has been changed)
+  old host      ${PF_OLD_ID:0:8}...  "$PF_OLD_NAME"   launchd job $OLD_HOST_LABEL, pid ${PF_OLD_PID:-?}
+  this install  ${PF_NEW_ID:0:8}...  "$PF_NEW_NAME"   service $SVC_LABEL
+  conversations bound to the old host: $PF_BOUND_N (busy now: $PF_RUNNING_N)
+
+  1. back up configs, tokens, plists and the plugin's receipt and state -> $PI_AGENT_HOME/backups/cutover-<time>/
+  2. retire $OLD_HOST_LABEL${OLD_AUX_LABELS:+ and $OLD_AUX_LABELS}: bootout, launchctl disable, MOVE the plists to $PARK_DIR/
+  3. wait until the server shows the old host offline (up to $((T_OFFLINE * POLL)) s)
+  4. stop this install's service and host
+  5. park $OLD_OMNI as $REAL/.omnigent.pre-pi-agent, link it to $SCOPED_OMNI, hard-link codex-native / pi-native / attachments
+  6. adopt the old identity (host_id + name) in $SCOPED_OMNI/config.yaml
+       added from the old config: $added
+       kept as this install has it: $kept
+  7. write the session-home state file (sessions run with HOME=$REAL${PF_OLD_PATH:+; the PATH entries of the old job are appended})
+  8. run the plugin's own "pi-omnigent repair --server ${PF_PSERVER:-...}" (env -i, service still down): it starts the host as the
+     adopted identity and rewrites the plugin's connection receipt itself; checked before going on: the receipt names the
+     adopted host and the SERVER shows it online, running with HOME=$REAL
+  9. start the service (it resumes the host the plugin just started)
+ 10. verify on the SERVER: ${PF_OLD_ID:0:8}... online, name unchanged, all $PF_BOUND_N conversations still bound to it
+  Any failure rolls everything back: old jobs restored and started, config, plugin receipt and state restored byte for byte,
+  ~/.omnigent unparked.
+  Afterwards the stale row ${PF_NEW_ID:0:8}... "$PF_NEW_NAME" stays on the server, offline and untouched.
+  This ENDS every session the old host serves -- this one too, if it runs there.
+EOF
+}
+
+cutover_cmd() {
+  local apply=0 delay=10 a
+  OPT_FORCE=0; OPT_ALLOW=""
+  while [ $# -gt 0 ]; do
+    a="$1"; shift
+    case "$a" in
+      --dry-run) apply=0 ;;
+      --apply) apply=1 ;;
+      --force) OPT_FORCE=1 ;;
+      --allow-running) OPT_ALLOW="${1:-}"; shift || true ;;
+      --in) delay="${1:-10}"; shift || true ;;
+      *) die "unknown option: $a" ;;
+    esac
+  done
+  log "preflight (read-only):"
+  if ! preflight; then
+    log "NOT READY: $PF_PROBLEMS blocker(s) above. Nothing was changed."
+    exit 1
+  fi
+  log "ready: no blockers, $PF_WARNINGS note(s)."
+  print_plan
+  if [ "$apply" != 1 ]; then
+    log "dry run only. To do it: pi-agent-session-home cutover --apply"
+    exit 0
+  fi
+  schedule cutover "$delay" "OPT_FORCE=$OPT_FORCE" "OPT_ALLOW=$OPT_ALLOW"
+}
+
+# --------------------------------------------------------------- cutover steps ---
+# Each step returns 0, or sets FAIL_REASON and returns 1; the worker then rolls back.
+FAIL_REASON=""
+fail_step() { FAIL_REASON="$*"; return 1; }
+jflag() { [ "$(j_get "$1")" = yes ]; }
+lbl_key() { echo "$1" | tr -c 'A-Za-z0-9\n' _; }
+
+do_backup() {
+  BK="$PI_AGENT_HOME/backups/cutover-$TS"
+  mkdir -p "$BK" && chmod 700 "$PI_AGENT_HOME/backups" "$BK" || { fail_step "cannot create $BK"; return 1; }
+  j_set BK "$BK"
+  local l
+  cp -p "$OLD_OMNI/config.yaml" "$BK/old-config.yaml" || { fail_step "cannot back up the old config"; return 1; }
+  if [ -f "$OLD_OMNI/auth_tokens.json" ]; then cp -p "$OLD_OMNI/auth_tokens.json" "$BK/old-auth_tokens.json" || { fail_step "cannot back up the old tokens"; return 1; }; fi
+  cp -p "$SCOPED_OMNI/config.yaml" "$BK/scoped-config.yaml" || { fail_step "cannot back up this install's config"; return 1; }
+  # The plugin's own bookkeeping, which its repair rewrites: the receipt of the connection it
+  # may resume, and its state. Both come back byte for byte on a rollback.
+  cp -p "$RECEIPT" "$BK/connection.json" || { fail_step "cannot back up the plugin receipt"; return 1; }
+  cp -p "$PSTATE" "$BK/plugin-state.json" || { fail_step "cannot back up the plugin state"; return 1; }
+  for l in $OLD_HOST_LABEL $OLD_AUX_LABELS $SVC_LABEL; do
+    if [ -f "$LA_DIR/$l.plist" ]; then cp -p "$LA_DIR/$l.plist" "$BK/$l.plist" || { fail_step "cannot back up $l.plist"; return 1; }; fi
+  done
+  backup_user_files "$BK"
+  ( cd "$BK" && find . -type f ! -name MANIFEST.sha256 -print0 | xargs -0 shasum -a 256 > MANIFEST.sha256 ) || { fail_step "cannot write the backup manifest"; return 1; }
+  say "backed up to $BK"
+}
+
+do_retire_old() {
+  local l p
+  j_set OLD_PID "$PF_OLD_PID"
+  for l in $OLD_HOST_LABEL $OLD_AUX_LABELS; do
+    j_set "WAS_LOADED_$(lbl_key "$l")" "$(lc_loaded "$l" && echo yes || echo no)"
+  done
+  j_set RETIRE_STARTED yes
+  mkdir -p "$PARK_DIR" || { fail_step "cannot create $PARK_DIR"; return 1; }
+  # The watcher first: it can restart the host job on its own.
+  for l in $OLD_AUX_LABELS $OLD_HOST_LABEL; do
+    lc_bootout "$l"
+    lc_disable "$l"
+    if [ -f "$LA_DIR/$l.plist" ]; then
+      mv "$LA_DIR/$l.plist" "$PARK_DIR/$l.plist" || { fail_step "cannot move $l.plist out of LaunchAgents"; return 1; }
+    fi
+    j_set "PARKED_$(lbl_key "$l")" yes
+    say "retired $l (bootout, disabled, plist moved to $PARK_DIR)"
+  done
+  p="$PF_OLD_PID"
+  if [ -n "$p" ] && ! wait_gone "$p"; then fail_step "the old host (pid $p) did not exit"; return 1; fi
+  # Nothing but this install's own host may be left.
+  for p in $(classify_hosts); do
+    case "$p" in old:*|unknown:*) fail_step "an Omnigent host is still running after retiring the old job ($p)"; return 1 ;; esac
+  done
+  return 0
+}
+
+# wait_server_status ID online|down TRIES
+wait_server_status() {
+  local i rec code status
+  for i in $(seq 1 "$3"); do
+    rec="$(host_status "$1")"; code="${rec%% *}"; status="$(echo "$rec" | cut -d' ' -f2)"
+    if [ "$code" = 404 ] && [ "$2" = down ]; then
+      fail_step "the server dropped the host row ${1:0:8} (HTTP 404): its conversations would lose their binding"; return 1
+    fi
+    if [ "$code" = 200 ]; then
+      if [ "$2" = online ] && [ "$status" = online ]; then return 0; fi
+      if [ "$2" = down ] && [ "$status" != online ]; then return 0; fi
+    fi
+    sleep "$POLL"
+  done
+  return 1
+}
+
+do_wait_old_offline() {
+  if ! wait_server_status "$PF_OLD_ID" down "$T_OFFLINE"; then
+    [ -n "$FAIL_REASON" ] || fail_step "the server still shows the old host ${PF_OLD_ID:0:8} online after $((T_OFFLINE * POLL)) s"
+    return 1
+  fi
+  say "the server shows the old host ${PF_OLD_ID:0:8} offline"
+}
+
+do_stop_new() {
+  local p rec pid
+  j_set SVC_DOWN yes
+  lc_bootout "$SVC_LABEL"
+  scoped_host_stop
+  for p in $(classify_hosts); do
+    case "$p" in ours:*) wait_gone "${p#ours:}" 20 || { fail_step "this install's host (pid ${p#ours:}) did not stop"; return 1; } ;; esac
+  done
+  # What the old host's wrapper script did for the old install: a stale record whose
+  # pid was recycled makes the next host refuse to start ("already running").
+  for rec in "$SCOPED_OMNI"/daemons/*.json; do
+    [ -f "$rec" ] || continue
+    pid="$(jget "$rec" pid)"
+    if [ -z "$pid" ] || ! pid_alive "$pid"; then rm -f "$rec"; say "cleared the stale daemon record $(basename "$rec") (pid ${pid:-?})"; fi
+  done
+  say "stopped this install's service and host"
+}
+
+do_park_link() {
+  local parked="$REAL/.omnigent.pre-pi-agent"
+  [ ! -e "$parked" ] || parked="$parked-$TS"
+  j_set PARKED_DIR "$parked"
+  mv "$OLD_OMNI" "$parked" || { fail_step "cannot park $OLD_OMNI"; return 1; }
+  ln -s "$SCOPED_OMNI" "$OLD_OMNI" || { fail_step "cannot link $OLD_OMNI"; return 1; }
+  j_set LINKED yes
+  say "parked $OLD_OMNI at $parked and linked it to $SCOPED_OMNI"
+  carry_state "$parked"
+}
+
+do_adopt() {
+  local out
+  j_set CFG_BEFORE_SHA "$(shasum -a 256 "$SCOPED_OMNI/config.yaml" | cut -d' ' -f1)"
+  j_set ADOPT_STARTED yes
+  out="$(pyh cfg-merge "$(j_get PARKED_DIR)/config.yaml" "$SCOPED_OMNI/config.yaml" "$SCOPED_OMNI/config.yaml" 2>&1)" || { fail_step "config merge failed: $out"; return 1; }
+  j_set CFG_AFTER_SHA "$(shasum -a 256 "$SCOPED_OMNI/config.yaml" | cut -d' ' -f1)"
+  say "adopted host ${PF_OLD_ID:0:8}... \"$PF_OLD_NAME\" in config.yaml: $out"
+}
+
+do_write_state() {
+  local kv
+  kv=("CUTOVER=yes" "OLD_HOST_ID=$PF_OLD_ID" "OLD_HOST_NAME=$PF_OLD_NAME" "NEW_HOST_ID=$PF_NEW_ID")
+  if [ -n "$PF_OLD_PATH" ]; then kv=("${kv[@]}" "HOST_PATH=$PF_OLD_PATH"); fi
+  j_set STATE_WRITTEN yes
+  write_state "$(j_get PARKED_DIR)" "$(j_get BK)" "${kv[@]}" || { fail_step "cannot write $STATE"; return 1; }
+}
+
+# The plugin refuses to resume a host whose id differs from the one in its connection
+# receipt (connection.json), and the receipt still names this install's own, old identity.
+# The plugin's own `repair` is what rewrites it: its connect() has no such check, starts the
+# host (as the adopted identity, from the config written above), waits until the server shows
+# it online and saves the receipt. Done HERE, with the service still down, so that the
+# service's later start finds a receipt, a config and a live host that agree.
+#
+# `env -i`, because this runs inside a worker that may have been started from an Omnigent
+# runner whose OMNIGENT_RUNNER_* variables would otherwise leak into the host it starts; only
+# what the wrapper needs goes in, plus PI_AGENT_SESSION_HOME so that host gets the real HOME
+# (the plugin patch reads it) and the old job's PATH entries appended after this install's own.
+do_repair() {
+  local srv penv out rc="" envv ok
+  srv="$(jget "$PSTATE" server)"
+  penv="$(extend_path "/usr/bin:/bin:/usr/sbin:/sbin" "$PF_OLD_PATH")"
+  envv=("PATH=$penv" "PI_AGENT_HOME=$PI_AGENT_HOME" "PI_AGENT_SESSION_HOME=$REAL" "USER=$USER_N" "LOGNAME=$USER_N" "LANG=${LANG:-en_US.UTF-8}")
+  if [ -n "${TMPDIR:-}" ]; then envv=("${envv[@]}" "TMPDIR=$TMPDIR"); fi
+  mktmp; out="$TMPD/repair.out"
+  j_set REPAIR_STARTED yes
+  say "running the plugin's own repair (env -i), service still down: $WRAPPER repair --server $srv"
+  run_bounded "$T_REPAIR" "$out" env -i "${envv[@]}" "$WRAPPER" repair --server "$srv"; rc=$?
+  if [ -n "$BK" ] && [ -d "$BK" ]; then cp "$out" "$BK/repair.out" 2>/dev/null && chmod 600 "$BK/repair.out"; fi
+  ok="$(jget "$out" ok)"
+  if [ "$rc" = 124 ]; then fail_step "pi-omnigent repair did not finish within ${T_REPAIR}s"; return 1; fi
+  if [ "$rc" != 0 ] || [ "$ok" = False ]; then
+    fail_step "pi-omnigent repair failed (exit $rc): $(tail -n 3 "$out" | tr '\n' ' ' | cut -c1-300)"; return 1
+  fi
+  say "pi-omnigent repair finished (exit 0, ok=${ok:-unparsed}); full output in $BK/repair.out"
+}
+
+# Before the service starts: the receipt names the adopted host, and the server -- not just
+# the plugin -- shows that host online, started by the repair with the real HOME.
+do_verify_repair() {
+  local rid rname p
+  rid="$(jget "$RECEIPT" host.id)"; rname="$(jget "$RECEIPT" host.name)"
+  [ "$rid" = "$PF_OLD_ID" ] || { fail_step "after the repair the plugin's receipt still names host ${rid:0:8}, not ${PF_OLD_ID:0:8}"; return 1; }
+  [ "$rname" = "$PF_OLD_NAME" ] || { fail_step "after the repair the receipt calls the host '$rname', not '$PF_OLD_NAME'"; return 1; }
+  p="$(our_host)" || { fail_step "the repair left no host process of this install running"; return 1; }
+  [ "$(proc_env "$p" HOME)" = "$REAL" ] || { fail_step "the host the repair started (pid $p) runs with HOME=$(proc_env "$p" HOME), not $REAL: the plugin did not take PI_AGENT_SESSION_HOME"; return 1; }
+  if ! wait_server_status "$PF_OLD_ID" online "$T_ONLINE"; then
+    [ -n "$FAIL_REASON" ] || fail_step "the server does not show host ${PF_OLD_ID:0:8} online after the repair"
+    return 1
+  fi
+  # the repair may legitimately have touched config.yaml too (it tops up missing providers): the
+  # file as it is now is what a rollback compares against before deciding it was edited by hand
+  j_set CFG_AFTER_SHA "$(shasum -a 256 "$SCOPED_OMNI/config.yaml" | cut -d' ' -f1)"
+  say "the receipt names ${PF_OLD_ID:0:8}... \"$PF_OLD_NAME\" and the server shows it online (host pid $p, HOME=$REAL), before the service starts"
+}
+
+do_start_new() {
+  lc_bootstrap "$SVC_PLIST" >/dev/null || { fail_step "launchctl bootstrap of $SVC_LABEL failed"; return 1; }
+  j_set SVC_STARTED yes
+}
+
+do_verify_local() {
+  healthy "$REAL" || { fail_step "local check failed: $HEALTH_WHY"; return 1; }
+}
+
+do_verify_server() {
+  local rec post n missing
+  if ! wait_server_status "$PF_OLD_ID" online "$T_ONLINE"; then
+    [ -n "$FAIL_REASON" ] || fail_step "the server does not show host ${PF_OLD_ID:0:8} online after the restart"
+    return 1
+  fi
+  rec="$(host_status "$PF_OLD_ID")"
+  [ "${rec#200 online }" = "$PF_OLD_NAME" ] || { fail_step "the server now calls host ${PF_OLD_ID:0:8} '${rec#200 online }', not '$PF_OLD_NAME'"; return 1; }
+  mktmp; post="$TMPD/bound-after.tsv"
+  bound_sessions "$PF_OLD_ID" "$post" || { fail_step "cannot list conversations after the restart"; return 1; }
+  n="$(wc -l < "$PF_BOUND" | tr -d ' ')"
+  missing="$(comm -23 <(cut -f1 "$PF_BOUND" | sort) <(cut -f1 "$post" | sort) | tr '\n' ' ')"
+  [ -z "${missing// /}" ] || { fail_step "conversations no longer bound to ${PF_OLD_ID:0:8}: $missing"; return 1; }
+  say "server evidence: host ${PF_OLD_ID:0:8} online as \"$PF_OLD_NAME\"; all $n conversations still bound to it"
+}
+
+# Put FILE back from BACKUP.
+#   guard   (config.yaml, which a person may edit): only when FILE is still exactly what the
+#           cutover wrote (AFTER_SHA); otherwise keep the current version next to it too.
+#   plugin  (connection.json, state.json: bookkeeping the plugin rewrites at every start): always;
+#           what was there is kept under KEEPDIR/after-cutover/ for the record.
+restore_file() {   # restore_file FILE BACKUP AFTER_SHA [guard|plugin] [KEEPDIR]
+  local f="$1" b="$2" after="$3" mode="${4:-guard}" keep="${5:-}" cur
+  [ -f "$b" ] || { say "no backup of $(basename "$f") to restore"; return 0; }
+  cur="$(shasum -a 256 "$f" 2>/dev/null | cut -d' ' -f1)"
+  if [ -f "$f" ] && [ "$cur" = "$(shasum -a 256 "$b" | cut -d' ' -f1)" ]; then return 0; fi     # already as it was
+  if [ "$mode" = plugin ]; then
+    if [ -f "$f" ] && [ -n "$keep" ]; then
+      mkdir -p "$keep/after-cutover" && cp -p "$f" "$keep/after-cutover/$(basename "$f")"
+    fi
+    cp -p "$b" "$f.rb.$$" && mv "$f.rb.$$" "$f" && say "restored $(basename "$f") from the backup"
+    return 0
+  fi
+  if [ -z "$after" ] || [ "$cur" = "$after" ] || [ ! -f "$f" ]; then
+    cp -p "$b" "$f.rb.$$" && mv "$f.rb.$$" "$f" && say "restored $(basename "$f") from the backup"
+  else
+    cp -p "$f" "$f.after-cutover-$TS"
+    cp -p "$b" "$f.rb.$$" && mv "$f.rb.$$" "$f"
+    say "restored $(basename "$f") from the backup; it had been edited since the cutover, that version is kept as $(basename "$f").after-cutover-$TS"
+  fi
+}
+
+old_host_back() {
+  local i
+  if [ -n "${HDR:-}" ] && [ -n "$PF_OLD_ID" ]; then wait_server_status "$PF_OLD_ID" online "$T_ONLINE"; return; fi
+  for i in $(seq 1 "$T_ONLINE"); do [ -z "$(lc_pid "$OLD_HOST_LABEL")" ] || return 0; sleep "$POLL"; done
+  return 1
+}
+
+# Undo what the journal says was done, in reverse. Every part looks at the real state
+# first, so it is safe from any point and more than once.
+rollback() {   # rollback REASON  (never returns)
+  local reason="$1" bk parked l o rec pid old_ok=1 svc_ok=0
+  say "ROLLING BACK: $reason"
+  bk="$(j_get BK)"; parked="$(j_get PARKED_DIR)"
+  j_set STATUS rolling-back
+  # 1. the new side down, if the cutover touched it
+  if jflag SVC_DOWN; then
+    lc_bootout "$SVC_LABEL"
+    scoped_host_stop
+    for o in $(classify_hosts); do case "$o" in ours:*) wait_gone "${o#ours:}" 20 || true ;; esac; done
+  fi
+  # 2. its config, and the plugin's receipt and state, as they were
+  if jflag ADOPT_STARTED && [ -n "$bk" ]; then
+    restore_file "$SCOPED_OMNI/config.yaml" "$bk/scoped-config.yaml" "$(j_get CFG_AFTER_SHA)" guard
+  fi
+  if jflag REPAIR_STARTED && [ -n "$bk" ]; then
+    restore_file "$RECEIPT" "$bk/connection.json" "" plugin "$bk"
+    restore_file "$PSTATE" "$bk/plugin-state.json" "" plugin "$bk"
+  fi
+  # 3. session home off, ~/.omnigent back
+  rm -f "$STATE" "$STATE.tmp"
+  if resolves_to_ours "$OLD_OMNI"; then
+    rm "$OLD_OMNI"
+    if [ -n "$parked" ] && [ -d "$parked" ]; then mv "$parked" "$OLD_OMNI" && say "unparked $OLD_OMNI"; fi
+  elif [ ! -e "$OLD_OMNI" ] && [ -n "$parked" ] && [ -d "$parked" ]; then
+    mv "$parked" "$OLD_OMNI" && say "unparked $OLD_OMNI"
+  fi
+  if jflag SVC_DOWN; then
+    # the stopped adopted host's daemon record must not block the next start
+    for rec in "$SCOPED_OMNI"/daemons/*.json; do
+      [ -f "$rec" ] || continue
+      pid="$(jget "$rec" pid)"; if [ -z "$pid" ] || ! pid_alive "$pid"; then rm -f "$rec"; fi
+    done
+  fi
+  # 4. the old jobs back; the host first, it carries the conversations
+  if jflag RETIRE_STARTED; then
+    for l in $OLD_HOST_LABEL $OLD_AUX_LABELS; do
+      if [ -f "$PARK_DIR/$l.plist" ] && [ ! -f "$LA_DIR/$l.plist" ]; then mv "$PARK_DIR/$l.plist" "$LA_DIR/$l.plist" && say "restored $l.plist"; fi
+      if [ -f "$LA_DIR/$l.plist" ]; then lc_enable "$l"; fi
+      if [ "$l" = "$OLD_HOST_LABEL" ]; then
+        if [ -f "$LA_DIR/$l.plist" ] && ! lc_loaded "$l"; then
+          lc_bootstrap "$LA_DIR/$l.plist" >/dev/null && say "started $l again" || say "COULD NOT start $l again"
+        fi
+      elif [ -f "$LA_DIR/$l.plist" ]; then
+        say "$l.plist is back; it is a login-time job and loads at the next login, as before"
+      fi
+    done
+    old_host_back || old_ok=0
+  fi
+  # 5. this install's service, as before
+  if jflag SVC_DOWN && [ -f "$SVC_PLIST" ] && ! lc_loaded "$SVC_LABEL"; then lc_bootstrap "$SVC_PLIST" >/dev/null || true; fi
+  healthy "$SCOPED_HOME" && svc_ok=1
+  if [ "$old_ok" = 1 ] && [ "$svc_ok" = 1 ]; then
+    j_set STATUS rolled-back
+    mkdir -p "$PI_AGENT_HOME/backups" && mv "$JOURNAL" "$PI_AGENT_HOME/backups/cutover-$TS.journal" 2>/dev/null || rm -f "$JOURNAL"
+    finish "ROLLED BACK - $reason. Everything is as before: the old host is online again, this install is back on its own identity."
+  fi
+  j_set STATUS rollback-incomplete
+  finish "ROLLBACK INCOMPLETE - $reason. old host online: $([ "$old_ok" = 1 ] && echo yes || echo NO); this install healthy: $([ "$svc_ok" = 1 ] && echo yes || echo "NO ($HEALTH_WHY)"). Backups: ${bk:-none}. By hand: launchctl bootstrap gui/$UID_N $LA_DIR/$OLD_HOST_LABEL.plist ; pi-agent-session-home uncutover"
+}
+
+cutover_worker() {
+  OPT_FORCE="$(run_get OPT_FORCE)"; OPT_ALLOW="$(run_get OPT_ALLOW)"
+  say "=== cutover: preflight again, now that the worker runs ==="
+  if ! preflight; then
+    finish "NOT STARTED - $PF_PROBLEMS blocker(s); nothing was changed (the BLOCKED lines are in $LOGFILE)"
+  fi
+  : > "$JOURNAL"
+  j_set STATUS running; j_set STARTED_AT "$TS"; j_set RUN_ID "$(run_get RUN_ID)"
+  j_set OLD_HOST_ID "$PF_OLD_ID"; j_set OLD_HOST_NAME "$PF_OLD_NAME"; j_set NEW_HOST_ID "$PF_NEW_ID"; j_set SERVER "$SERVER"
+  local step
+  for step in backup retire_old wait_old_offline stop_new park_link adopt write_state repair verify_repair start_new verify_local verify_server; do
+    FAIL_REASON=""
+    say "step: $step"
+    "do_$step" || rollback "step '$step' failed: ${FAIL_REASON:-see the log}"
+    j_set "DONE_$step" yes
+    [ -z "${PI_SH_STEP_PAUSE:-}" ] || sleep "$PI_SH_STEP_PAUSE"     # tests only: room to interrupt the worker
+  done
+  j_set STATUS done
+  finish "OK - host ${PF_OLD_ID:0:8}... \"$PF_OLD_NAME\" now runs from this install with HOME=$REAL; all $PF_BOUND_N conversations are still bound to it. The old jobs are parked in $PARK_DIR; the stale row ${PF_NEW_ID:0:8}... \"$PF_NEW_NAME\" is left on the server, offline. Undo everything: pi-agent-session-home uncutover"
+}
+
+uncutover_cmd() {
+  local delay=10
+  if [ "${1:-}" = --in ]; then delay="${2:-10}"; fi
+  [ -f "$JOURNAL" ] || die "no cutover journal ($JOURNAL): nothing to undo"
+  schedule uncutover "$delay"
+}
+uncutover_worker() {
+  say "=== uncutover ==="
+  reload_from_journal
+  rollback "uncutover requested"
+}
+reload_from_journal() {
+  local srv
+  PF_OLD_ID="$(j_get OLD_HOST_ID)"; PF_OLD_NAME="$(j_get OLD_HOST_NAME)"; PF_NEW_ID="$(j_get NEW_HOST_ID)"
+  srv="$(j_get SERVER)"
+  if [ -n "$srv" ] && have_python; then server_setup "$srv" >/dev/null 2>&1 || true; fi
+}
+
+# -------------------------------------------------------------------- worker ---
+worker_main() {   # worker_main MODE RUN_ID DELAY
+  local mode="$1" run_id="$2" delay="${3:-0}" st own
+  mkdir -p "$(dirname "$LOGFILE")"
+  if [ "$(run_get RUN_ID)" != "$run_id" ]; then
+    # A leftover job of an earlier run (a login brought it back): remove it, do nothing.
+    own="$WORKER_PREFIX.$run_id"
+    rm -f "$LA_DIR/$own.plist"; launchctl bootout "$(lc_target "$own")" >/dev/null 2>&1
+    exit 0
+  fi
+  WORKER_LABEL="$(run_get LABEL)"; WORKER_PLIST="$(run_get PLIST)"
+  st="$(run_get STATUS)"
+  : > "$RESULT_FILE"
+  say "run $run_id ($mode), run file status '$st'"
+  if [ "$st" = running ]; then
+    # The previous incarnation died half way (a reboot, a kill). Do not carry on blindly.
+    lock_acquire || finish "NOT STARTED - another job holds the lock"
+    if [ -f "$JOURNAL" ]; then
+      reload_from_journal
+      rollback "an earlier run was interrupted"
+    fi
+    finish "NOTHING TO DO - the earlier run was interrupted before it changed anything"
+  fi
+  if [ "$delay" -gt 0 ] 2>/dev/null; then sleep "$delay"; fi
+  run_set STATUS running
+  lock_acquire || finish "NOT STARTED - another job holds the lock ($LOCKDIR)"
+  case "$mode" in
+    restart) restart_worker ;;
+    cutover) cutover_worker ;;
+    uncutover) uncutover_worker ;;
+    *) finish "FAILED - unknown worker mode '$mode'" ;;
+  esac
+}
+
+restart_cmd() {
+  local delay=0
+  if [ "${1:-}" = --in ] && [ -n "${2:-}" ]; then delay="$2"; fi
+  schedule restart "$delay"
+}
+
+usage() {
+  echo "usage: pi-agent-session-home enable | disable | status | restart [--in N]"
+  echo "       pi-agent-session-home cutover [--dry-run|--apply] [--force] [--allow-running ID[,ID]] [--in N]"
+  echo "       pi-agent-session-home uncutover [--in N]"
+}
+
+case "${1:-}" in
+  enable) enable ;;
+  disable) disable ;;
+  status) status ;;
+  restart) shift; restart_cmd "$@" ;;
+  cutover) shift; cutover_cmd "$@" ;;
+  uncutover) shift; uncutover_cmd "$@" ;;
+  _worker) shift; worker_main "$@" ;;
+  _pyh) shift; pyh "$@" ;;                  # tests: the embedded python helper
+  _classify) classify_hosts ;;               # tests: how the running hosts are classified
+  _extend_path) shift; extend_path "$@" ;;  # tests
+  *) usage; exit 2 ;;
+esac
