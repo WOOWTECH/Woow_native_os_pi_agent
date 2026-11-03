@@ -45,10 +45,13 @@ $u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/latest/downlo
 | `-NoAutostart` | 不登錄「登入時自動啟動」 |
 | `-SkipSmoke` | 最後不跑自我檢查 |
 | `-Port 30142` | 改用別的連接埠(預設 30141) |
-| `-DistroName`、`-LinuxUser`、`-InstallDir` | 改名稱或位置 |
+| `-DistroName`、`-LinuxUser` | 改 Linux 的名稱、使用者名稱(使用者不可以是 `root`,要小寫) |
+| `-InstallDir D:\Data` | 把 `PiAgent` 資料夾放在這裡(實際用 `D:\Data\PiAgent`;最後一層本來就叫 `PiAgent` 才照原樣用)。這樣解除安裝刪東西時,絕不會碰到你放在 `D:\Data` 的其他資料 |
 | `-RootfsPath`、`-BundlePath`、`-PiWebArtifact` | 離線或開發用:改用本機檔案(映像的雜湊值照樣會驗) |
 
-如果電腦還沒有 WSL,安裝到一半會要求重新開機。重開機後登入,會**自動接著跑完**;自動接續需要連網。
+如果電腦還沒有 WSL,安裝到一半會要求重新開機(重開機前請先把其他程式的工作存好,安裝程式不會強制關掉它們)。重開機後登入,會**自動接著跑完**;自動接續需要連網,最多等 2 分鐘,仍連不上會印出要手動輸入的指令。
+
+結束碼(給腳本用):`0` 成功;`1` 未預期的錯誤;`2` 你取消了;`3` 拒絕執行(那個 Linux 不是這個安裝程式建的);`10` 這台電腦不符合條件;`20` 需要重新開機;`30` WSL 本身裝不起來;`40` 準備 Linux 失敗;`50` 安裝 Pi Agent 失敗;`60` Windows 端設定失敗;`70` 裝好了但確認不通過。
 
 ## 安裝程式做了什麼
 
@@ -135,6 +138,8 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 .\install-wsl.ps1 -Uninstall                # 移除 Windows 端的設定,保留 Linux 和裡面的資料
 .\install-wsl.ps1 -Uninstall -PurgeData     # 連資料一起刪:先備份,再請你輸入發行版名稱確認
 ```
+
+不加 `-PurgeData` 的解除安裝,除了移除 Windows 端的設定,也會**停止並關掉 Linux 裡的 pi-web 服務**(`systemctl --user disable`),所以之後即使你自己開了 `wsl -d PiAgent`,它和 Omnigent host 也不會自己跑起來;重新安裝會再開啟。
 
 `-PurgeData` 會先 `wsl --export` 到 `%USERPROFILE%\PiAgent-backup-<日期>.tar`,**備份失敗就一個檔都不刪**;
 而且只會刪「這個安裝程式建立的」Linux(看 `/etc/pi-agent-distro`),不會刪同名的別人的 Linux。`wsl --unregister`

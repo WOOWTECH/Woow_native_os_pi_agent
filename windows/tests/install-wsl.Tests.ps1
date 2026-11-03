@@ -15,6 +15,7 @@ BeforeAll {
     $script:Copy = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), ('install-wsl-test-' + [guid]::NewGuid().ToString('N') + '.ps1'))
     [System.IO.File]::WriteAllText($script:Copy, $text, (New-Object System.Text.UTF8Encoding($true)))
     . $script:Copy
+    $script:RealRemoveEmptyDir = ${function:Remove-PaEmptyDir}
 
     $script:X64Hash = 'bb415d824822c4b878125729af451a5d18fb13d1cf5cbed9a7393ad64ac6039e'
     $script:Arm64Hash = '74478b5024d9047397ba79d17c27f73caf85ada4988f88cffc2892d65e6a806b'
@@ -33,7 +34,7 @@ BeforeAll {
 
     function New-TestOpts {
         param([hashtable]$Extra = @{})
-        $b = @{ Yes = $true; InstallDir = 'C:\PiAgentTest'; BundlePath = 'C:\b\bundle.tar.gz' }
+        $b = @{ Yes = $true; InstallDir = 'C:\Test\PiAgent'; BundlePath = 'C:\b\bundle.tar.gz' }
         foreach ($k in $Extra.Keys) { $b[$k] = $Extra[$k] }
         return (New-PaOptions -Bound $b)
     }
@@ -52,7 +53,7 @@ BeforeEach {
     $script:Calls = New-Object System.Collections.ArrayList
     $script:Streams = New-Object System.Collections.ArrayList
     $script:Scn = @{
-        Info             = [pscustomobject]@{ IsWindows = $true; Caption = 'Windows 11'; Build = 26100; Arch = 'x64'; RamGB = 16; FreeDiskGB = 100; HypervisorPresent = $true; VirtFirmware = $true; IsAdmin = $false }
+        Info             = [pscustomobject]@{ IsWindows = $true; Caption = 'Windows 11'; Build = 26100; Arch = 'x64'; RamGB = 16; FreeDiskGB = 100; HypervisorPresent = $true; VirtFirmware = $true; IsAdmin = $false; Is64BitProcess = $true }
         WslReady         = $true
         WslVersion       = '2.5.7.0'
         DistroExists     = $false
@@ -152,6 +153,7 @@ BeforeEach {
         if ($line -match 'is-system-running') { return [pscustomobject]@{ ExitCode = 0; Output = $script:Scn.SystemdState } }
         if ($line -match 'wsl-root-setup\.sh configure') { return [pscustomobject]@{ ExitCode = 0; Output = ('some log' + "`n" + 'configured uid=' + $script:Scn.Uid) } }
         if ($line -match 'wsl-root-setup\.sh linger') { return [pscustomobject]@{ ExitCode = 0; Output = ('linger uid=' + $script:Scn.Uid) } }
+        if ($line -match '/usr/bin/id -u ') { return [pscustomobject]@{ ExitCode = 0; Output = [string]$script:Scn.Uid } }
         if ($line -match '/bin/cat /etc/wsl\.conf') { return [pscustomobject]@{ ExitCode = 0; Output = $script:Scn.WslConf } }
         if ($line -match '--exec /bin/true$' -and $script:Scn.StartFail) {
             return [pscustomobject]@{ ExitCode = 1; Output = 'Wsl/Service/CreateInstance/CreateVm/HCS/HCS_E_HYPERV_NOT_INSTALLED' }
@@ -251,6 +253,8 @@ Describe 'small pure helpers' {
         Test-PaDistroName -Name '1abc' | Should -BeFalse
         Test-PaLinuxUser -Name 'piagent' | Should -BeTrue
         Test-PaLinuxUser -Name 'Pi' | Should -BeFalse
+        Test-PaLinuxUser -Name 'Bad' | Should -BeFalse
+        Test-PaLinuxUser -Name 'root' | Should -BeFalse
     }
     It 'picks the rootfs by architecture' {
         (Get-PaRootfsSpec -Arch 'x64').Sha256 | Should -Be $script:X64Hash
@@ -316,6 +320,9 @@ Describe 'small pure helpers' {
         $s | Should -Match 'RawContentStream'
         $s | Should -Match 'TrimStart\(\[char\]0xFEFF\)'
         $s | Should -Match "Uri 'https://example\.invalid/install-wsl\.ps1'"
+        $s | Should -Match 'for \(\$try = 1; \$try -le 24; \$try\+\+\)'
+        $s | Should -Match 'run this by hand'
+        $s | Should -Match 'PI_AGENT_WSL_NOEXIT'
         $f = New-PaResumeStub -Splat $splat -Kind 'file' -Source 'C:\dev\install-wsl.ps1'
         $f | Should -Match 'ReadAllText\(''C:\\dev\\install-wsl\.ps1'''
         $f | Should -Not -Match 'Invoke-WebRequest'
@@ -335,6 +342,7 @@ Describe 'preflight' {
     It 'exits 10 and says why: <Name>' -ForEach @(
         @{ Name = 'Windows build is too old'; Keyword = 'unsupported Windows build'; Apply = { $script:Scn.Info.Build = 19045 } }
         @{ Name = 'the architecture is unsupported'; Keyword = 'unsupported architecture'; Apply = { $script:Scn.Info.Arch = 'x86' } }
+        @{ Name = 'this is a 32-bit PowerShell'; Keyword = '32-bit PowerShell'; Apply = { $script:Scn.Info.Is64BitProcess = $false } }
         @{ Name = 'there is too little RAM'; Keyword = 'not enough RAM'; Apply = { $script:Scn.Info.RamGB = 3 } }
         @{ Name = 'there is too little disk space'; Keyword = 'not enough disk space'; Apply = { $script:Scn.Info.FreeDiskGB = 5 } }
         @{ Name = 'the web port is busy'; Keyword = 'port in use'; Apply = { $script:Scn.BusyPorts = @(30141) } }
@@ -378,6 +386,9 @@ Describe 'preflight' {
         Reset-PaMessages
         Invoke-PaMain -Options (New-TestOpts -Extra @{ Port = 80 }) | Should -Be 10
         Get-AllMessages | Should -Match 'invalid port'
+        Reset-PaMessages
+        Invoke-PaMain -Options (New-TestOpts -Extra @{ LinuxUser = 'root' }) | Should -Be 10
+        Get-AllMessages | Should -Match 'invalid Linux user name'
     }
 
     It 'rejects a bundle or rootfs path that does not exist' {
@@ -392,12 +403,12 @@ Describe 'a fresh install' {
         $o = New-TestOpts -Extra @{ BundlePath = '' }
         Invoke-PaMain -Options $o | Should -Be 0
 
-        $imp = Get-CallIndex -Pattern '^--import PiAgent C:\\PiAgentTest\\distro C:\\PiAgentTest\\cache\\ubuntu-24\.04\.5-wsl-amd64\.wsl --version 2$'
+        $imp = Get-CallIndex -Pattern '^--import PiAgent C:\\Test\\PiAgent\\distro C:\\Test\\PiAgent\\cache\\ubuntu-24\.04\.5-wsl-amd64\.wsl --version 2$'
         $imp | Should -BeGreaterThan -1
         $term = Get-CallIndex -Pattern '^--terminate PiAgent$'
         $term | Should -BeGreaterThan $imp
         (Get-CallIndex -Pattern 'wsl-root-setup\.sh configure --user piagent --interop on --win-system32 /mnt/c/Windows/System32 --installer-src /opt/pi-agent-installer$') | Should -BeGreaterThan $imp
-        (Get-CallIndex -Pattern '/bin/tar -xzf /mnt/c/PiAgentTest/cache/pi-agent-installer-1\.2\.3\.tar\.gz -C /opt/pi-agent-installer --strip-components=1$') | Should -BeGreaterThan $imp
+        (Get-CallIndex -Pattern '/bin/tar -xzf /mnt/c/Test/PiAgent/cache/pi-agent-installer-1\.2\.3\.tar\.gz -C /opt/pi-agent-installer --strip-components=1$') | Should -BeGreaterThan $imp
         (Get-CallIndex -Pattern 'is-system-running --wait$') | Should -BeGreaterThan $term
 
         Should -Invoke Save-PaFile -Times 1 -Exactly -ParameterFilter { $Url -match 'ubuntu-24\.04\.5-wsl-amd64\.wsl$' }
@@ -419,7 +430,7 @@ Describe 'a fresh install' {
         Should -Invoke Write-PaFile -ParameterFilter { $Path -match 'Pi Agent\.url$' } -Times 1 -Exactly
         Should -Invoke Start-PaKeepalive -Times 1 -Exactly
         Should -Invoke Register-PaAutostart -Times 1 -Exactly
-        Should -Invoke Set-PaUserPath -Times 1 -Exactly -ParameterFilter { $Entry -eq 'C:\PiAgentTest\bin' }
+        Should -Invoke Set-PaUserPath -Times 1 -Exactly -ParameterFilter { $Entry -eq 'C:\Test\PiAgent\bin' }
     }
 
     It 'uses the arm64 image and the arm64 pi-web build on an ARM64 PC' {
@@ -526,7 +537,7 @@ Describe 'failures on the way' {
     It 'accepts a -RootfsPath with the right hash and does not download' {
         $script:Scn.Existing = @('C:\b\bundle.tar.gz', 'C:\dl\ubuntu-amd64.wsl')
         Invoke-PaMain -Options (New-TestOpts -Extra @{ RootfsPath = 'C:\dl\ubuntu-amd64.wsl' }) | Should -Be 0
-        (Get-CallIndex -Pattern '^--import PiAgent C:\\PiAgentTest\\distro C:\\dl\\ubuntu-amd64\.wsl --version 2$') | Should -BeGreaterThan -1
+        (Get-CallIndex -Pattern '^--import PiAgent C:\\Test\\PiAgent\\distro C:\\dl\\ubuntu-amd64\.wsl --version 2$') | Should -BeGreaterThan -1
         Should -Invoke Save-PaFile -Times 0 -Exactly
     }
 
@@ -598,7 +609,7 @@ Describe 'WSL itself' {
         $script:Scn.RebootPending = $true
         Invoke-PaMain -Options (New-TestOpts) | Should -Be 20
         Should -Invoke Start-PaElevated -Times 1 -Exactly
-        Should -Invoke Write-PaFile -Times 1 -Exactly -ParameterFilter { $Path -eq 'C:\PiAgentTest\resume.ps1' -and $Bom }
+        Should -Invoke Write-PaFile -Times 1 -Exactly -ParameterFilter { $Path -eq 'C:\Test\PiAgent\resume.ps1' -and $Bom }
         Should -Invoke Set-PaRunOnce -Times 1 -Exactly -ParameterFilter { $Name -eq 'PiAgentWslResume' -and $Command -match 'resume\.ps1"$' -and $Command.Length -lt 260 }
         Should -Invoke Restart-PaComputer -Times 0 -Exactly
         (Get-CallIndex -Pattern '^--import ') | Should -Be -1
@@ -719,10 +730,22 @@ Describe 'uninstall' {
         Should -Invoke Stop-PaKeepalive -Times 1 -Exactly
         Should -Invoke Unregister-PaAutostart -Times 1 -Exactly
         Should -Invoke Remove-PaRunOnce -Times 1 -Exactly
-        Should -Invoke Set-PaUserPath -Times 1 -Exactly -ParameterFilter { $Entry -eq 'C:\PiAgentTest\bin' -and $Remove }
+        Should -Invoke Set-PaUserPath -Times 1 -Exactly -ParameterFilter { $Entry -eq 'C:\Test\PiAgent\bin' -and $Remove }
         Should -Invoke Remove-PaPath -Times 1 -Exactly -ParameterFilter { $Path -match 'Pi Agent\.url$' }
-        Should -Invoke Remove-PaPath -Times 0 -Exactly -ParameterFilter { $Path -eq 'C:\PiAgentTest' }
+        Should -Invoke Remove-PaPath -Times 0 -Exactly -ParameterFilter { $Path -eq 'C:\Test\PiAgent' }
         Should -Invoke Remove-PaPath -Times 0 -Exactly -ParameterFilter { $Path -match 'distro' }
+    }
+
+    It 'turns the Pi Agent service off in the Linux, so starting the distro later does not bring it back' {
+        Invoke-PaMain -Options (New-TestOpts -Extra @{ Uninstall = $true }) | Should -Be 0
+        (Get-CallIndex -Pattern 'XDG_RUNTIME_DIR=/run/user/1001 .*systemctl --user disable --now pi-web\.service$') | Should -BeGreaterThan -1
+    }
+
+    It 'with -PurgeData but no such Linux, never touches the distro folder (it may still hold a registered disk)' {
+        $script:Scn.DistroExists = $false
+        Invoke-PaMain -Options (New-TestOpts -Extra @{ Uninstall = $true; PurgeData = $true }) | Should -Be 0
+        (Get-CallIndex -Pattern '^--unregister ') | Should -Be -1
+        Should -Invoke Remove-PaPath -Times 0 -Exactly -ParameterFilter { $Path -match 'distro$' }
     }
 
     It 'with -PurgeData exports first, then unregisters, then removes what it put in the install directory, never the directory itself recursively' {
@@ -732,14 +755,14 @@ Describe 'uninstall' {
         $unreg = Get-CallIndex -Pattern '^--unregister PiAgent$'
         $exp | Should -BeGreaterThan -1
         $unreg | Should -BeGreaterThan $exp
-        Should -Invoke Remove-PaPath -Times 0 -Exactly -ParameterFilter { $Path -eq 'C:\PiAgentTest' }
+        Should -Invoke Remove-PaPath -Times 0 -Exactly -ParameterFilter { $Path -eq 'C:\Test\PiAgent' }
         Should -Invoke Remove-PaPath -Times 1 -ParameterFilter { $Path -match 'distro$' }
-        Should -Invoke Remove-PaEmptyDir -Times 1 -Exactly -ParameterFilter { $Path -eq 'C:\PiAgentTest' }
+        Should -Invoke Remove-PaEmptyDir -Times 1 -Exactly -ParameterFilter { $Path -eq 'C:\Test\PiAgent' }
     }
 
     It 'refuses -PurgeData for a Linux this installer did not create, and touches nothing' {
         $script:Scn.HasMarker = $false
-        Invoke-PaMain -Options (New-TestOpts -Extra @{ Uninstall = $true; PurgeData = $true }) | Should -Be 1
+        Invoke-PaMain -Options (New-TestOpts -Extra @{ Uninstall = $true; PurgeData = $true }) | Should -Be 3
         (Get-CallIndex -Pattern '^--export ') | Should -Be -1
         (Get-CallIndex -Pattern '^--unregister ') | Should -Be -1
         (Get-CallIndex -Pattern '^--terminate ') | Should -Be -1
@@ -762,7 +785,7 @@ Describe 'uninstall' {
     It 'asks the user to type the distro name and cancels on anything else' {
         $script:Scn.Existing = @('C:\Users\tester\PiAgent-backup-20261103-1200.tar')
         $script:Scn.Answer = 'nope'
-        Invoke-PaMain -Options (New-TestOpts -Extra @{ Uninstall = $true; PurgeData = $true; Yes = $false }) | Should -Be 1
+        Invoke-PaMain -Options (New-TestOpts -Extra @{ Uninstall = $true; PurgeData = $true; Yes = $false }) | Should -Be 2
         (Get-CallIndex -Pattern '^--export ') | Should -BeGreaterThan -1
         (Get-CallIndex -Pattern '^--unregister ') | Should -Be -1
     }
@@ -772,5 +795,41 @@ Describe 'uninstall' {
         $script:Scn.Answer = 'PiAgent'
         Invoke-PaMain -Options (New-TestOpts -Extra @{ Uninstall = $true; PurgeData = $true; Yes = $false }) | Should -Be 0
         (Get-CallIndex -Pattern '^--unregister PiAgent$') | Should -BeGreaterThan -1
+    }
+}
+
+Describe 'the install directory' {
+    It 'is the folder that holds PiAgent, so a delete never reaches the user other folders: <Given>' -ForEach @(
+        @{ Given = 'D:\'; Want = 'D:\PiAgent' }
+        @{ Given = 'D:\Data'; Want = 'D:\Data\PiAgent' }
+        @{ Given = 'D:\Apps\PiAgent'; Want = 'D:\Apps\PiAgent' }
+        @{ Given = 'D:\Apps\piagent\'; Want = 'D:\Apps\piagent' }
+    ) {
+        (New-PaOptions -Bound @{ InstallDir = $Given }).InstallDir | Should -Be $Want
+    }
+}
+
+Describe 'Remove-PaEmptyDir' {
+    It 'removes an empty directory and leaves one that holds files' {
+        $empty = Join-Path $TestDrive 'empty'
+        $full = Join-Path $TestDrive 'full'
+        New-Item -ItemType Directory -Path $empty | Out-Null
+        New-Item -ItemType Directory -Path $full | Out-Null
+        Set-Content -LiteralPath (Join-Path $full 'keep.txt') -Value 'x'
+        & $script:RealRemoveEmptyDir -Path $empty
+        & $script:RealRemoveEmptyDir -Path $full
+        Test-Path -LiteralPath $empty | Should -BeFalse
+        Test-Path -LiteralPath (Join-Path $full 'keep.txt') | Should -BeTrue
+    }
+}
+
+Describe 'the final message' {
+    It 'gives the one-line command for removal when no install-wsl.ps1 is on the machine' {
+        Set-PaStamp -Stamp @{ Version = '1.2.3'; BundleUrl = 'https://example.invalid/b.tar.gz'; BundleSha256 = ('b' * 64); ScriptUrl = 'https://example.invalid/install-wsl.ps1'; PiWebUrlX64 = 'x'; PiWebUrlArm64 = 'x' }
+        Show-PaNextSteps -Opts (New-TestOpts)
+        $m = Get-AllMessages
+        $m | Should -Match 'Invoke-WebRequest'
+        $m | Should -Match 'example\.invalid/install-wsl\.ps1'
+        $m | Should -Match '-Uninstall'
     }
 }

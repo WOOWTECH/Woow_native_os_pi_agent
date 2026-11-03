@@ -85,3 +85,12 @@ printf '$x = "@@NEW_THING@@"\n' >> "$R/windows/install-wsl.ps1"
 run bb "$OUT" 0.9.9
 [ "$rc" != 0 ] && ok "bundle: refuses a script with a placeholder it does not know" || no "bundle: refuses a script with a placeholder it does not know"
 has "bundle: and names it" "NEW_THING" "$out"
+
+# A Windows git is usually set to core.autocrlf=true, and `git archive` honours it: the first run on a
+# hosted Windows runner produced a bundle whose scripts had CRLF, and bash inside the VM died at
+# `set -euo pipefail\r`. The bundle has to be LF whatever the machine's git is configured to do.
+bundle_world bundle-crlf
+run sbx GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=true "$R/scripts/build-wsl-bundle.sh" "$OUT" dev
+eq "bundle: a build on a CRLF-converting git succeeds" "0" "$rc"
+CRS="$(tar -xzOf "$OUT/pi-agent-installer-dev.tar.gz" woow-pi-agent-installer/install.sh 2>/dev/null | tr -cd '\r' | wc -c | tr -d ' ')"
+eq "bundle: its scripts are still LF (no carriage returns)" "0" "$CRS"

@@ -93,6 +93,19 @@ chk "skill visible via ~/.agents/skills"   '[ -e "$HOME/.agents/skills/qa-skill/
 # list` health-checks every server before printing it, so a reachable-but-slow
 # host (example.com) makes this assertion flaky for a reason that has nothing
 # to do with sharing.
+# Section 6 overwrites mcp.json -- the file that holds the user's OWN MCP servers on an install
+# somebody already uses (the Windows installer runs this smoke test again on every re-run). Keep
+# a copy and put it back, also when the run is interrupted.
+MCP_JSON="$PI_AGENT_DATA_DIR/mcp.json"
+MCP_SAVED="$(mktemp "${TMPDIR:-/tmp}/pa-smoke-mcp.XXXXXX")"
+if [ -f "$MCP_JSON" ]; then cp -p "$MCP_JSON" "$MCP_SAVED"; MCP_HAD=1; else MCP_HAD=0; fi
+restore_mcp() {
+  [ -n "${MCP_SAVED:-}" ] || return 0
+  if [ "$MCP_HAD" = 1 ]; then cp -p "$MCP_SAVED" "$MCP_JSON"; else printf '%s' '{"mcpServers":{}}' > "$MCP_JSON"; fi
+  rm -f "$MCP_SAVED"; MCP_SAVED=""
+}
+trap restore_mcp EXIT
+
 echo "## 6. MCP sharing round-trip (add two, then prune one)"
 printf '%s' '{"mcpServers":{"qa_http":{"url":"http://127.0.0.1:1/mcp"},"qa_cmd":{"command":"echo","args":["hi"]}}}' > "$PI_AGENT_DATA_DIR/mcp.json"
 node "$PI_AGENT_HOME/bin/pi-agent-share-state.mjs" >/dev/null 2>&1
@@ -119,7 +132,7 @@ chk "serves after restart" '[ "$(code /api/home)" = 200 ]'
 
 echo "## cleanup test artifacts"
 rm -rf "$PI_AGENT_DATA_DIR/skills/qa-skill"
-printf '%s' '{"mcpServers":{}}' > "$PI_AGENT_DATA_DIR/mcp.json"
+restore_mcp
 node "$PI_AGENT_HOME/bin/pi-agent-share-state.mjs" >/dev/null 2>&1
 
 echo

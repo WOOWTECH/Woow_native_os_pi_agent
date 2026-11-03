@@ -123,6 +123,15 @@ function Write-PaMsg {
 # Pure helpers (no side effects; the unit tests lean on these)
 # ---------------------------------------------------------------------------
 
+# The command the docs give for installing, for use in messages. It decodes the bytes as UTF-8 itself
+# because Windows PowerShell 5.1 guesses the encoding from headers that a release asset does not have.
+function Get-PaOneLiner {
+    param([string]$Url, [string]$Extra = '')
+    $line = '& ([ScriptBlock]::Create(([Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing ''' + $Url + ''').RawContentStream.ToArray())).TrimStart([char]0xFEFF)))'
+    if (-not [string]::IsNullOrEmpty($Extra)) { $line = $line + ' ' + $Extra }
+    return $line
+}
+
 function Get-PaStamp {
     return $script:Stamp
 }
@@ -150,7 +159,10 @@ function Test-PaDistroName {
 
 function Test-PaLinuxUser {
     param([string]$Name)
-    return ($Name -match '^[a-z_][a-z0-9_-]{0,30}$')
+    # -match is case-insensitive in PowerShell; scripts/wsl-root-setup.sh is not, and it refuses root.
+    # Better to refuse here than after the 371 MB download and the import.
+    if ($Name -ceq 'root') { return $false }
+    return ($Name -cmatch '^[a-z_][a-z0-9_-]{0,30}$')
 }
 
 # Windows path -> path inside WSL (/mnt/<drive>/...). UNC paths are not supported.
@@ -173,6 +185,18 @@ function ConvertTo-WslPath {
     if ($rest.Length -gt 1) { $rest = $rest.TrimEnd('/') }
     if ($rest -eq '/') { $rest = '' }
     return ('/mnt/' + $drive + $rest)
+}
+
+# -InstallDir says where the PiAgent folder goes. The uninstaller deletes folders under it (distro,
+# cache, bin), so it only ever works inside a folder named PiAgent that is its own: D:\ becomes
+# D:\PiAgent, D:\Data becomes D:\Data\PiAgent, and D:\Apps\PiAgent is used as it is. Otherwise
+# -InstallDir D:\ would make the uninstaller delete the user's own D:\bin and D:\cache.
+function Get-PaInstallDirUnder {
+    param([string]$Path)
+    $full = Resolve-PaFullPath -Path $Path
+    $trimmed = $full.TrimEnd('\')
+    if ([System.IO.Path]::GetFileName($trimmed) -ieq 'PiAgent') { return $trimmed }
+    return [System.IO.Path]::Combine($full, 'PiAgent')
 }
 
 function Resolve-PaFullPath {
@@ -332,7 +356,7 @@ function New-PaOptions {
     if ([string]::IsNullOrEmpty([string]$o['InstallDir'])) {
         $o['InstallDir'] = [System.IO.Path]::Combine((Get-PaLocalAppData), 'PiAgent')
     } else {
-        $o['InstallDir'] = Resolve-PaFullPath -Path ([string]$o['InstallDir'])
+        $o['InstallDir'] = Get-PaInstallDirUnder -Path ([string]$o['InstallDir'])
     }
     # A resume after a reboot runs from another working directory: keep only absolute paths.
     foreach ($k in 'RootfsPath', 'BundlePath') {
@@ -398,7 +422,7 @@ function ConvertTo-PaFriendlyWslError {
     if ([string]::IsNullOrEmpty($Text)) { return $null }
     # UNVERIFIED(E14): the exact error text of a machine without usable virtualization.
     if ($Text -match 'HCS_E_HYPERV_NOT_INSTALLED|0x80370102|Virtual Machine Platform|not supported with your current machine configuration') {
-        return '這台電腦目前不能啟動 WSL2。請到 BIOS/UEFI 開啟虛擬化(Intel VT-x 或 AMD-V);如果這是虛擬機,虛擬機軟體要支援巢狀虛擬化(Parallels 在 Apple 晶片上不支援)。改好、重新開機後再重跑安裝。(virtualization is off or not available)'
+        return '這台電腦目前不能啟動 WSL2。請依序檢查:(1) Windows 的「虛擬機器平台」沒開:用系統管理員身分開 PowerShell,執行 wsl --install --no-distribution,重新開機後再重跑安裝;(2) BIOS/UEFI 沒開虛擬化(Intel VT-x 或 AMD-V);(3) 這是虛擬機:虛擬機軟體要支援巢狀虛擬化(Parallels 在 Apple 晶片上不支援)。(virtualization is off or not available)'
     }
     if ($Text -match 'optional component is not enabled|WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED|0x8007019e') {
         return 'Windows 的 WSL 功能還沒啟用。請重新開機後再重跑安裝。(WSL optional component is not enabled)'
@@ -425,14 +449,30 @@ function New-PaResumeStub {
     if ($Kind -eq 'url') {
         # UNVERIFIED(E1): GitHub serves release assets without a charset, so the bytes are decoded by hand.
         [void]$L.Add('    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12')
-        [void]$L.Add('    $resp = Invoke-WebRequest -UseBasicParsing -Uri ' + (ConvertTo-PaPsLiteral -Value $Source))
-        [void]$L.Add('    $bytes = $resp.RawContentStream.ToArray()')
-        [void]$L.Add('    $text = [System.Text.Encoding]::UTF8.GetString($bytes)')
+        # Windows removes a RunOnce entry BEFORE it runs, and at logon the network is often not up yet:
+        # try for two minutes, and say what to type if it still fails.
+        [void]$L.Add('    $text = $null')
+        [void]$L.Add('    $lastError = ''''')
+        [void]$L.Add('    for ($try = 1; $try -le 24; $try++) {')
+        [void]$L.Add('        try {')
+        [void]$L.Add('            $resp = Invoke-WebRequest -UseBasicParsing -Uri ' + (ConvertTo-PaPsLiteral -Value $Source))
+        [void]$L.Add('            $text = [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray())')
+        [void]$L.Add('            break')
+        [void]$L.Add('        } catch {')
+        [void]$L.Add('            $lastError = $_.Exception.Message')
+        [void]$L.Add('            Start-Sleep -Seconds 5')
+        [void]$L.Add('        }')
+        [void]$L.Add('    }')
+        [void]$L.Add('    if ($null -eq $text) {')
+        [void]$L.Add('        throw (''could not download the installer for two minutes (check the network): '' + $lastError + '' ... run this by hand: '' + ' + (ConvertTo-PaPsLiteral -Value (Get-PaOneLiner -Url $Source)) + ')')
+        [void]$L.Add('    }')
     } else {
         [void]$L.Add('    $text = [System.IO.File]::ReadAllText(' + (ConvertTo-PaPsLiteral -Value $Source) + ', [System.Text.Encoding]::UTF8)')
     }
     [void]$L.Add('    $text = $text.TrimStart([char]0xFEFF)')
     [void]$L.Add('    $sb = [ScriptBlock]::Create($text)')
+    # The installer exits when it thinks it runs as a file, which would end this stub before it can show anything.
+    [void]$L.Add('    $env:PI_AGENT_WSL_NOEXIT = ''1''')
     [void]$L.Add('    & $sb @splat')
     [void]$L.Add('} catch {')
     [void]$L.Add('    Write-Host (''Pi Agent install could not continue: '' + $_.Exception.Message) -ForegroundColor Red')
@@ -598,6 +638,7 @@ function Get-PaSystemInfo {
         HypervisorPresent = $null
         VirtFirmware      = $null
         IsAdmin           = $false
+        Is64BitProcess    = $true
     }
     try {
         if ($PSVersionTable.PSVersion.Major -ge 6 -and -not $IsWindows) { $info['IsWindows'] = $false }
@@ -645,6 +686,11 @@ function Get-PaSystemInfo {
         $null = $_
     }
     try {
+        $info['Is64BitProcess'] = [Environment]::Is64BitProcess
+    } catch {
+        $null = $_
+    }
+    try {
         $id = [Security.Principal.WindowsIdentity]::GetCurrent()
         $pr = New-Object Security.Principal.WindowsPrincipal($id)
         $info['IsAdmin'] = $pr.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -687,7 +733,12 @@ function Test-RebootPending {
 }
 
 function Restart-PaComputer {
-    Restart-Computer -Force
+    # No -Force: it closes the other programs without letting them ask to save their work.
+    try {
+        Restart-Computer
+    } catch {
+        Write-PaMsg 'Warn' ('沒辦法自動重新開機({0})。請存好其他工作後,自己重新開機。(restart failed)' -f $_.Exception.Message)
+    }
 }
 
 # Runs one PowerShell command line elevated and returns its exit code. Only used for "wsl --install":
@@ -998,6 +1049,11 @@ function Test-PaPreflight {
         Write-PaMsg 'Error' '這個安裝程式只能在 Windows 上執行。(Windows only)'
         $bad = $true
     }
+    # A 32-bit PowerShell (the x86 console or ISE) is redirected away from wsl.exe and would report WSL as missing.
+    if ($info.PSObject.Properties['Is64BitProcess'] -and -not $info.Is64BitProcess) {
+        Write-PaMsg 'Error' '這是 32 位元的 PowerShell,看不到 WSL。請改開 64 位元的「Windows PowerShell」(開始功能表裡名稱後面沒有 (x86) 的那個),再重跑。(32-bit PowerShell cannot see wsl.exe)'
+        $bad = $true
+    }
     if ($null -ne $info.Build -and $info.Build -lt $script:PaMinBuild) {
         Write-PaMsg 'Error' ('這台電腦的 Windows 版本太舊(build {0})。需要 Windows 11 22H2(build {1})或更新,請先更新 Windows 再重試。(unsupported Windows build)' -f $info.Build, $script:PaMinBuild)
         $bad = $true
@@ -1044,7 +1100,7 @@ function Test-PaPreflight {
 
     $state = Get-PaDistroState -Name $Opts.DistroName
     if ($state.Exists -and -not $state.HasMarker) {
-        Write-PaMsg 'Error' ('已經有一個叫 {0} 的 WSL 發行版,而且不是這個安裝程式建立的。請用 -DistroName 換一個名字。(distro name taken)' -f $Opts.DistroName)
+        Write-PaMsg 'Error' ('已經有一個叫 {0} 的 WSL 發行版,而且不是這個安裝程式建立的。請用 -DistroName 換一個名字;如果它是上次安裝中途被中斷留下的,先執行 wsl --unregister {0} 再重跑。(distro name taken)' -f $Opts.DistroName)
         $bad = $true
     }
     if (-not ($state.Exists -and $state.HasMarker)) {
@@ -1105,7 +1161,7 @@ function Invoke-PaStepReboot {
     } else {
         Write-PaMsg 'Info' '重新開機後,請再執行一次同樣的安裝指令。'
     }
-    if (Read-PaConfirm -Prompt '現在重新開機嗎?' -ValueWhenYes $false -Auto $Opts.Yes) {
+    if (Read-PaConfirm -Prompt '現在重新開機嗎?請先把其他程式裡的工作存好。' -ValueWhenYes $false -Auto $Opts.Yes) {
         Restart-PaComputer
     } else {
         Write-PaMsg 'Info' '請你自己找時間重新開機(安裝程式不會自動重開機)。'
@@ -1435,6 +1491,9 @@ function Show-PaNextSteps {
     $uninstallCmd = '.\install-wsl.ps1 -Uninstall'
     if (-not [string]::IsNullOrEmpty($script:PaSelfPath)) {
         $uninstallCmd = '& "' + $script:PaSelfPath + '" -Uninstall'
+    } elseif (Test-Stamped) {
+        # Installed with the one-line command: there is no file to run, so give the one-liner again.
+        $uninstallCmd = Get-PaOneLiner -Url ([string](Get-PaStamp).ScriptUrl) -Extra '-Uninstall'
     }
     Write-PaMsg 'Ok' '完成!Pi Agent 已經可以使用。'
     Write-PaMsg 'Info' '接下來:'
@@ -1491,12 +1550,35 @@ function Invoke-PaStepVerify {
 # Uninstall
 # ---------------------------------------------------------------------------
 
-function Remove-PaInstallDir {
+# What the installer put in InstallDir besides the distro's disk.
+function Remove-PaInstallFiles {
     param([hashtable]$Paths)
-    foreach ($p in @($Paths.DistroDir, $Paths.CacheDir, $Paths.BinDir, $Paths.Keepalive, $Paths.ResumeStub, $Paths.Log)) {
+    foreach ($p in @($Paths.CacheDir, $Paths.BinDir, $Paths.Keepalive, $Paths.ResumeStub, $Paths.Log)) {
         Remove-PaPath -Path $p
     }
+}
+
+# Only after a successful --unregister: until then DistroDir may hold the ext4.vhdx of a distro that is
+# still registered (under another name, or because `wsl -l` failed), and deleting that is deleting data.
+function Remove-PaInstallDir {
+    param([hashtable]$Paths)
+    Remove-PaInstallFiles -Paths $Paths
+    Remove-PaPath -Path $Paths.DistroDir
     Remove-PaEmptyDir -Path $Paths.InstallDir
+}
+
+# Stops Pi Agent in the Linux and turns its service off, so that a later start of the distro -- even a
+# plain "wsl -d PiAgent" -- does not bring pi-web, the Omnigent host and the Windows interop back. A
+# reinstall turns the service on again (install.sh does `systemctl --user enable --now`).
+function Stop-PaPiAgentInVm {
+    param([string]$Distro, [string]$User)
+    $r = Invoke-PaVm -Distro $Distro -User 'root' -Exec @('/usr/bin/id', '-u', $User)
+    $uid = ([string]$r.Output).Trim()
+    if ($r.ExitCode -eq 0 -and $uid -match '^\d+$') {
+        $envArgs = @('/usr/bin/env', ('XDG_RUNTIME_DIR=/run/user/' + $uid), ('DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/' + $uid + '/bus'))
+        [void](Invoke-Wsl -Arguments (@('-d', $Distro, '-u', $User, '--exec') + $envArgs + @('/usr/bin/systemctl', '--user', 'disable', '--now', 'pi-web.service')))
+    }
+    [void](Invoke-Wsl -Arguments @('-d', $Distro, '-u', $User, '--exec', ('/home/' + $User + '/.local/share/pi-agent/bin/pi-agent'), 'stop'))
 }
 
 function Invoke-PaUninstall {
@@ -1521,7 +1603,7 @@ function Invoke-PaUninstall {
     Remove-PaPath -Path $Paths.ResumeStub
     Write-PaMsg 'Ok' 'Windows 端的設定已移除。'
     if ($state.Exists -and $state.HasMarker) {
-        [void](Invoke-Wsl -Arguments @('-d', $name, '-u', $user, '--exec', ('/home/' + $user + '/.local/share/pi-agent/bin/pi-agent'), 'stop'))
+        Stop-PaPiAgentInVm -Distro $name -User $user
         [void](Invoke-Wsl -Arguments @('--terminate', $name))
         Write-PaMsg 'Ok' ('已停止 Linux「{0}」裡的 Pi Agent。' -f $name)
     } elseif ($state.Exists) {
@@ -1533,12 +1615,16 @@ function Invoke-PaUninstall {
     }
     if (-not $state.Exists) {
         Write-PaMsg 'Info' ('找不到 Linux「{0}」,沒有資料要刪。' -f $name)
-        Remove-PaInstallDir -Paths $Paths
+        Remove-PaInstallFiles -Paths $Paths
+        if (Test-PaPath -Path $Paths.DistroDir) {
+            Write-PaMsg 'Warn' ('資料夾 {0} 沒有動。如果 wsl -l -v 還看得到 Linux,請自己用 wsl --unregister <名稱> 刪;確定沒有了再手動刪這個資料夾。(distro folder left alone)' -f $Paths.DistroDir)
+        }
+        Remove-PaEmptyDir -Path $Paths.InstallDir
         return 0
     }
     if (-not $state.HasMarker) {
         Write-PaMsg 'Error' ('Linux「{0}」不是這個安裝程式建立的(找不到 /etc/pi-agent-distro),所以不會刪除它。要刪請自己執行 wsl --unregister {0}。(not created by this installer, nothing was deleted)' -f $name)
-        return 1
+        return 3
     }
     # UNVERIFIED(E11): wsl --export of a distro with a few GB of data can take minutes.
     $stamp = (Get-PaNow).ToString('yyyyMMdd-HHmm')
@@ -1555,7 +1641,7 @@ function Invoke-PaUninstall {
         $typed = Read-PaLine -Prompt ('要繼續請輸入發行版名稱 ' + $name)
         if ($typed -ne $name) {
             Write-PaMsg 'Info' '已取消,沒有刪除任何資料。'
-            return 1
+            return 2
         }
     }
     $r = Invoke-Wsl -Arguments @('--unregister', $name)
@@ -1583,7 +1669,9 @@ function Invoke-PaMainCore {
     param([hashtable]$Opts)
     $paths = Get-PaPaths -Opts $Opts
     if (-not $Opts.DryRun) { Initialize-PaLog -Paths $paths }
-    Write-PaMsg 'Step' ('Pi Agent Windows 版(WSL2)安裝程式  版本 {0}' -f (Get-PaStamp).Version)
+    $shownVersion = 'dev'
+    if (Test-Stamped) { $shownVersion = [string](Get-PaStamp).Version }
+    Write-PaMsg 'Step' ('Pi Agent Windows 版(WSL2)安裝程式  版本 {0}' -f $shownVersion)
     if ($Opts.DryRun) { Write-PaMsg 'Info' '試跑模式:只檢查,不會改變任何東西。' }
 
     if ($Opts.Uninstall) { return (Invoke-PaUninstall -Opts $Opts -Paths $paths) }
@@ -1613,8 +1701,9 @@ function Invoke-PaMainCore {
     return 0
 }
 
-# Returns the exit code: 0 ok; 10 preflight; 20 reboot needed; 30 WSL; 40 distro; 50 install;
-# 60 Windows integration; 70 verify.
+# Returns the exit code: 0 ok; 1 unexpected error; 2 cancelled by the user; 3 refused (the Linux is not
+# this installer's); 10 preflight; 20 reboot needed; 30 WSL; 40 distro; 50 install; 60 Windows
+# integration; 70 verify.
 function Invoke-PaMain {
     param([hashtable]$Options)
     $script:PaDry = [bool]$Options.DryRun
@@ -1652,6 +1741,6 @@ if ($env:PI_AGENT_WSL_TEST -ne '1') {
         Write-Host ('Pi Agent: ' + $_.Exception.Message) -ForegroundColor Red
     }
     # File mode: leave with the code. Script block / iex mode: never close the user's console.
-    if ($PSCommandPath) { exit $paCode }
+    if ($PSCommandPath -and $env:PI_AGENT_WSL_NOEXIT -ne '1') { exit $paCode }
     $global:LASTEXITCODE = $paCode
 }

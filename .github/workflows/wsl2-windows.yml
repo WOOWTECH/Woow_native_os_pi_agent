@@ -66,17 +66,22 @@ jobs:
       # ANSI and would break on the Chinese messages. Parse the BOM copy with this very shell.
       - name: Parse check
         run: |
-          $text = [System.IO.File]::ReadAllText((Resolve-Path 'windows/install-wsl.ps1').Path, [System.Text.Encoding]::UTF8)
-          $copy = Join-Path $env:RUNNER_TEMP 'install-wsl-bom.ps1'
-          [System.IO.File]::WriteAllText($copy, $text, (New-Object System.Text.UTF8Encoding($true)))
-          $tokens = $null
-          $errs = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile($copy, [ref]$tokens, [ref]$errs)
-          if ($errs -and $errs.Count -gt 0) {
-            foreach ($e in $errs) { Write-Host ('::error file=windows/install-wsl.ps1,line=' + $e.Extent.StartLineNumber + '::' + $e.Message) }
-            exit 1
+          $failed = $false
+          foreach ($rel in 'windows/install-wsl.ps1', 'windows/tests/install-wsl.Tests.ps1') {
+            $text = [System.IO.File]::ReadAllText((Resolve-Path $rel).Path, [System.Text.Encoding]::UTF8)
+            $copy = Join-Path $env:RUNNER_TEMP ('parse-' + [System.IO.Path]::GetFileName($rel))
+            [System.IO.File]::WriteAllText($copy, $text, (New-Object System.Text.UTF8Encoding($true)))
+            $tokens = $null
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($copy, [ref]$tokens, [ref]$errs)
+            if ($errs -and $errs.Count -gt 0) {
+              foreach ($e in $errs) { Write-Host ('::error file=' + $rel + ',line=' + $e.Extent.StartLineNumber + '::' + $e.Message) }
+              $failed = $true
+            } else {
+              Write-Host ($rel + ' parses cleanly under PowerShell ' + $PSVersionTable.PSVersion)
+            }
           }
-          Write-Host ('parses cleanly under PowerShell ' + $PSVersionTable.PSVersion)
+          if ($failed) { exit 1 }
 
       - name: Pester
         run: |
@@ -92,18 +97,19 @@ jobs:
           try {
             $L = New-Object System.Collections.ArrayList
             [void]$L.Add(('passed ' + $r.PassedCount + ', failed ' + $r.FailedCount + ', blocks failed ' + $r.FailedBlocksCount + ', containers failed ' + $r.FailedContainersCount + ', not run ' + $r.NotRunCount))
-            foreach ($t in @($r.Failed)) {
-              $err = (@($t.ErrorRecord) | ForEach-Object { "$_" }) -join ' | '
-              [void]$L.Add('* ' + $t.ExpandedPath + ' :: ' + $err)
-            }
+            # A file that cannot even start fails all its tests with no message of their own: say why first.
             foreach ($c in @($r.Containers)) {
-              if ($c.Result -eq 'Failed' -and $c.ErrorRecord) {
-                $err = (@($c.ErrorRecord) | ForEach-Object { "$_" }) -join ' | '
-                [void]$L.Add('* container ' + $c.Name + ' :: ' + $err)
+              foreach ($e in @($c.ErrorRecord)) { [void]$L.Add('CONTAINER ERROR: ' + ($e | Out-String).Trim()) }
+              foreach ($b in @($c.Blocks)) {
+                foreach ($e in @($b.ErrorRecord)) { [void]$L.Add('BLOCK ERROR (' + $b.Name + '): ' + ($e | Out-String).Trim()) }
               }
             }
+            foreach ($t in @($r.Failed | Select-Object -First 8)) {
+              $err = (@($t.ErrorRecord) | ForEach-Object { ($_ | Out-String).Trim() }) -join ' | '
+              [void]$L.Add('* ' + $t.ExpandedPath + ' :: ' + $err)
+            }
             $text = ($L -join "`n")
-            if ($text.Length -gt 7000) { $text = $text.Substring(0, 7000) }
+            if ($text.Length -gt 6500) { $text = $text.Substring(0, 6500) }
             $enc = $text.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
             Write-Host ('::notice title=Pester result (${{ matrix.shell }})::' + $enc)
           } catch {
@@ -115,7 +121,7 @@ jobs:
       # the user, and the file has no BOM in the repository (the release adds it), so those two rules
       # would only be noise.
       - name: PSScriptAnalyzer
-        if: matrix.shell == 'pwsh'
+        if: always() && matrix.shell == 'pwsh'
         shell: pwsh
         run: |
           $skip = @('PSAvoidUsingWriteHost', 'PSUseShouldProcessForStateChangingFunctions', 'PSUseBOMForUnicodeEncodedFile', 'PSAvoidGlobalVars', 'PSUseSingularNouns')
@@ -187,7 +193,7 @@ jobs:
           $script = Join-Path (Get-Location).Path 'dist\install-wsl.ps1'
           [System.IO.File]::WriteAllText($script, $text, (New-Object System.Text.UTF8Encoding($true)))
           $bundle = Join-Path (Get-Location).Path 'dist\pi-agent-installer-dev.tar.gz'
-          & $script -Yes -NoAutostart -BundlePath $bundle -PiWebArtifact 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.4/piweb-0.10.0-linux-x64.tar.gz' 2>&1 | Tee-Object -FilePath ci-out/10-install.txt
+          & $script -Yes -NoAutostart -BundlePath $bundle -PiWebArtifact 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.4/piweb-0.10.0-linux-x64.tar.gz' *>&1 | Tee-Object -FilePath ci-out/10-install.txt
           $code = $LASTEXITCODE
           ('install-wsl.ps1 exit code: ' + $code) | Tee-Object -FilePath ci-out/10-install.txt -Append
           exit $code

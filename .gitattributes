@@ -1,0 +1,8 @@
+# Everything here runs on Linux or macOS, and must keep LF also when the repository is checked out
+# or archived on Windows (core.autocrlf=true): bash stops at `set -euo pipefail\r`. The Windows
+# installer's bundle is a `git archive`, and a hosted Windows runner is such a machine.
+*.sh          text eol=lf
+*.mjs         text eol=lf
+*.py          text eol=lf
+rootfs/bin/*  text eol=lf
+VERSION       text eol=lf

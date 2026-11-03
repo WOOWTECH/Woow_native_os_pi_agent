@@ -51,7 +51,10 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/pa-wsl-bundle.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
 name="pi-agent-installer-$ver.tar.gz"
-git archive --format=tar.gz --prefix="$PREFIX/" -o "$work/$name" HEAD
+# core.autocrlf=true (the Windows default) is applied by `git archive` too, and bash inside the VM stops
+# at `set -euo pipefail\r`: found on the first hosted-runner run. .gitattributes pins LF for the scripts;
+# this keeps any other file as committed as well.
+git -c core.autocrlf=false -c core.eol=lf archive --format=tar.gz --prefix="$PREFIX/" -o "$work/$name" HEAD
 sha="$(sha256 "$work/$name")"
 printf '%s  %s\n' "$sha" "$name" > "$work/$name.sha256"
 
