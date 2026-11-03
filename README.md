@@ -21,7 +21,7 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 
 ### macOS — download and double-click
 
-[WoowPiAgent-0.2.1-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.1/WoowPiAgent-0.2.1-macos-arm64.pkg)
+[WoowPiAgent-0.2.3-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.3/WoowPiAgent-0.2.3-macos-arm64.pkg)
 is signed with a Developer ID and notarized, so Gatekeeper opens it without a
 warning. It fetches the rest of the stack while it installs.
 
@@ -34,7 +34,7 @@ needed and the build disappears entirely.
 ```bash
 git clone https://github.com/WOOWTECH/Woow_native_os_pi_agent
 cd Woow_native_os_pi_agent
-PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.1/piweb-0.10.0-linux-x64.tar.gz \
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.3/piweb-0.10.0-linux-x64.tar.gz \
   ./install.sh
 ```
 
@@ -63,10 +63,11 @@ another host of the account holds.
 | | |
 |---|---|
 | **A. Side by side** (the default) | A second install next to a host that keeps running — the owner's Omnigent app, an older pi-agent. Nothing to do: the name is already unique. `pi-agent-host-name check` shows it, `pi-agent-host-name set NAME` changes it. |
-| **B. Replace a host** | The same name **on purpose**, so the old host's conversations follow: stop the old host, `pi-agent-host-name set "<its exact name>"`, connect with `PI_AGENT_TAKEOVER_HOST_ID=<first 8+ hex characters of its id>`, then [`pi-agent-session-home`](docs/SESSION-HOME.md). These are the manual steps on Linux with systemd. **On macOS use [`pi-agent-session-home cutover`](docs/MACOS-CUTOVER.md)** instead: it replaces the Mac's launchd-managed host by adopting its identity, keeps every conversation bound, rolls back on any failure, and checks the result on the server (`--dry-run` first; not yet run against a live server). |
+| **B. Replace a host** | The same name **on purpose**, so the old host's conversations follow: stop the old host, `pi-agent-host-name set "<its exact name>"`, connect with `PI_AGENT_TAKEOVER_HOST_ID=<first 8+ hex characters of its id>`, then [`pi-agent-session-home`](docs/SESSION-HOME.md). These are the manual steps on Linux with systemd. **On macOS use [`pi-agent-session-home cutover`](docs/MACOS-CUTOVER.md)** instead: it replaces the Mac's launchd-managed host by adopting its identity, keeps every conversation bound, rolls back on any failure, and checks the result on the server (`--dry-run` first). Run for real on two Macs (16 and 39 conversations); on both, every conversation was still bound afterwards, checked on the server. |
 
 An install that already has a name is never renamed; if that name is the plain
-hostname, `wire` warns. Two pi-agent installs on one machine need two names (the
+hostname, `wire` warns (unless a cutover adopted it on purpose — then
+`pi-agent-host-name check` says `adopted`). Two pi-agent installs on one machine need two names (the
 second one is told so, and how, when it connects). The steps, the macOS cutover and
 the reasoning:
 [`docs/MACOS.md`](docs/MACOS.md#host-names-must-differ); what went wrong without

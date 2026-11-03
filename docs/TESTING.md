@@ -218,7 +218,7 @@ is shaped from the plugin's own use of `/v1/me` and `/v1/hosts`.
 
 ## macOS session home + cutover — validated 2026-11-03 (M2 MacBook Air, macOS 26.4.1, 8 GB)
 
-`tests/session-home-macos.sh`: **262 passed, 0 failed** (about 14 minutes). Real launchd jobs with
+`tests/session-home-macos.sh`: **262 passed, 0 failed** (about 7 minutes on a quiet machine, up to 14 under load). Real launchd jobs with
 throw-away `io.woowtech.pa-shtest.<pid>.*` labels, fake hosts under a fake home, a stub of the
 Omnigent server API on 127.0.0.1 (which reproduces the server's host rotation) and fakes of the
 plugin's `pi-omnigent repair` and of pi-web's resume. It never touches `~/.omnigent`,
