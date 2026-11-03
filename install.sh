@@ -67,7 +67,7 @@ stage_preflight() {
       if [ -z "$need" ]; then
         log "build prerequisites already present; skipping package install"
       elif have apt-get; then
-        local pkgs="ca-certificates curl git gnupg jq openssh-client xz-utils build-essential python3 python3-venv python3-pip util-linux tmux procps"
+        local pkgs="$PA_APT_PACKAGES"
         log "installing apt deps (sudo; missing:$need)"
         sudo apt-get update -qq
         # shellcheck disable=SC2086

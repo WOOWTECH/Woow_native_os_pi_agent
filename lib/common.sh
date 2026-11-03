@@ -17,6 +17,10 @@ PA_HOME_DIR="$PI_AGENT_HOME/home"
 PA_LOG_DIR="$PI_AGENT_HOME/logs"
 PA_TMP_DIR="$PI_AGENT_HOME/tmp"
 
+# What the installer needs from apt on Debian/Ubuntu. install.sh's preflight installs
+# it with sudo; scripts/wsl-root-setup.sh installs it as root in a fresh WSL distro.
+PA_APT_PACKAGES="ca-certificates curl git gnupg jq openssh-client xz-utils build-essential python3 python3-venv python3-pip util-linux tmux procps"
+
 log()  { printf '\033[1;36m[pi-agent]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[1;33m[pi-agent] WARN:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[pi-agent] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }

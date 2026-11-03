@@ -47,3 +47,6 @@ sbx() {
 # run CMD... -- stdout+stderr into $out, exit status into $rc.
 out=""; rc=0
 run() { out="$("$@" 2>&1)"; rc=$?; }
+
+# stubf NAME -- like stub, but the body comes on stdin and @S@ is replaced by the sandbox.
+stubf() { sed "s#@S@#$S#g" > "$S/bin/$1"; chmod +x "$S/bin/$1"; }
