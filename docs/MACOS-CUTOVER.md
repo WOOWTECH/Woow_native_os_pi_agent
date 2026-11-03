@@ -157,9 +157,18 @@ afterwards (it is bound to the same host, so it comes back).
 
 - Every session the old host served ends; they resume on reopening. Their transcripts
   are untouched (Claude's under `~/.claude/projects`, Codex's under `codex-native`).
-- macOS may ask again for access to Desktop, Documents or Downloads, because the new host
-  is a *different python* (this install's, not the old `uv` tool) and privacy consent is
-  per program. This was not testable here.
+- macOS may ask again for access to Desktop, Documents or Downloads. Consent belongs to the
+  *program* the session runs as -- for Claude and Pi that is this install's own `node`, not the
+  old host's python -- so earlier "Allow" clicks do not carry over. Measured on two Macs: one
+  already had it (the install had been used there), the other had not decided, and the first
+  session that goes into one of those folders will raise "“node” would like to access files in
+  your Documents folder" on that Mac's own screen; with nobody there the session waits. A
+  conversation that starts in the home folder (all 50 of them here) does not ask until it goes
+  there. How to check without a prompt and how to answer once: OPERATIONS-GOTCHAS.md section 20.
+- The host the cutover starts gets the umask of the job it replaces (022 unless that job's plist
+  said otherwise), not the cutover's own strict one: from v0.2.4. A host started by v0.2.3's
+  cutover has umask 077 and so do its sessions -- `pi-agent-session-home restart` fixes it
+  (OPERATIONS-GOTCHAS.md section 17).
 - The plugin's repair may register the engines' agents on the server for the adopted
   host, as it did for the old `(pi-agent)` host; if they exist already it reuses them.
 - A second row, `<hostname> (pi-agent)`, stays on the server, offline. It is this
@@ -295,11 +304,14 @@ everything saying so and `uncutover` finishing it; a worker killed half way and 
 by the next login; `enable`/`disable`
 byte for byte; the same-name rotation as a negative control.
 
-**Not covered** (and why): the real `ai.omnigent.host` job's SIGTERM behaviour; the real
-plugin's `repair` (the fake does what the plugin's source says it does -- read, not run:
-running it would touch the live install, though it did work when used earlier to recover
-the host rename); the server's real reaction to a reused host id (only the stub, built
-from the server source read earlier; the cutover's own server check is what protects
-against a surprise); Omnigent.app at run time (static analysis only); macOS privacy
-prompts; a reboot in the middle (the logic is tested with a killed worker, not a real
-reboot); Windows; the woowtech MacBook, which was deliberately not touched.
+**Not covered by the sandbox** (and what covers it): the real `ai.omnigent.host` job, the real
+plugin `repair` and the server's real reaction to a reused host id were exercised for real on two
+Macs (16 and 39 conversations; the evidence is the server's host row and every conversation still
+bound, checked afterwards -- docs/RELEASE-0.2.3.md); Omnigent.app was open during one of them and
+did not start a second host.
+
+**Not verified:** a real reboot in the middle of a cutover. Both Macs have FileVault on and no
+automatic login, so a reboot stops at the disk-unlock screen until a password is typed at the
+keyboard: it cannot be done, or undone, remotely. What is tested is a worker killed half way and
+recovered at the next login (real launchd jobs, a stand-in for the server). Also not verified:
+Windows, Intel Macs, and the privacy prompts of the native `codex` binary.

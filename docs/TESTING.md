@@ -218,7 +218,7 @@ is shaped from the plugin's own use of `/v1/me` and `/v1/hosts`.
 
 ## macOS session home + cutover — validated 2026-11-03 (M2 MacBook Air, macOS 26.4.1, 8 GB)
 
-`tests/session-home-macos.sh`: **262 passed, 0 failed** (about 7 minutes on a quiet machine, up to 14 under load). Real launchd jobs with
+`tests/session-home-macos.sh`: **292 passed, 0 failed** (262 in v0.2.3; v0.2.4 adds 9 cases for the host's umask, 2 assertions that the started host has it, and 19 for a power cut after the repair) (about 7 minutes on a quiet machine, up to 14 under load). Real launchd jobs with
 throw-away `io.woowtech.pa-shtest.<pid>.*` labels, fake hosts under a fake home, a stub of the
 Omnigent server API on 127.0.0.1 (which reproduces the server's host rotation) and fakes of the
 plugin's `pi-omnigent repair` and of pi-web's resume. It never touches `~/.omnigent`,
@@ -255,3 +255,26 @@ with `PI_TEST_WRAPPER=<older pi>` to see the bug it guards. The bug was found on
 cut over: Omnigent's own verification of the Pi engine answered `MODELS_UNAVAILABLE` (claude
 verified fine), because the scoped pi kept the user's HOME but read this install's empty data
 directory instead of the user's own `~/.pi/agent`. See docs/SESSION-HOME.md.
+
+## Release 0.2.4 — the three suites added after the first real pkg install over a cut-over Mac
+
+Run from a shell with a strict umask (077) on purpose: that is the condition that exposed all three.
+
+| suite | what it pins | result | watched to fail before the fix |
+|---|---|---|---|
+| `tests/session-home-macos.sh` (nine new cases + two assertions) | the host a cutover starts gets the replaced job's umask (its plist's `Umask`, else 022), not the worker's strict one; a restart keeps it | 292 passed, 0 failed in all | yes: the host had 077 (1 failure) and the helper did not exist (9) |
+| `tests/build-macos-pkg.sh` | an unsigned pkg built under umask 022 **and** 077 has a payload that other users can read and enter, with `install.sh` and the installed scripts executable for them | 8 passed, 0 failed | yes: under 077 the payload directory itself was 700 and every script lost its bits (3 failures); with the first two defences removed the build refuses on its own check (`PI_TEST_BUILDER=<mutant>`) |
+| `tests/installer-rerun.sh` | the omnigent stage run twice over one install root, and over a half-made venv, exits 0; the stand-in uv refuses to create a venv over a non-empty directory, as uv 0.12 does; one check runs the real pinned uv | 7 passed, 0 failed | yes: the second run failed with uv's own message (3 failures) |
+
+Measured on real Macs rather than in a sandbox (the commands are in OPERATIONS-GOTCHAS.md sections 17-20):
+
+- a host's umask, through the host's own `mkdir` (the server's "create directory on a host" call):
+  the cut-over host 700 (umask 077), the host restarted afterwards by pi-web 755 (022);
+- macOS privacy consent for the install's `node`: one Mac *granted* for Desktop, Documents and
+  Downloads (and `AllFiles` denied), the other *not decided* -- the preflight agrees with the
+  unified log wherever the log has an answer;
+- the v0.2.4 payload installed by `installer -pkg` over the cut-over MacBook: all nine stages, exit 0;
+  config, receipt, state file, journal, the parked plists and the owner's `~/.pi/agent` byte-for-byte the
+  same; the host process kept running (same pid); the server still showed the same host row and all
+  16 conversations bound; Claude and Pi verified afterwards; memory never below 33% free, the two
+  Apple review demos running throughout.
