@@ -16,6 +16,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/lib/common.sh"
 # shellcheck source=lib/pins.sh
 . "$HERE/lib/pins.sh"
+# shellcheck source=lib/wsl.sh
+. "$HERE/lib/wsl.sh"
 
 OS="$(pa_os)"; ARCH="$(pa_arch)"
 [ "$ARCH" = unknown ] && die "unsupported CPU arch: $(uname -m)"
@@ -59,6 +61,7 @@ stage_preflight() {
   log "stage preflight — os=$OS arch=$ARCH home=$PI_AGENT_HOME"
   case "$OS" in
     linux|wsl)
+      if [ "$OS" = wsl ]; then pa_wsl_preflight; fi
       local need=""
       for c in curl git gpg jq ssh xz make g++ python3 flock tmux; do have "$c" || need="$need $c"; done
       if [ -z "$need" ]; then
@@ -548,6 +551,7 @@ stage_service() {
   log "stage service"
   case "$OS" in
     linux|wsl)
+      if [ "$OS" = wsl ]; then pa_wsl_prepare_user_bus; fi
       if have systemctl && systemctl --user show-environment >/dev/null 2>&1; then
         local unitdir="$HOME/.config/systemd/user"; mkdir -p "$unitdir"
         cat > "$unitdir/pi-web.service" <<EOF
@@ -568,7 +572,7 @@ WantedBy=default.target
 EOF
         systemctl --user daemon-reload
         systemctl --user enable --now pi-web.service
-        command -v loginctl >/dev/null 2>&1 && loginctl enable-linger "$USER" >/dev/null 2>&1 || true
+        command -v loginctl >/dev/null 2>&1 && loginctl enable-linger "${USER:-$(id -un)}" >/dev/null 2>&1 || true
         log "systemd --user service enabled + started"
       else
         warn "no systemd --user; start manually with: PI_AGENT_HOME=$PI_AGENT_HOME $PA_BIN_DIR/pi-agent start"
@@ -592,6 +596,7 @@ EOF
       log "launchd agent loaded" ;;
   esac
   log "pi-web will serve http://127.0.0.1:$PIN_PI_WEB_PORT"
+  if [ "$OS" = wsl ]; then log "from Windows: http://localhost:$PIN_PI_WEB_PORT"; fi
 }
 
 ALL_STAGES=(preflight node fetch piweb clis paseo omnigent wire service)

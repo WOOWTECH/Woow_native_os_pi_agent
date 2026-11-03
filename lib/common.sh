@@ -109,7 +109,7 @@ pa_macos_python3_is_stub() {
 
 pa_os() {
   case "$(uname -s)" in
-    Linux)  if grep -qiE '(microsoft|wsl)' /proc/version 2>/dev/null; then echo wsl; else echo linux; fi ;;
+    Linux)  if grep -qiE '(microsoft|wsl)' "${PA_WSL_PROC_VERSION:-/proc/version}" 2>/dev/null; then echo wsl; else echo linux; fi ;;
     Darwin) echo macos ;;
     *)      echo unknown ;;
   esac
