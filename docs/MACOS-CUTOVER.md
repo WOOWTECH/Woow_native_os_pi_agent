@@ -143,7 +143,8 @@ $P cutover --apply --in 30               # add --allow-running <id> for a conver
 tail -f ~/.local/share/pi-agent/logs/session-home.log
 tail -1 ~/.local/share/pi-agent/session-home.result     # RESULT: OK ... / ROLLED BACK ... / NOT STARTED ...
 $P status
-# go back, any time, including after a successful cutover:
+# go back: right after a failed or unwanted cutover this is complete. If the cutover has been
+# in use for a while, read "Going back later" below first.
 $P uncutover
 ```
 
@@ -166,6 +167,28 @@ afterwards (it is bound to the same host, so it comes back).
   `uncutover` (which enables them again).
 - macOS may show a "background item added" notice for the one-shot job the cutover (and
   `restart`, `uncutover`) schedules; it removes its own plist when it finishes.
+
+### Going back later
+
+`uncutover` puts back what the cutover parked: the old directory exactly as it was, the
+old plists, and this install's own config, receipt and state. It does **not** copy back
+what the conversations wrote in the meantime: while the cutover is in effect `~/.omnigent`
+is a link to this install's directory, so anything created there since lives only there.
+Files that were merely appended to are hard links to the old ones and come back by
+themselves; a conversation created since, or a file the host rewrote by replacing it, does
+not. Provider settings changed in Omnigent since then are in this install's `config.yaml`
+and are not restored either. Right after a failed cutover none of that applies; after weeks
+of use it can be a lot. To undo a cutover that has been in use, run `uncutover` and then
+merge the newer entries back by hand (nothing is deleted either way, this install's
+directory stays where it is):
+
+```sh
+for d in codex-native pi-native attachments; do
+  rsync -a -u "$HOME/.local/share/pi-agent/home/.omnigent/$d/" "$HOME/.omnigent/$d/"
+done
+```
+
+(`-u` skips anything that is newer in the destination.)
 
 ## Omnigent.app (the desktop app)
 
