@@ -165,7 +165,7 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 - `wsl --import` 匯入 Ubuntu 的 `.wsl` 檔、第一次啟動完全沒有提問(E1)
 - 非互動的 `wsl.exe -u … --exec` 下 `systemctl --user` 可用(E2)
 - 保活真的讓 Linux 不被關掉(E3)
-- 一般使用者能登錄「登入時」的工作排程,不閃視窗(E4)
+- 一般使用者能登錄「登入時」的工作排程,不閃視窗(E4)。**已知風險**:如果你的預設終端機是 Windows Terminal,`-WindowStyle Hidden` 可能不生效,登入後會多一個視窗在跑保活;關掉那個視窗,Linux 就會停。另外,公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活、自動續跑都不會執行
 - Windows 瀏覽器經 `localhost` 連得到 WSL 裡綁在 127.0.0.1 的 pi-web(E5)
 - 背景服務下 `pi-agent-win` 找得到互通通道(E7)
 - 睡眠喚醒後 host 自動重連(E8)
