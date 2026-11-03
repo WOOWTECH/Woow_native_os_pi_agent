@@ -405,8 +405,14 @@ stage_omnigent() {
   local uv_cache="$PA_TMP_DIR/uv-cache"
   UV_CACHE_DIR="$uv_cache" UV_PYTHON_INSTALL_DIR="$PA_OMNIGENT_DIR/python" \
     "$uv" python install --no-bin "$PIN_PYTHON_VERSION"
+  # --clear: this stage must converge when it is run again over an existing install -- that is how an install
+  # is updated ("install the pkg again"). uv 0.12 refuses to create a venv over a non-empty directory
+  # ("A virtual environment already exists ... Use the `--clear` flag"), and by then the earlier stages had
+  # already replaced the plugin and pi-web trees, leaving the machine half updated. Nothing runs from this
+  # venv (the host uses the plugin's own tool venv under data/omnigent-plugin); it only exists so the pinned
+  # omnigent is proven installable from the hash-locked requirements, and `uv pip sync` below rebuilds it.
   UV_CACHE_DIR="$uv_cache" UV_PYTHON_INSTALL_DIR="$PA_OMNIGENT_DIR/python" \
-    "$uv" venv --python "$PIN_PYTHON_VERSION" "$PA_OMNIGENT_DIR/venv"
+    "$uv" venv --clear --python "$PIN_PYTHON_VERSION" "$PA_OMNIGENT_DIR/venv"
   UV_CACHE_DIR="$uv_cache" "$uv" pip sync --python "$PA_OMNIGENT_DIR/venv/bin/python" --require-hashes "$reqs"
   "$PA_OMNIGENT_DIR/venv/bin/python" -c 'import importlib.metadata,sys; assert importlib.metadata.version("omnigent")==sys.argv[1]' "$PIN_OMNIGENT_VERSION"
   log "omnigent OK"
