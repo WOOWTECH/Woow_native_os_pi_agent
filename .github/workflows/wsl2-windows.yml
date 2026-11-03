@@ -273,6 +273,66 @@ jobs:
           Run 'E6 pi-agent-win run cmd.exe' { wsl -d PiAgent -u piagent --exec "$pa/pi-agent-win" run cmd.exe /c ver }
           Run 'pi-agent doctor' { wsl -d PiAgent -u piagent --exec "$pa/pi-agent" doctor }
 
+      # E10, part 1: the two plugins against real servers with no real account anywhere. Omnigent can run its
+      # own server; the admin password is made up here, never printed, used once, and goes away with the VM.
+      # What it cannot show is a conversation: that needs the engines to reach a model (a login or a gateway).
+      - name: E10a Omnigent plugin against a throwaway local Omnigent server, and the Paseo plugin checks
+        if: always() && steps.install.outcome == 'success'
+        shell: pwsh
+        continue-on-error: true
+        timeout-minutes: 25
+        run: |
+          New-Item -ItemType Directory -Force ci-out | Out-Null
+          $env:WSL_UTF8 = '1'
+          $log = 'ci-out/26-omnigent-paseo.txt'
+          $pa = '/home/piagent/.local/share/pi-agent'
+          $envs = @('XDG_RUNTIME_DIR=/run/user/1000', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus')
+          $pw = -join (((48..57) + (97..122)) | Get-Random -Count 24 | ForEach-Object { [char]$_ })
+          function Say($t) { ([string]$t).Replace($pw, '***') | Tee-Object -FilePath $log -Append }
+          function Trunc($t, $n = 1700) { $s = ([string]$t).Trim(); if ($s.Length -gt $n) { $s.Substring(0, $n) + ' ...[cut]' } else { $s } }
+          function Vm([string[]]$cmd) { (wsl -d PiAgent -u piagent --exec /usr/bin/env @envs @cmd 2>&1 | Out-String) }
+
+          Say '=== the omnigent tool the plugin installed'
+          $omni = $pa + '/data/omnigent-plugin/uv/tools/omnigent/bin/omnigent'
+          Say (Trunc (Vm @('/bin/ls', '-l', $omni)))
+          Say (Trunc (Vm @($omni, '--version')))
+
+          Say '=== start a throwaway local Omnigent server (accounts mode, made-up admin password)'
+          wsl -d PiAgent -u piagent --exec /bin/mkdir -p /tmp/omni-srv
+          Say (Trunc (Vm @('/usr/bin/systemd-run', '--user', '--unit=omnigent-test-server', '--collect', '--setenv=HOME=/tmp/omni-srv', ('--setenv=OMNIGENT_ACCOUNTS_INIT_ADMIN_PASSWORD=' + $pw), $omni, 'server', '--host', '127.0.0.1', '--port', '6767', '--no-open')))
+          $up = $false
+          for ($i = 0; $i -lt 45; $i++) {
+            $code = (curl.exe -s -o NUL -w '%{http_code}' --max-time 3 http://127.0.0.1:6767/health)
+            if ($code -eq '200') { $up = $true; break }
+            Start-Sleep -Seconds 2
+          }
+          Say ('the local server answers /health from Windows: ' + $up)
+          if (-not $up) { Say (Trunc (Vm @('/usr/bin/journalctl', '--user', '-u', 'omnigent-test-server', '-n', '40', '--no-pager')) 3000) }
+
+          if ($up) {
+            Say '=== pi-omnigent connect (password from stdin, as the plugin insists)'
+            $cmd = "printf '%s\n' `$PW | $pa/bin/pi-omnigent connect --server http://127.0.0.1:6767 --username admin --password-stdin"
+            Say (Trunc ((wsl -d PiAgent -u piagent --exec /usr/bin/env @envs ('PW=' + $pw) /bin/sh -c $cmd 2>&1 | Out-String)) 2500)
+            Say '=== pi-omnigent status'
+            Say (Trunc (Vm @($pa + '/bin/pi-omnigent', 'status')) 2200)
+            Say '=== pi-omnigent doctor --json'
+            Say (Trunc (Vm @($pa + '/bin/pi-omnigent', 'doctor', '--json')) 2200)
+            Say '=== pi-omnigent catalog'
+            Say (Trunc (Vm @($pa + '/bin/pi-omnigent', 'catalog')) 2200)
+          }
+
+          Say '=== Paseo: served by pi-web at /paseo-web ?'
+          Say ('http status: ' + (curl.exe -s -o NUL -w '%{http_code}' --max-time 8 http://localhost:30141/paseo-web/))
+          foreach ($c in @('status', 'health', 'diagnose')) {
+            Say ('=== pi-paseo ' + $c)
+            Say (Trunc (Vm @($pa + '/bin/pi-paseo', $c)) 1500)
+          }
+          foreach ($prov in @('claude', 'codex', 'opencode')) {
+            Say ('=== pi-paseo models ' + $prov)
+            Say (Trunc (Vm @($pa + '/bin/pi-paseo', 'models', $prov)) 900)
+          }
+          wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/systemctl --user stop omnigent-test-server 2>&1 | Out-Null
+
       - name: E3 keep-alive experiment
         if: always()
         shell: pwsh
