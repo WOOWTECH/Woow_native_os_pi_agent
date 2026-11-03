@@ -46,10 +46,36 @@
 2. 回來告訴我「加好了」。我會推 `wsl2-live/run-1` 分支,GitHub 開一台 Windows,約 20 分鐘後它會註冊成你 Omnigent 裡的
    主機,名稱 `WSL2 CI <編號> (pi-agent)`(工作流程的 **HOST READY** 註解也會寫)。
 3. 我用你的 Chrome 打開 Omnigent,找到那台主機,依序:
-   - **Pi**:在那台主機的終端機跑 `pi`,輸入 `/login`,選一個你有訂閱的供應商,把授權網址給你,**你按授權**(有填 LiteLLM 就免登入);
-     然後開對話、送一句話、切換到另一個模型再送一句,看回覆。
-   - **Codex**:我在那台主機的終端機跑 `codex login --device-auth`,把網址和一次性代碼給你,**你在瀏覽器按授權**;然後開對話、切換模型。
-   - **Claude Code**:我跑 `claude auth login --claudeai`,把授權網址給你,你按授權後把頁面上的代碼給我貼回去;然後開對話、切換模型。
-   - **Paseo**:在那台主機上產生配對連結(只在私人終端機,不進日誌),用官方加密 relay 在你的瀏覽器配對,開一個代理對話、換模型。
-4. 結束時我在主機上執行 `touch /tmp/pa-live-done`,工作流程收尾、斷線、銷毀虛擬機。
-5. **你刪掉那幾個 Secrets。**
+   - **開終端機**:在那台主機上建一個對話(沒有模型也建得起來),在對話右側面板按 `+` → `Shell (bash)`,就是那台 Linux 的
+     終端機(使用者 `piagent`)。設定 → Harnesses →(引擎齒輪)→ Reconfigure 只會叫你「到那台主機的終端機跑登入指令」。
+   - **Codex**:在終端機跑 `codex login --device-auth`,把網址和一次性代碼給你(15 分鐘內有效),**你在瀏覽器按授權**;
+     然後開對話、切換模型。
+   - **Claude Code**:跑 `claude auth login --claudeai`,把授權網址給你,你按授權後把頁面上的代碼給我貼回去;然後開對話、切換模型。
+     Omnigent 的憑證選項裡預設是「Isaac(Databricks 代管憑證)」,我不確定那是誰的,所以選「個人訂閱」。
+   - **Pi**:在 Pi 的終端機輸入 `/login` 選供應商,**你按授權**;有填且被接受的 LiteLLM 就免登入。
+   - **Paseo**:`pi-paseo acceptance` 先確認 daemon 能真的對話;再 `pi-paseo pair --reveal` 產生配對連結(只在那台的終端機,
+     不貼到聊天),用官方加密 relay 在你的瀏覽器配對,開一個代理對話、換模型,測完在 Paseo 的「Connections」把這台移除。
+4. 再讓 Claude Code 和 Codex 各用 `pi-agent-win` / `powershell.exe` 控制一次 Windows(見 [`WSL2.md`](WSL2.md) 的「Windows 互通」)。
+5. 結束時:兩個代理登出(`claude auth logout`、`codex logout`),在主機上執行 `touch /tmp/pa-live-done`,工作流程收尾、
+   斷線、銷毀虛擬機。
+6. **你刪掉那幾個 Secrets**,並可到 Claude 與 ChatGPT 的帳號設定檢視、移除這次的授權。
+
+## 第一次實測(2026-11-03)
+
+| 項目 | 結果 |
+|---|---|
+| 主機登記進真的 Omnigent | 通過(第 4 輪;前三輪各踩到一個問題,見下) |
+| Omnigent 網頁開對話、開終端機、看檔案 | 通過 |
+| Claude Code 對話 + 切換模型 | 通過(Haiku 5.5 → Sonnet 5.5) |
+| Codex 對話 + 切換模型 | 通過(GPT-6-Luna → GPT-5.6-Terra) |
+| Paseo `acceptance`、網頁版配對、對話 + 切換模型 | Claude、Codex 通過(Sonnet 5.5 → Opus 5.5);Pi 因沒有模型沒過 |
+| 代理控制 Windows(PowerShell、Notepad、瀏覽器、檔案) | 通過(Claude Code 與 Codex 各做一次) |
+| Pi 的對話與切換模型 | **沒測**:沒有模型(LiteLLM 值被閘道回 401;訂閱登入要人按,這次沒做) |
+
+前三輪踩到的問題:
+
+1. GitHub 在**工作開始時**就把 Secrets 交出去,之後才補的看不到(LiteLLM 金鑰晚了約 1 分半)→ 補加要重跑;新的一輪取代舊的。
+2. LiteLLM 的值被閘道回 401,原本讓整場測試失敗 → 現在只警告、不擋,警告不含任何值。
+3. 外掛剛開機時持有鎖,`connect` 回 `OPERATION_BUSY` → 腳本重試最多 9 次。
+
+操作上的筆記:終端機畫面是 canvas,不能複製文字;要把畫面上的內容交給人,先寫進檔案、用 Files 面板開,再逐行讀。

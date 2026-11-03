@@ -3,8 +3,10 @@
 > **狀態:預覽版。** Linux 那一半在沙盒裡測過(`tests/wsl.sh`,152 項),也在 GitHub 的 Ubuntu 與 macOS 上跑過。
 > Windows 那一半(`windows/install-wsl.ps1`)已經在 **GitHub 的 Windows Server 2025 雲端機**上完整跑通:用
 > Windows PowerShell 5.1 裝完、自我檢查 24 項全過、Windows 這邊連得到 `http://localhost:30141`、保活有效、
-> 重跑與兩種解除安裝都試過。但那是雲端機,**不是一般人的 Windows 11 電腦**:沒有測到「第一次啟用 WSL 並重新開機」、
-> 「登入時自動啟動」、睡眠喚醒,也沒有用真的 Omnigent 帳號開過對話。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
+> 重跑與兩種解除安裝都試過。2026-11-03 還用**真的 Omnigent 伺服器**驗證過:那台雲端機登記成 Omnigent 主機,
+> Claude Code 與 Codex 在 Omnigent、Paseo 網頁版開對話並切換模型都成功,代理也能控制 Windows(PowerShell、Notepad、
+> 瀏覽器、檔案互通)。但那是雲端機,**不是一般人的 Windows 11 電腦**:沒有測到「第一次啟用 WSL 並重新開機」、
+> 「登入時自動啟動」、睡眠喚醒,Pi 也還沒拿到模型測過對話。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
 
 一行 PowerShell 指令,替你的 Windows 11 建一個**專用的 Linux 小系統**(WSL2 裡的 Ubuntu 24.04,
 名叫 `PiAgent`),把 Linux 版的 Pi Agent 裝進去,登入 Windows 時自動啟動。Omnigent 看到的就是一台
@@ -128,6 +130,21 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 
 只能用命令列操作。點按 Windows 圖形介面的按鈕(UI Automation、AutoHotkey)不在這個版本裡。
 
+**實測過的控制能力**(2026-11-03,GitHub 的 Windows Server 2025 雲端機,從 Omnigent 開的 Claude Code 與 Codex 對話、以及
+終端機直接下指令):
+
+- `pi-agent doctor` 的 `interop`、`powershell`、`localhost` 三項都是 `[PASS]`。
+- 用 `pi-agent-win ps` 讀 Windows 版本、PowerShell 版本、使用者、服務清單、處理程序;讀登錄檔列出已安裝的軟體;查 `git`、
+  `node`、`python` 的版本。
+- 啟動 Notepad,`Get-Process` 看得到,再 `Stop-Process` 關掉;`pi-agent-win open https://…` 用 Windows 的 Edge 開網頁
+  (多個程序),再關掉。雲端機有桌面工作階段(`dwm.exe` 在跑),所以圖形程式啟得起來;沒有桌面的環境不保證。
+- 檔案互通:Windows 的 `C:` 在 Linux 是 `/mnt/c`,兩邊寫的檔對方都讀得到。
+- **權限**:在這台雲端機上,從 Linux 啟動的 Windows 程式是**系統管理員**(`IsInRole(Administrator)` 為 True)。這取決於
+  啟動 WSL 的那個 Windows 帳號與工作階段;一般使用者的 Windows 11 不一定是,但別假設不是。
+- 小坑:Windows PowerShell 5.1 的 `Set-Content -Encoding UTF8` 會在檔案前加 BOM,Linux 讀回來會多三個位元組(Codex 自己
+  發現並改用無 BOM 的寫法);`cmd.exe` 從 Linux 家目錄啟動時會抱怨「UNC 路徑不支援,改用 Windows 目錄」,不影響結果;
+  `wsl.exe -l -v` 在 Linux 裡的輸出編碼要自己處理。
+
 ## 升級與重裝
 
 重新執行安裝指令即可:已存在的 `PiAgent` 與裡面的資料會沿用,安裝包與設定會更新。
@@ -159,6 +176,8 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 | 瀏覽器連不上 | `pi-agent doctor` 的 `localhost` 一項;`pi-agent status`。`wsl --shutdown` 之後,保活應該會把 Linux 叫回來(尚未驗證);沒有的話登出再登入一次 |
 | 電腦睡眠後 Omnigent 離線 | 睡眠期間 Linux 一起暫停;醒來後應該自動重新連線。若沒有,`pi-agent restart` |
 | 安裝到一半失敗 | 看 `%LOCALAPPDATA%\PiAgent\install.log`,重跑一次(會從失敗的地方繼續) |
+| 剛裝完馬上 `pi-omnigent connect`,回 `OPERATION_BUSY` | 外掛剛開機時在背景裝 Omnigent(約 30–40 秒),期間會拒絕別的操作。等一分鐘再試(外掛自己的建議也是「請稍後重試」)。Linux、macOS 版也一樣 |
+| Paseo 裡 Claude 顯示停用、`pi-paseo models claude` 失敗 | 全新安裝後 Paseo 的 Claude 提供者可能被標成停用(設定檔只在 daemon 啟動時寫一次)。`pi-paseo stop && pi-paseo start` 之後即恢復,實測 `acceptance` 的 Claude 與 Codex 都通過。還沒找出剛安裝完那次為什麼沒準備好 |
 
 ## 驗證到哪裡
 
@@ -176,6 +195,17 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 - 以系統管理員登錄「登入時」的工作排程:登錄成功,觸發條件、電池與執行時間設定如設計。
 - 文件裡那行安裝指令(用 UTF-8 解碼、去 BOM、建 ScriptBlock、後面接參數),在本機 HTTP 伺服器上的 dry run。
 
+**已用真的 Omnigent 伺服器驗證**(2026-11-03,同一種雲端機,工作流程 `wsl2-live.yml`,見 [`WSL2-LIVE-TEST.md`](WSL2-LIVE-TEST.md)):
+
+- 外掛用帳號密碼(從標準輸入)連上伺服器,這台機器登記成 Omnigent 主機並上線。Omnigent 網頁能對它開對話、開 bash 終端機、
+  瀏覽檔案。
+- **Claude Code**:Haiku 5.5 回答 → 對同一個對話切到 Sonnet → 第二句自報 Sonnet 5.5。**Codex**:GPT-6-Luna 回答 →
+  切到 GPT-5.6-Terra → 第二句自報 GPT-5。兩個都要先在那台機器上各登入一次(`claude auth login --claudeai`、
+  `codex login --device-auth`),授權由人按。
+- **Paseo**:daemon 在 WSL2 裡跑;`pi-paseo acceptance`(真的對話加追問)Claude 與 Codex 通過。用官方加密 relay
+  (`relay.paseo.sh`)在瀏覽器配對 Paseo 網頁版後,開對話、Sonnet 5.5 → Opus 5.5 切換都成功。
+- 代理自己控制 Windows:見上面「實測過的控制能力」。
+
 **還沒驗證**(這些在雲端機上測不到或沒測):
 
 - 一般 Windows 11 電腦:乾淨機器的「自動提權 → 裝 WSL → 重開機 → 自動續跑」(E13)、被擋的情況(虛擬化關閉、WSL 被政策停用、
@@ -185,7 +215,9 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活與自動續跑都不會執行。
 - 睡眠喚醒後 host 自動重連(E8)。
 - Windows ARM64(E12)。
-- **Omnigent 端對端**:三個代理各開對話並切換模型(E10),需要真的帳號與登入。
+- **Pi 拿到模型後的對話與切換模型**:Pi 本身連上了 Omnigent、能開對話,但這次沒有模型可用(你的 LiteLLM 閘道對測試給的值回
+  HTTP 401;改用訂閱登入要人按授權,這次沒做)。
+- Paseo 在剛裝完的那次 `models claude` 失敗的原因(重啟 daemon 可解,見疑難排解)。
 
 ## 給工程師
 

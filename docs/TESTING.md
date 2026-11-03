@@ -47,7 +47,7 @@ bash tests/smoke-linux.sh    # exits non-zero on any failure
 - **Model availability** ("0 個模型") needs model auth: `claude auth login` /
   `codex login` (the user's own accounts) or an Omnigent server connection.
 - **macOS** is gated on the plugin portability item — see `DESIGN.md` §6.
-- **Windows (WSL2)** reuses this exact Linux path; pending a test target.
+- **Windows (WSL2)** reuses this exact Linux path; see the Windows 11 (WSL2) section below.
 
 ## Pi → LiteLLM gateway — validated 2026-11-01
 
@@ -279,7 +279,7 @@ Measured on real Macs rather than in a sandbox (the commands are in OPERATIONS-G
   16 conversations bound; Claude and Pi verified afterwards; memory never below 33% free, the two
   Apple review demos running throughout.
 
-## Windows 11 (WSL2) — 2026-11-03: preview, the Windows half has never run on Windows
+## Windows 11 (WSL2) — 2026-11-03: preview; run on a hosted Windows runner and against a real Omnigent, not yet on a real Windows 11 PC
 
 See [`WSL2.md`](WSL2.md) for the feature and [`WSL2-PLAN.md`](WSL2-PLAN.md) for the design and the
 experiments (E1-E14) a real machine still has to settle.
@@ -325,6 +325,23 @@ An independent review of the PowerShell (17 findings, each checked against the c
 the uninstaller could delete data it should not, and that `tests/smoke.sh` overwrote and then emptied the user's own
 `mcp.json` (it now restores it, also when interrupted; that fix has no test of its own).
 
-**Not covered at all:** a real WSL2; the first-time enablement with a reboot; start at logon and the keep-alive; sleep
-and wake; ARM64; and the Omnigent end to end (three agents, each opening a conversation and switching model).
+**Against a real Omnigent server** (`wsl2-live.yml`, run by hand on the same kind of runner; procedure and results in
+[`WSL2-LIVE-TEST.md`](WSL2-LIVE-TEST.md)). The fourth attempt passed; each of the first three taught something:
+GitHub hands a job its secrets when the job starts (a key added a minute and a half later was never seen); the user's
+LiteLLM values were refused with HTTP 401 and, as a hard failure, took the whole test down (now a warning that carries
+no values); and `pi-omnigent connect` right after the install answered `OPERATION_BUSY` because the plugin installs
+Omnigent in the background for about 40 seconds while holding its `flock -n` lock (the helper now retries). Then:
+
+- The runner registered as an Omnigent host; the web UI opened conversations, a bash terminal and the file browser on it.
+- **Claude Code** (Haiku 5.5, switched to Sonnet 5.5) and **Codex** (GPT-6-Luna, switched to GPT-5.6-Terra) answered, and
+  the second answer named the new model. Each engine needed one login on the host, approved by a person.
+- **Paseo**: `pi-paseo acceptance` (two real turns per provider) passed for Claude and Codex once the daemon was restarted
+  -- after a fresh install the Claude provider was written as `enabled: false` and stayed so until then. Pairing the
+  Paseo web app through the official relay and a Sonnet 5.5 -> Opus 5.5 switch worked.
+- Agents drove Windows: PowerShell 5.1, Notepad and Edge started and closed, installed software listed, files written
+  both ways. The processes were **administrator** on this runner.
+
+**Not covered at all:** a real Windows 11 PC; the first-time enablement with a reboot; start at logon (as a standard
+user) and the keep-alive window; sleep and wake; ARM64; and **Pi with a model** (no credentials were available: the
+user's gateway answered 401, a subscription login needs a person).
 Parallels on Apple silicon cannot host WSL2 (Parallels KB 129497), so this Mac is not a test machine for it.
