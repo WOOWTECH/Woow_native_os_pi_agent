@@ -35,6 +35,11 @@
 # (env_keep += "HOME MAIL"), so plain `sudo -u` would run install.sh with root's
 # home. `sudo -H` plus an explicit HOME prevents that.
 set -euo pipefail
+# The payload is installed owned by root, and the postinstall then hands the work to the console user, who must
+# be able to read and run it. `tar xf -` and `mkdir` apply the builder's umask, so a builder running under a strict
+# one produced a pkg whose install.sh was 700: "Permission denied", exit 126, nothing installed (v0.2.3, built from
+# a shell whose umask a cutover had left at 077). Fixed here, not left to whoever runs the build.
+umask 022
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 die()  { printf '[build-macos-pkg] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -145,6 +150,10 @@ for f in install.sh lib/pins.sh vendor/omnigent-requirements.lock VERSION \
 done
 printf '%s\n' "$ART_URL" > "$ROOT$PAYLOAD/piweb-artifact-url"
 printf '%s\n' "$ART_SHA" > "$ROOT$PAYLOAD/piweb-artifact-sha256"
+# Explicit, whatever the umask was (a second line of defence; the check after expansion is the third): owner
+# read/write, everyone else read, and execute wherever the file or directory already has an execute bit.
+# Includes the parent directories (/usr/local/lib ...), which a Mac without them would get from this payload.
+chmod -R u+rwX,go+rX "$ROOT"
 
 if [ -n "$SIGN_APP" ]; then
   if [ -n "$KEYCHAIN" ]; then
@@ -238,6 +247,9 @@ X="$WORK/expanded"
 pkgutil --expand-full "$PKG" "$X" >/dev/null
 P="$(find "$X" -type d -path "*/Payload$PAYLOAD" -print -quit)"
 [ -n "$P" ] || die "expanded pkg has no $PAYLOAD"
+unreadable="$(find "$P" ! -perm -o+r -print | head -3 | sed "s#^$P/##" | tr '\n' ' ')"
+[ -z "$unreadable" ] || die "payload entries are not readable by the user the postinstall hands the install to (builder umask $(umask)): $unreadable"
+[ -n "$(find "$P/install.sh" -perm -o+x -print)" ] || die "payload install.sh is not executable by the user the postinstall hands the install to"
 machos=""
 while IFS= read -r -d '' f; do
   file -b "$f" | grep -q 'Mach-O' && machos="$machos${f#"$P"/}"$'\n'
