@@ -172,3 +172,31 @@ effect on darwin, so an ownership check on `argv[0]` stays valid there. See
   account-level MCP server (a dozen claude.ai ones on the test hosts) and took
   >40s before reaching the fixture. `claude mcp get <name>` answers in ~1.5s and
   still proves claude read the shared config.
+
+## macOS session home + cutover — validated 2026-11-03 (M2 MacBook Air, macOS 26.4.1, 8 GB)
+
+`tests/session-home-macos.sh`: **257 passed, 0 failed** (about 14 minutes). Real launchd jobs with
+throw-away `io.woowtech.pa-shtest.<pid>.*` labels, fake hosts under a fake home, a stub of the
+Omnigent server API on 127.0.0.1 (which reproduces the server's host rotation) and fakes of the
+plugin's `pi-omnigent repair` and of pi-web's resume. It never touches `~/.omnigent`,
+`ai.omnigent.*`, `io.woowtech.pi-agent` or a real server. See docs/MACOS-CUTOVER.md.
+
+| section | passed | what it proves |
+|---|---|---|
+| 0 config merge | 15 | adopts host id + name; adds what is missing; never overwrites; added providers lose `default`; two servers refused; omnigent's own `load_providers` parses the result; `extend_path` |
+| 1 baseline | 8 | fake old launchd host + fake install both connected, conversations bound as seeded |
+| 2 refusals, dry run | 29 | `enable` refuses a live or loaded old host; a dry run changes nothing (whole-tree checksum) and never runs the plugin CLI; every blocker (busy conversation, foreign host, old host offline, login not confirmed, install too old, plugin unpatched) |
+| 3 cutover | 61 | plists parked byte for byte and disabled; `~/.omnigent` parked + linked + hard-linked; identity adopted; the plugin's repair ran once, under `env -i` (a decoy variable did not leak), with the real home, **before** the service started; host runs with the real HOME and the old PATH appended; the **server** shows the same host online, same name, all 14 conversations bound, **no row rotated**; an unpinned host in this install's directory is not "ours" |
+| 4 restart | 9 | a detached job survives its killed parent, replaces the host, removes its own plist |
+| 5 uncutover | 20 | plists, parked directory, config, `connection.json` and `state.json` back byte for byte; journal archived; the old host online again with its conversations |
+| 6 forced failures | 90 | six cycles (the server renames the host; the server drops the bindings; the host cannot start with session home; the repair fails; the repair "succeeds" without saving the receipt; the service does not come up), a worker killed half way and recovered at the next login, and a rollback that cannot confirm everything reporting INCOMPLETE until `uncutover` finishes it: each ends with everything as before, byte for byte |
+| 7 / 7b / 7c enable, disable, restart | 23 | `enable`/`disable` leave the fake home byte for byte as it was; restart with session home alone moves the host to the real HOME and back; an unhealthy session home is reverted by the restart itself |
+| 8 negative control | 2 | a new host id under the old name rotates the old row and repoints the conversations (what adoption avoids) |
+
+Linux regression (Ubuntu 24.04, isolated `/tmp`): `bash -n` of `pi-agent-session-home`,
+`pi-web-start.sh`, `pi-agent-env.sh`, `install.sh`; `pi-agent-session-home status` takes the unchanged
+Linux path; the Darwin block of `pi-web-start.sh` is a no-op on Linux even with a state file present.
+
+Not covered: the real `ai.omnigent.host` job's shutdown behaviour; the real plugin's `repair` (faked
+from its source); the server's real reaction to a reused host id; Omnigent.app at run time; macOS
+privacy prompts for the new host program; a real reboot mid-cutover; the woowtech MacBook.

@@ -120,3 +120,21 @@ happen it runs `disable` and restarts again. Its log is
 Backups of what sessions will now write to (`~/.claude.json`,
 `~/.codex/config.toml`, the user's own skill directories) go to
 `$PI_AGENT_HOME/backups/session-home-<timestamp>/`.
+
+## macOS
+
+`pi-agent-session-home` hands over to `pi-agent-session-home-macos` on Darwin: same
+commands, with launchd where Linux has systemd.
+
+- There is no drop-in. `enable` writes `$PI_AGENT_HOME/session-home.state`;
+  `pi-web-start.sh` reads `REAL_HOME=` from it and exports `PI_AGENT_SESSION_HOME`, and the
+  wrappers already key off the same file. (Darwin only; Linux keeps its drop-in.)
+- Processes are read with `ps eww` instead of `/proc`. That shows the environment of
+  same-user processes that are not Apple system binaries, which covers the python Omnigent
+  hosts. A host whose environment cannot be read is treated as *unknown*, never as fine.
+- `restart` runs as a one-shot LaunchAgent that removes its own plist, and checks health the
+  same way (pi-web answers, our host runs with the expected `HOME`, the plugin reports it
+  connected), reverting on failure.
+- A Mac that already runs its own Omnigent host under launchd is the usual case, and `enable`
+  refuses it. **`cutover`** replaces that host and keeps its conversations by taking over its
+  host id and name; see docs/MACOS-CUTOVER.md.
