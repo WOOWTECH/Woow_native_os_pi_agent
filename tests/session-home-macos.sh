@@ -805,6 +805,39 @@ t "RESULT: ROLLED BACK ('an earlier run was interrupted')" hasr "RESULT: ROLLED 
 check_restored "6d"
 OLD_PID_BEFORE="$(lc_pid "$L_OLD")"
 
+echo "  -- 6e. the power is cut AFTER the repair; the next login loads the service and the leftover worker together"
+# The hardest place to stop: the adopted host is already running with the old identity, this install's config and the
+# plugin's receipt are rewritten, the state file is there, the service is down. A power cut kills every process at once
+# and launchd forgets its jobs; the files stay. At the next login launchd loads BOTH the pi-web service (which resumes
+# the adopted identity on its own) and the leftover worker (which rolls it all back) -- a race a real login has.
+export PI_SH_STEP_PAUSE=6
+rm -f "$PA/session-home.result"
+"$SH" cutover --apply --in 0 >/dev/null 2>&1
+unset PI_SH_STEP_PAUSE
+t "the cutover gets as far as the verified repair" waitfor 240 'grep -q "^DONE_verify_repair=yes" "$PA/cutover.journal"'
+ADOPTED_PID="$(hostinfo $OLD_ID pid)"
+WPID="$(cat "$PA/session-home.lock/pid" 2>/dev/null)"
+WLABEL="$(sed -n 's/^LABEL=//p' "$PA/session-home.run" | tail -1)"
+t "before the cut: the adopted host serves the old identity, and the service is still down" eval "test -n '$ADOPTED_PID' && test \"\$(hostinfo $OLD_ID home)\" = '$REAL' && ! launchctl print gui/$UIDN/$L_SVC >/dev/null 2>&1"
+kill -9 $(pgrep -P "$WPID") "$WPID" "$ADOPTED_PID" 2>/dev/null
+launchctl bootout "gui/$UIDN/$WLABEL" >/dev/null 2>&1
+launchctl bootout "gui/$UIDN/$L_SVC" >/dev/null 2>&1
+sleep 2
+tn "the worker is dead" kill -0 "$WPID"
+tn "...and so is the adopted host" kill -0 "$ADOPTED_PID"
+t "the world is as the cut left it: ~/.omnigent is a link, the state file is there, the journal is not finished" eval "test -L '$REAL/.omnigent' && test -f '$PA/session-home.state' && ! grep -q '^STATUS=done' '$PA/cutover.journal'"
+tn "the old host's job is not loaded (its plist is parked, as the cutover left it)" lc_loaded "$L_OLD"
+t "the worker's plist is on disk, and so is the service's: what a login would load" eval "test -f '$LA/$WLABEL.plist' && test -f '$LA/$L_SVC.plist'"
+rm -f "$PA/session-home.result"
+launchctl bootstrap "gui/$UIDN" "$LA/$L_SVC.plist" "$LA/$WLABEL.plist"
+t "the rerun finishes" wait_result 300
+RES="$(result_line)"; note "$RES"
+t "RESULT: ROLLED BACK ('an earlier run was interrupted')" hasr "RESULT: ROLLED BACK.*interrupted"
+check_restored "6e"
+t "6e: one host serves the old identity afterwards, and it is the old job's" eval "test \"\$(hostinfo $OLD_ID pid)\" = \"\$(lc_pid $L_OLD)\""
+t "6e: no leftover worker job or plist" eval "! launchctl print gui/$UIDN/$WLABEL >/dev/null 2>&1 && ! test -f '$LA/$WLABEL.plist'"
+OLD_PID_BEFORE="$(lc_pid "$L_OLD")"
+
 # ----------------------------------------------------------------------------------
 head1 "7. enable / disable, without a cutover, restore the tree byte for byte"
 # the host stops but its launchd job stays loaded (a clean exit does not restart it): enable must still refuse
