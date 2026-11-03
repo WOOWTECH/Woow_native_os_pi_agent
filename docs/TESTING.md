@@ -278,3 +278,39 @@ Measured on real Macs rather than in a sandbox (the commands are in OPERATIONS-G
   same; the host process kept running (same pid); the server still showed the same host row and all
   16 conversations bound; Claude and Pi verified afterwards; memory never below 33% free, the two
   Apple review demos running throughout.
+
+## Windows 11 (WSL2) — 2026-11-03: preview, the Windows half has never run on Windows
+
+See [`WSL2.md`](WSL2.md) for the feature and [`WSL2-PLAN.md`](WSL2-PLAN.md) for the design and the
+experiments (E1-E14) a real machine still has to settle.
+
+**Linux side: 150 checks in a sandbox** (`bash tests/wsl.sh`; macOS 26.4, bash 3.2). Every check runs against
+a throw-away directory and stubs -- Windows programs, `useradd`, `apt-get`, `loginctl`, `systemctl`, `/proc/version`,
+`/run/WSL`, `/run/user`, `/etc` -- so it never touches a real WSL, a real install or the real `/etc`. The same suite
+runs on Ubuntu and macOS in CI (`wsl2-linux.yml`; **not yet run there**).
+
+| section | checks | what it proves |
+|---|---|---|
+| `win` | 43 | `pi-agent-win`: finds a live interop channel when a systemd service has none, keeps the session's own, exit 3 and a clear message when none is live, exit 127 for a missing program; `ps` never loads the profile, never waits for input, forces UTF-8, passes the exit status through; `open` uses wslview or `Start-Process`, doubles quotes (no PowerShell injection through a URL), converts Linux paths; `doctor` lists every problem, skips what depends on a failed check |
+| `ctl` | 14 | `pi-agent`: `open` goes to the Windows browser on WSL and is unchanged elsewhere, `doctor` routes to `pi-agent-win`, `XDG_RUNTIME_DIR` is derived when a `wsl.exe -u USER --exec` session has none, and left alone when it has one or on macOS |
+| `env` | 9 | `pi-agent-env.sh`: System32 and PowerShell are appended LAST (a Windows node/npm/git cannot shadow ours), once, only when the installer recorded them and they exist; an existing `BROWSER` is kept |
+| `install` | 19 | `install.sh`: refuses a home on a Windows drive, warns without systemd, derives the user bus, survives a missing `$USER` under `set -u`, says where Windows finds pi-web, `wire` installs `pi-agent-win`; plain Linux is unchanged |
+| `rootsetup` | 39 | `scripts/wsl-root-setup.sh`: creates the user once, writes `wsl.conf` (interop on/off), switches off the first-run prompt and cloud-init, hands over the installer, records the Windows directory, refuses bad input and a non-root caller; `packages`; `linger` waits for the bus and times out |
+| `bundle` | 26 | `scripts/build-wsl-bundle.sh`: one-directory tarball, same commit gives the same bytes, published sha256 is the tarball's, stamped installer has a UTF-8 BOM and no placeholder left, refuses a VERSION mismatch, a bad version and an unknown placeholder |
+
+Test strength was checked by hand with **32 deliberate regressions** (probe skipped, session channel ignored, profile
+loaded, output not UTF-8, quotes not doubled, `$USER` unguarded under `set -u`, user bus not prepared, Windows-drive
+install allowed, `wire` forgetting the tool, interop always on, user created every time, root accepted, bus not
+awaited, no BOM, VERSION not checked, ...). Every one makes the suite fail. `shellcheck -S warning` is clean.
+
+**Windows side: not run.** `windows/install-wsl.ps1` (about 1650 lines) and its Pester suite
+(`windows/tests/install-wsl.Tests.ps1`, about 60 cases) were written without PowerShell or Windows available. The
+author parsed both with tree-sitter (0 error nodes) and linted them for brackets, quotes and PowerShell-7-only
+syntax; nothing has been executed. They run in CI (`wsl2-windows.yml`: Pester under pwsh and Windows PowerShell 5.1,
+PSScriptAnalyzer, then an end-to-end attempt on a hosted Windows runner that is also the experiment for whether such a
+runner can start WSL2 at all). Expect the first CI run to fail in the mock plumbing before it says anything about the
+installer.
+
+**Not covered at all:** a real WSL2; the first-time enablement with a reboot; start at logon and the keep-alive; sleep
+and wake; ARM64; and the Omnigent end to end (three agents, each opening a conversation and switching model).
+Parallels on Apple silicon cannot host WSL2 (Parallels KB 129497), so this Mac is not a test machine for it.

@@ -1,6 +1,7 @@
 # Pi Agent 原生版 — Windows(WSL2)規劃
 
-> 狀態:**規劃稿,尚未實作** · 2026-11-03 · 分支 `windows-wsl2`(基於 v0.2.4,`3427c25`)· 未推送
+> 狀態:**預覽實作中** · 2026-11-03 · 分支 `windows-wsl2`(基於 v0.2.4,`3427c25`)· 未推送
+> Linux 端已實作並在沙盒測過(150 項);Windows 端已寫好但**沒在真的 Windows 上跑過**。使用說明見 [`WSL2.md`](WSL2.md),實作與本規劃的差異見附錄 B。
 
 這份文件回答一件事:怎麼讓 Windows 電腦也能裝 Pi Agent,並且在 Omnigent 上連得到、
 Pi Agent / Claude Code / Codex 三個代理都能開對話和切換模型。
@@ -122,14 +123,10 @@ Windows 11 使用者帳號
 ### 3.5 Windows 端新檔
 
 ```
-windows/install-wsl.ps1       入口:-Resume -Uninstall -PurgeData -NoWindowsInterop -DryRun -RootfsPath -Distro -Yes
-windows/lib/pins.ps1          映像 URL 與 sha256、最低 WSL 版本、安裝包版本與 sha256(release 蓋章)
-windows/lib/wsl.ps1           wsl.exe 包裝:UTF-8 輸出、退出碼、重試;Pester 可模擬
-windows/lib/preflight.ps1     S0
-windows/lib/integration.ps1   S5:保活與自動啟動、shim、捷徑
-windows/templates/wsl.conf    寫進 VM 的設定
+windows/install-wsl.ps1       單一檔案(一行指令只抓得到一個檔案),所有步驟與函式都在裡面
 windows/tests/*.Tests.ps1     Pester
 ```
+(原規劃拆成 `windows/lib/*.ps1`;實作改成單一檔案,見附錄 B。)
 
 ### 3.6 和 Omnigent 的關係
 
@@ -310,3 +307,18 @@ instanceIdleTimeout=-1
 ```
 PA_WIN_SYSTEM32=/mnt/c/Windows/System32
 ```
+
+## 附錄 B. 實作與本規劃的差異(2026-11-03)
+
+| 規劃 | 實作 |
+|---|---|
+| `windows/lib/*.ps1` 多檔 | 單一檔案 `windows/install-wsl.ps1`;發佈時由 `scripts/build-wsl-bundle.sh` 蓋章並加 UTF-8 BOM |
+| S3 裝套件的清單 | 單一來源 `lib/common.sh` 的 `PA_APT_PACKAGES`,`install.sh` 預檢與 `scripts/wsl-root-setup.sh packages` 共用(後者另加 `dbus-user-session`) |
+| VM 內以 root 做的事 | `scripts/wsl-root-setup.sh`:`configure`(使用者、`wsl.conf`、關閉首次啟動提問與 cloud-init、標記、交付安裝包、記錄 Windows 目錄)、`packages`、`linger`;有 39 項沙盒測試 |
+| `pi-agent-win run/ps/open/path/doctor` | 只做 `run`、`ps`、`open`、`doctor`:`wslpath` 本來就在 WSL 裡,不另包 `path`;通道不做快取(探測一次只是啟動一個 `cmd.exe`) |
+| `pi-agent-env.sh` 讀 `windows-interop.env` | 如規劃;Windows 目錄附加在 PATH **最後**,並在使用者沒設 `BROWSER` 時指向 `pi-agent-win open` |
+| 沒有systemd 時 `install.sh` 的處理 | 只警告、不中止(試用仍可),並說明怎麼打開 |
+| 安裝器遇到已存在且有標記的 `PiAgent` | 沿用;重新放入安裝包並重跑 `configure`,`wsl.conf` 有變才重啟 |
+| 解除安裝 | **只**刪有 `/etc/pi-agent-distro` 標記的 Linux(同名的別人的不動);`-PurgeData` 先備份、備份失敗就不刪、要輸入名稱確認;`InstallDir` **不遞迴刪除**:只刪自己放的東西,資料夾空了才刪(`-InstallDir` 可以指到任何地方) |
+| 登入 Claude Code / Codex | 安裝完成的訊息印出完整指令(`~/.local/share/pi-agent/bin/claude auth login`、`.../codex login`):VM 裡的 PATH 沒有我們的包裝程式 |
+| 發佈 | `release.yml` 多一個 `wsl-bundle` 工作(安裝包 + 蓋章的 `install-wsl.ps1`)和一個實驗性的 `linux-arm64` pi-web 預建包;`wsl2-linux.yml` 跑 Linux 端測試與 shellcheck;`wsl2-windows.yml` 跑 Pester 與端對端 spike |

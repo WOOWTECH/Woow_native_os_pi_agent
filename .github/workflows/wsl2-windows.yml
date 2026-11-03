@@ -1,0 +1,236 @@
+# Windows (WSL2) installer: unit tests, and an end-to-end run on a GitHub-hosted Windows runner.
+#
+# The e2e job is also the SPIKE of docs/WSL2-PLAN.md (experiments E1, E2, E3, E5, E9): it finds out
+# whether a hosted runner can run a real WSL2 distro at all. It prints everything useful and always
+# uploads its logs. It cannot test the first-time WSL enablement and reboot (E13): the runner image
+# already has WSL, and nothing here can reboot.
+#
+# workflow_dispatch only works for workflow files on the default branch, so this workflow starts on
+# push to the feature branch instead.
+name: wsl2-windows
+
+on:
+  push:
+    branches: [windows-wsl2]
+    paths:
+      - 'windows/**'
+      - 'scripts/wsl-*'
+      - 'scripts/build-wsl-bundle.sh'
+      - 'lib/wsl.sh'
+      - 'rootfs/bin/pi-agent*'
+      - 'tests/wsl-*'
+      - '.github/workflows/wsl2-windows.yml'
+  pull_request:
+    paths:
+      - 'windows/**'
+      - 'scripts/wsl-*'
+      - 'scripts/build-wsl-bundle.sh'
+      - 'lib/wsl.sh'
+      - 'rootfs/bin/pi-agent*'
+      - 'tests/wsl-*'
+      - '.github/workflows/wsl2-windows.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wsl2-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit (${{ matrix.shell }})
+    runs-on: windows-2025
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [pwsh, powershell]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pester 5 and PSScriptAnalyzer
+        shell: ${{ matrix.shell }}
+        run: |
+          if ($PSVersionTable.PSEdition -eq 'Desktop') {
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -MinimumVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+
+      # The release adds a BOM to install-wsl.ps1; Windows PowerShell 5.1 reads a file without one as
+      # ANSI and would break on the Chinese messages. Parse the BOM copy with this very shell.
+      - name: Parse check
+        shell: ${{ matrix.shell }}
+        run: |
+          $text = [System.IO.File]::ReadAllText((Resolve-Path 'windows/install-wsl.ps1').Path, [System.Text.Encoding]::UTF8)
+          $copy = Join-Path $env:RUNNER_TEMP 'install-wsl-bom.ps1'
+          [System.IO.File]::WriteAllText($copy, $text, (New-Object System.Text.UTF8Encoding($true)))
+          $tokens = $null
+          $errs = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($copy, [ref]$tokens, [ref]$errs)
+          if ($errs -and $errs.Count -gt 0) {
+            foreach ($e in $errs) { Write-Host ('::error file=windows/install-wsl.ps1,line=' + $e.Extent.StartLineNumber + '::' + $e.Message) }
+            exit 1
+          }
+          Write-Host ('parses cleanly under PowerShell ' + $PSVersionTable.PSVersion)
+
+      - name: Pester
+        shell: ${{ matrix.shell }}
+        run: |
+          Import-Module Pester -MinimumVersion 5.5.0 -Force
+          $cfg = New-PesterConfiguration
+          $cfg.Run.Path = 'windows/tests'
+          $cfg.Run.Exit = $true
+          $cfg.Output.Verbosity = 'Detailed'
+          $cfg.TestResult.Enabled = $true
+          $cfg.TestResult.OutputPath = 'pester-${{ matrix.shell }}.xml'
+          Invoke-Pester -Configuration $cfg
+
+      # Errors fail the job; warnings are shown as annotations. Write-Host is how this script talks to
+      # the user, and the file has no BOM in the repository (the release adds it), so those two rules
+      # would only be noise.
+      - name: PSScriptAnalyzer
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          $skip = @('PSAvoidUsingWriteHost', 'PSUseShouldProcessForStateChangingFunctions', 'PSUseBOMForUnicodeEncodedFile', 'PSAvoidGlobalVars', 'PSUseSingularNouns')
+          $found = @(Invoke-ScriptAnalyzer -Path windows -Recurse -ExcludeRule $skip)
+          foreach ($f in $found) {
+            $level = 'notice'
+            if ($f.Severity -eq 'Error') { $level = 'error' } elseif ($f.Severity -eq 'Warning') { $level = 'warning' }
+            Write-Host ('::' + $level + ' file=' + $f.ScriptPath + ',line=' + $f.Line + '::' + $f.RuleName + ': ' + $f.Message)
+          }
+          $errors = @($found | Where-Object { $_.Severity -eq 'Error' })
+          Write-Host ('PSScriptAnalyzer: ' + $errors.Count + ' error(s), ' + @($found | Where-Object { $_.Severity -eq 'Warning' }).Count + ' warning(s)')
+          if ($errors.Count -gt 0) { exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pester-${{ matrix.shell }}
+          path: pester-${{ matrix.shell }}.xml
+          if-no-files-found: ignore
+
+  e2e:
+    name: e2e (real WSL2 on a hosted runner)
+    needs: unit
+    # Run even when the unit tests are red: this job is the spike, and what it learns about the
+    # runner does not depend on them.
+    if: ${{ !cancelled() }}
+    runs-on: windows-2025
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: What does this runner have?
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory -Force ci-out | Out-Null
+          $env:WSL_UTF8 = '1'
+          $log = 'ci-out/00-environment.txt'
+          function Run($title, [scriptblock]$sb) {
+            ('=== ' + $title) | Tee-Object -FilePath $log -Append
+            try { (& $sb 2>&1 | Out-String).TrimEnd() | Tee-Object -FilePath $log -Append }
+            catch { ('ERROR: ' + $_) | Tee-Object -FilePath $log -Append }
+          }
+          Run 'wsl --version' { wsl --version }
+          Run 'wsl --status' { wsl --status }
+          Run 'wsl -l -v' { wsl -l -v }
+          Run 'virtualization (Get-ComputerInfo)' { Get-ComputerInfo -Property 'HyperV*', 'OsName', 'OsBuildNumber' | Format-List }
+          Run 'Windows features' { Get-WindowsOptionalFeature -Online | Where-Object { $_.FeatureName -match 'Hyper-V|VirtualMachinePlatform|Linux' } | Format-Table FeatureName, State }
+          Run 'systeminfo (Hyper-V lines)' { systeminfo | Select-String -Pattern 'Hyper-V|Virtualization|Hypervisor' }
+          Run 'memory and disk' { Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory, HypervisorPresent | Format-List; Get-PSDrive C | Format-List Used, Free }
+
+      - name: Build the installer bundle
+        shell: bash
+        run: |
+          mkdir -p dist
+          bash scripts/build-wsl-bundle.sh dist dev
+          ls -l dist
+
+      # Windows PowerShell 5.1 on purpose: that is what a user has. The release adds the BOM.
+      # The pi-web build is the one attached to the v0.2.4 release (README names the same file for v0.2.3;
+      # a HEAD request on 2026-11-03 answered 200 for both).
+      - name: Install (this is the WSL2 spike)
+        id: install
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force dist, ci-out | Out-Null
+          $text = Get-Content -Raw -Encoding UTF8 windows\install-wsl.ps1
+          $script = Join-Path (Get-Location).Path 'dist\install-wsl.ps1'
+          [System.IO.File]::WriteAllText($script, $text, (New-Object System.Text.UTF8Encoding($true)))
+          $bundle = Join-Path (Get-Location).Path 'dist\pi-agent-installer-dev.tar.gz'
+          & $script -Yes -NoAutostart -BundlePath $bundle -PiWebArtifact 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.4/piweb-0.10.0-linux-x64.tar.gz' 2>&1 | Tee-Object -FilePath ci-out/10-install.txt
+          $code = $LASTEXITCODE
+          ('install-wsl.ps1 exit code: ' + $code) | Tee-Object -FilePath ci-out/10-install.txt -Append
+          exit $code
+
+      - name: Probes
+        if: always()
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory -Force ci-out | Out-Null
+          $env:WSL_UTF8 = '1'
+          $log = 'ci-out/20-probes.txt'
+          function Say($t) { $t | Tee-Object -FilePath $log -Append }
+          function Run($title, [scriptblock]$sb) {
+            Say ('=== ' + $title)
+            try { Say ((& $sb 2>&1 | Out-String).TrimEnd()) }
+            catch { Say ('ERROR: ' + $_) }
+          }
+          Run 'wsl -l -v' { wsl -l -v }
+          Run 'pi-web answers on localhost:30141 (seen from Windows)' { curl.exe -s -o NUL -w '%{http_code}' --max-time 10 http://localhost:30141/api/home }
+          Run 'pi-agent doctor' { wsl -d PiAgent -u piagent --exec /home/piagent/.local/share/pi-agent/bin/pi-agent doctor }
+          $uid = (wsl -d PiAgent -u piagent --exec /usr/bin/id -u 2>$null | Out-String).Trim()
+          $envs = @(('XDG_RUNTIME_DIR=/run/user/' + $uid), ('DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/' + $uid + '/bus'))
+          Run 'systemd state' { wsl -d PiAgent -u root --exec /usr/bin/systemctl is-system-running }
+          Run 'systemctl --user status pi-web' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/systemctl --user status pi-web --no-pager }
+          Run 'journalctl --user -u pi-web' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/journalctl --user -u pi-web -n 200 --no-pager }
+          Run 'memory and disk inside the distro' { wsl -d PiAgent -u root --exec /usr/bin/free -m; wsl -d PiAgent -u root --exec /usr/bin/df -h / }
+
+      # E3: with no terminal open, does the distro stay up? First with the keep-alive the installer
+      # started, then (control) with it stopped, past instanceIdleTimeout (15 s) and vmIdleTimeout (60 s).
+      - name: E3 keep-alive experiment
+        if: always()
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory -Force ci-out | Out-Null
+          $env:WSL_UTF8 = '1'
+          $log = 'ci-out/30-keepalive.txt'
+          function Say($t) { $t | Tee-Object -FilePath $log -Append }
+          function Probe($label) {
+            $http = (curl.exe -s -o NUL -w '%{http_code}' --max-time 10 http://localhost:30141/api/home 2>&1 | Out-String).Trim()
+            $running = (wsl -l --running 2>&1 | Out-String).Trim()
+            $ka = @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'" | Where-Object { $_.CommandLine -like '*keepalive.ps1*' }).Count
+            Say ('[' + $label + '] http=' + $http + ' keepalive-processes=' + $ka)
+            Say $running
+          }
+          Probe 'now, keep-alive running'
+          Start-Sleep -Seconds 90
+          Probe 'after 90 s, keep-alive running'
+          Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'" | Where-Object { $_.CommandLine -like '*keepalive.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+          Get-Process -Name wsl -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 90
+          Probe 'after 90 s with NO keep-alive (control)'
+
+      - name: Collect logs
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ci-out | Out-Null
+          $log = Join-Path $env:LOCALAPPDATA 'PiAgent\install.log'
+          if (Test-Path $log) { Copy-Item $log ci-out/install.log }
+          Get-ChildItem dist -ErrorAction SilentlyContinue | Select-Object Name, Length | Out-String | Set-Content ci-out/dist-listing.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wsl2-e2e-logs
+          path: ci-out/
+          if-no-files-found: warn

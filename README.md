@@ -15,7 +15,7 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 |---|---|
 | **Linux** (Ubuntu/Debian; dnf-based best-effort) | ✅ installed + running + browser-verified · 24/24 smoke |
 | **macOS** (arm64, 26.4 verified) | ✅ installed + running under launchd · 24/24 smoke · see [`docs/MACOS.md`](docs/MACOS.md) |
-| **Windows (WSL2)** | ⏳ reuses the Linux path |
+| **Windows 11** (WSL2) | 🧪 preview: the Linux half is tested in a sandbox (150 checks), the Windows half has **not yet run on a real Windows** · see [`docs/WSL2.md`](docs/WSL2.md) |
 
 ## Install
 
@@ -24,6 +24,14 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 [WoowPiAgent-0.2.4-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.4/WoowPiAgent-0.2.4-macos-arm64.pkg)
 is signed with a Developer ID and notarized, so Gatekeeper opens it without a
 warning. It fetches the rest of the stack while it installs.
+
+### Windows 11 — a dedicated WSL2 Linux (preview)
+
+One PowerShell command creates a dedicated Ubuntu in WSL2, installs the Linux version in it,
+and starts it when you log in. Pi Agent, Claude Code and Codex then run as they do on Linux,
+and agents can reach Windows programs through `pi-agent-win`. Requirements, the command, what
+it changes and how to remove it: [`docs/WSL2.md`](docs/WSL2.md). Not yet validated on a real
+Windows machine: expect rough edges and read the status section there first.
 
 ### Linux — prebuilt pi-web (recommended)
 
