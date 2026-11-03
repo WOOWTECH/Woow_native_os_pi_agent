@@ -172,3 +172,46 @@ effect on darwin, so an ownership check on `argv[0]` stays valid there. See
   account-level MCP server (a dozen claude.ai ones on the test hosts) and took
   >40s before reaching the fixture. `claude mcp get <name>` answers in ~1.5s and
   still proves claude read the shared config.
+
+## Host-name suite — v0.2.2 (macOS and Linux)
+
+```bash
+bash tests/host-name.sh      # exits non-zero on any failure
+```
+
+Hermetic: temp directories and a stub Omnigent server on `127.0.0.1`. It never reads
+or writes `~/.omnigent`, a running install or a real server, and starts nothing
+(`tests/smoke.sh`, which restarts the service, is not involved). The one thing it
+fetches is the pinned `pi-omnigent-plugin` tarball from its release URL — cached,
+and refused unless its sha256 equals the one in `lib/pins.sh` (`PA_TEST_PLUGIN_TGZ`
+supplies a local copy for offline runs, verified the same way). It needs `node`, and a
+`python` that imports `httpx` and `yaml`; the driver uses the install's omnigent
+python read-only, then `python3`, and otherwise builds a throwaway venv.
+
+| suite | what it proves |
+|---|---|
+| **A** `pi-agent-host-name` | `seed` writes `<hostname> (pi-agent)` only when there is no name (idempotent, never overwrites, mode 600/700, every other line kept byte for byte, awkward shapes refused with a warning, never fails); a name equal to the plain hostname is warned about and **not** renamed; `set` takes any name — an old host's exact name included — and refuses malformed ones; the file is always the install's own (`OMNIGENT_CONFIG_HOME` and `HOME` are never followed); `check` reads the plugin's last refusal |
+| **B** the plugin patch | applies once, second run is a byte-identical no-op, `.orig` stays pristine, a version it was not validated against or a moved anchor leaves the files alone with a `WARN:`, never fails, composes with the session-home patch in either order, valid Python for every interpreter present, and the new hints load |
+| **C** `install.sh` | `wire` installs the three new files, patches and seeds (twice: no change), warns on a plain-hostname install, survives a skipped patch; the real `fetch` stage (from `file://` copies of the pinned tarballs) patches a fresh tree and again after the tree is replaced |
+| **D** Node layer | `PI_AGENT_TAKEOVER_HOST_ID` reaches the Python adapter through the plugin's own `runtimeEnv`/`runJSON`; a refusal travels `initialize()` → `state.json` → `status()` (with the new hints) and `check`, while `connect` prints only the code |
+| **E–H** the guard | the **real patched `omnigent.py`**, its own httpx client, against a stub serving `/v1/me` and `/v1/hosts`: no collision / empty list / own host_id (dashed, upper-case) start the host; a same-named host (online or offline, any case) is refused with the zh-TW message carrying the exact lines; another account's host is not a collision; every server failure (401/403/5xx, not JSON, no list, unreachable) is `HOST_NAME_UNVERIFIABLE` and starts nothing; `PI_AGENT_TAKEOVER_HOST_ID` works only as an 8–32 hex prefix covering **every** colliding host, never for `1`/`true`/a typo, never for an online host, and is spent once honoured; the guard only ever issues GETs, and sits at the spawn |
+| **K** real omnigent | `load_or_create_host_identity` keeps the seeded name (ASCII, CJK, quotes, backslash) and generates only the `host_id`; skipped when no python has the `omnigent` package |
+
+Recorded 2026-11-03 for v0.2.2:
+
+| platform | result |
+|---|---|
+| macOS 26.4 arm64 · node 24.11 · Python 3.12 · omnigent 0.16.0 | **134 passed, 0 failed, 0 skipped** |
+| Ubuntu 24.04 (Linux 7.0) · node 20.20 · Python 3.12.3, throwaway venv, isolated tree under `/tmp` | **128 passed, 0 failed, 1 skipped** (K: no `omnigent` package without using the machine's live install) |
+
+Test strength was checked by hand with 26 deliberate regressions (guard fails open;
+any non-empty takeover value accepted; offline duplicates ignored; takeover of an
+online host allowed; own `host_id` treated as a collision; seed overwrites a name;
+the tool follows `OMNIGENT_CONFIG_HOME`; the patch not idempotent; wire not seeding,
+not patching, not installing the tools; config world-readable; the takeover variable
+left in the started host's environment; no version gate; case-sensitive names;
+other accounts' hosts counted; and so on). Every one makes the suite fail; the runner
+is not part of the repository.
+
+Not covered, and said so in `docs/RELEASE-0.2.2.md`: a live Omnigent server. The stub
+is shaped from the plugin's own use of `/v1/me` and `/v1/hosts`.
