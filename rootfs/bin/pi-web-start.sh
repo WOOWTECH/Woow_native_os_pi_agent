@@ -71,6 +71,33 @@ if [ -f "${PI_AGENT_HOME}/bin/omnigent-model-options-patch.py" ]; then
   fi
 fi
 
+# Session home on macOS (docs/SESSION-HOME.md, docs/MACOS-CUTOVER.md). Linux gets
+# PI_AGENT_SESSION_HOME from a systemd drop-in; launchd has no such thing, so the
+# state file `pi-agent-session-home enable` writes is the switch: REAL_HOME= is the
+# home the sessions should run with, HOST_PATH= (a cutover only) the PATH the
+# replaced launchd host had, whose directories -- the user's own tools -- are
+# appended AFTER ours so the wrappers above still win. Darwin only, so Linux,
+# whose drop-in sets the same variable, behaves exactly as before.
+if [ "$(uname -s)" = Darwin ] && [ -f "${PI_AGENT_HOME}/session-home.state" ]; then
+  if [ -z "${PI_AGENT_SESSION_HOME:-}" ]; then
+    _pa_sh="$(sed -n 's/^REAL_HOME=//p' "${PI_AGENT_HOME}/session-home.state" | head -1)"
+    if [ -n "$_pa_sh" ] && [ -d "$_pa_sh" ]; then export PI_AGENT_SESSION_HOME="$_pa_sh"; fi
+    unset _pa_sh
+  fi
+  _pa_hp="$(sed -n 's/^HOST_PATH=//p' "${PI_AGENT_HOME}/session-home.state" | head -1)"
+  if [ -n "$_pa_hp" ]; then
+    _pa_ifs="$IFS"; IFS=:
+    for _pa_d in $_pa_hp; do
+      if [ -n "$_pa_d" ] && [ -d "$_pa_d" ]; then
+        case ":${PATH}:" in *":${_pa_d}:"*) ;; *) PATH="${PATH}:${_pa_d}" ;; esac
+      fi
+    done
+    IFS="$_pa_ifs"; export PATH
+    unset _pa_d _pa_ifs
+  fi
+  unset _pa_hp
+fi
+
 # Session home (docs/SESSION-HOME.md): teach the plugin to start the Omnigent
 # host with PI_AGENT_SESSION_HOME as its HOME. Inert while that variable is
 # unset, so -- like the patch above -- it is applied on every start, which also

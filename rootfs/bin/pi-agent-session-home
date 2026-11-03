@@ -48,6 +48,10 @@ log() { printf '[session-home] %s\n' "$*"; }
 die() { printf '[session-home] ERROR: %s\n' "$*" >&2; exit 1; }
 resolve() { readlink -f "$1" 2>/dev/null || printf '%s\n' "$1"; }
 
+# macOS has its own implementation: launchd instead of systemd, `ps eww` instead of
+# /proc, and the `cutover` that hands over an existing launchd-managed Omnigent host.
+if [ "$(uname -s)" = Darwin ]; then exec "$SELF/pi-agent-session-home-macos" "$@"; fi
+
 [ "$(uname -s)" = Linux ] || die "only systemd --user is supported so far (this is $(uname -s))"
 
 REAL="$(getent passwd "$(id -un)" | cut -d: -f6)"
