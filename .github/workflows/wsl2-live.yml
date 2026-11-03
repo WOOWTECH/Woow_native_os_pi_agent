@@ -1,9 +1,13 @@
 # A LIVE test of the WSL2 install against a REAL Omnigent server (docs/WSL2-LIVE-TEST.md; E10 of docs/WSL2-PLAN.md).
 #
-# Not CI. It runs only for a push to a branch named wsl2-live/..., it needs five repository secrets, and it holds the
-# machine open afterwards so that a person can open conversations on this host from Omnigent, log Claude Code and
-# Codex in, and switch models. The runner is a single-use VM: when the job ends the VM, and everything logged in on
-# it, is gone.
+# Not CI. It runs only for a push to a branch named wsl2-live/..., it needs three repository secrets (plus two
+# optional ones for a LiteLLM gateway), and it holds the machine open afterwards so that a person can open
+# conversations on this host from Omnigent, log Claude Code and Codex in, and switch models. The runner is a
+# single-use VM: when the job ends the VM, and everything logged in on it, is gone.
+#
+# GitHub hands a job its secrets when the job STARTS. A secret added after that is invisible to the run in flight, so
+# the way to pick one up is a new run -- and a new run replaces the old one (cancel-in-progress below), whose
+# Disconnect step still runs.
 #
 # The secrets reach only the steps that need them, as environment variables of that step, and go into the Linux side
 # through WSLENV -- never on a command line, never printed. GitHub masks them in the log as well.
@@ -18,7 +22,7 @@ permissions:
 
 concurrency:
   group: wsl2-live
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   live:
