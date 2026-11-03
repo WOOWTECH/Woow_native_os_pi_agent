@@ -11,6 +11,7 @@ SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
 export PI_AGENT_HOME
 # shellcheck source=/dev/null
 _pa_caller_home="${HOME:-}"
+_pa_caller_pi_dir="${PI_CODING_AGENT_DIR:-}"
 . "${PI_AGENT_HOME}/bin/pi-agent-env.sh"
 # Session home (docs/SESSION-HOME.md): pi-agent-env.sh scopes HOME for the
 # install itself. While session home is enabled, keep the HOME this wrapper was
@@ -23,6 +24,21 @@ _pa_caller_home="${HOME:-}"
 # omnigent gives each codex session, and the scoped HOME of pi-web's terminal.
 if [ -f "${PI_AGENT_HOME}/session-home.state" ] && [ -n "${_pa_caller_home:-}" ]; then
   export HOME="$_pa_caller_home"
+  # Pi keeps its models, login, settings and session history in ONE directory, and
+  # pi-agent-env.sh points it at this install's data dir. A caller that runs with the
+  # user's own HOME is a session of the user's own, and its Pi data is where the user's
+  # own pi keeps it: ~/.pi/agent. Without this the scoped pi finds no models at all
+  # (Omnigent reports MODELS_UNAVAILABLE) and cannot resume the Pi conversations the
+  # host already has -- measured on the first Mac cut over. A caller with THIS install's
+  # HOME (pi-web's terminal) keeps this install's data dir, and a directory the caller
+  # chose itself is honoured unless it is just the inherited scoped default.
+  if [ "$_pa_caller_home" != "${PI_AGENT_HOME}/home" ]; then
+    if [ -n "$_pa_caller_pi_dir" ] && [ "$_pa_caller_pi_dir" != "${PI_AGENT_DATA_DIR}" ]; then
+      export PI_CODING_AGENT_DIR="$_pa_caller_pi_dir"
+    else
+      export PI_CODING_AGENT_DIR="$_pa_caller_home/.pi/agent"
+    fi
+  fi
 fi
 
 CLI=""

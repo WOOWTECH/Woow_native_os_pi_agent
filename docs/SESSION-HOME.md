@@ -98,6 +98,28 @@ skills into this install's data dir, where an uninstall deletes them. So when
   rewrites that file constantly; an unconditional rewrite races those writes),
   and `~/.codex/config.toml` only when its content changed — never an empty one.
 
+### Pi is the one engine whose data is not under `HOME`
+
+Claude and Codex keep their login, settings and history under `HOME`, so keeping the
+caller's HOME is enough. Pi keeps its models, login, settings and session history in a
+single directory chosen by `PI_CODING_AGENT_DIR`, and `pi-agent-env.sh` points that at
+this install's data dir. A scoped `pi` that kept the user's HOME but that directory
+found **no models at all** (Omnigent: `MODELS_UNAVAILABLE`) and could not resume the Pi
+conversations the host already had — found on the first Mac cut over, where Claude
+verified fine and Pi did not.
+
+So while session home is on, the `pi` wrapper points `PI_CODING_AGENT_DIR` at the
+caller's own `~/.pi/agent` when the caller runs with the user's own HOME (which is what
+the Omnigent host hands to its sessions). A caller with this install's HOME (pi-web's
+own terminal) keeps this install's data dir, and a directory the caller chose itself is
+honoured unless it is just the inherited scoped default.
+`tests/pi-wrapper-session-home.sh` pins this, and fails against the previous wrapper.
+
+The scoped `pi` can be newer than the one that wrote the user's directory (1.4.0 over
+0.87.1 on that Mac). Reading was tested on a **copy** first: all 53 models listed and
+no file changed. New session files are written by the newer version, so `enable` and
+`cutover` back `~/.pi/agent` up beforehand (`pi-agent-dir.tgz` in the backup directory).
+
 ## Use
 
 ```

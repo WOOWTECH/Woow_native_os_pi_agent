@@ -66,8 +66,9 @@ An install made by v0.2.1 or earlier has neither. Update first (the v0.2.2 packa
    enough disk; the two configs name the same server.
 2. **Back up** the old config and tokens, the three launchd plists, this install's
    config, **the plugin's `connection.json` and `state.json`**, `~/.claude.json`,
-   `~/.codex/config.toml` and the skill directories, with a checksum manifest, to
-   `$PI_AGENT_HOME/backups/cutover-<time>/`.
+   `~/.codex/config.toml`, the skill directories and `~/.pi/agent` (Pi's models, login and
+   history, which the newer scoped pi will now read and write), with a checksum manifest,
+   to `$PI_AGENT_HOME/backups/cutover-<time>/`.
 3. **Retire** `ai.omnigent.host` and `ai.omnigent.og016watch`: `launchctl bootout`,
    `launchctl disable`, and *move* (never delete) the plists to
    `~/Library/LaunchAgents/.pre-pi-agent/`. Once `~/.omnigent` is a link, the old job's
@@ -179,6 +180,11 @@ afterwards (it is bound to the same host, so it comes back).
   in the parked directory); a script that runs `omnigent host enable` by hand would install
   a second service for the same host, so do not. Scripts the dry run cannot see (anything
   not started by launchd) are yours to check.
+- **Pi now runs from your own `~/.pi/agent`.** The Pi the install brings can be much newer
+  than the one that wrote that directory (1.4.0 over 0.87.1 on the first Mac), so Pi
+  conversations continue with the same models, login and history, written from now on by
+  the newer Pi. The directory is backed up first (`pi-agent-dir.tgz`). See
+  [SESSION-HOME.md](SESSION-HOME.md), "Pi is the one engine whose data is not under HOME".
 
 ### Going back later
 

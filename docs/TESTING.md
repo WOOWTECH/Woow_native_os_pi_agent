@@ -218,7 +218,7 @@ is shaped from the plugin's own use of `/v1/me` and `/v1/hosts`.
 
 ## macOS session home + cutover — validated 2026-11-03 (M2 MacBook Air, macOS 26.4.1, 8 GB)
 
-`tests/session-home-macos.sh`: **261 passed, 0 failed** (about 14 minutes). Real launchd jobs with
+`tests/session-home-macos.sh`: **262 passed, 0 failed** (about 14 minutes). Real launchd jobs with
 throw-away `io.woowtech.pa-shtest.<pid>.*` labels, fake hosts under a fake home, a stub of the
 Omnigent server API on 127.0.0.1 (which reproduces the server's host rotation) and fakes of the
 plugin's `pi-omnigent repair` and of pi-web's resume. It never touches `~/.omnigent`,
@@ -243,3 +243,13 @@ Linux path; the Darwin block of `pi-web-start.sh` is a no-op on Linux even with 
 Not covered: the real `ai.omnigent.host` job's shutdown behaviour; the real plugin's `repair` (faked
 from its source); the server's real reaction to a reused host id; Omnigent.app at run time; macOS
 privacy prompts for the new host program; a real reboot mid-cutover; the woowtech MacBook.
+
+## The `pi` wrapper under session home — validated 2026-11-03
+
+`tests/pi-wrapper-session-home.sh`: **9 passed, 0 failed**, hermetic (a temp directory and a fake
+node that only reports its environment). It pins which HOME and which Pi data directory the
+wrapper hands to pi with session home off and on, and it **fails against the previous
+wrapper** (4 of the 9, the session-home cases): run it with `PI_TEST_WRAPPER=<older pi>` to see
+the bug it guards. The bug was found on the first Mac cut over: Omnigent's own verification
+of the Pi engine answered `MODELS_UNAVAILABLE` (claude verified fine), because the scoped pi
+kept the user's HOME but read this install's empty data dir. See docs/SESSION-HOME.md.

@@ -451,7 +451,10 @@ backup_user_files() {   # backup_user_files DIR
   for sub in .claude/skills .agents/skills; do [ ! -e "$REAL/$sub" ] || dirs="$dirs $sub"; done
   # shellcheck disable=SC2086
   if [ -n "$dirs" ]; then tar czf "$bk/skill-dirs.tgz" -C "$REAL" $dirs; fi
-  log "backed up ~/.claude.json, ~/.codex/config.toml and${dirs:- no skill dirs} to $bk"
+  # Pi keeps its models, login, settings and session history in one directory, and under session
+  # home the (newer) scoped pi reads and writes the user's own ~/.pi/agent (the pi wrapper).
+  if [ -d "$REAL/.pi/agent" ]; then tar czf "$bk/pi-agent-dir.tgz" -C "$REAL" .pi/agent 2>/dev/null || warn "could not back up ~/.pi/agent"; fi
+  log "backed up ~/.claude.json, ~/.codex/config.toml, ~/.pi/agent and${dirs:- no skill dirs} to $bk"
 }
 # The PATH the old launchd host ran with: its sessions found the user's tools there.
 old_host_path() {

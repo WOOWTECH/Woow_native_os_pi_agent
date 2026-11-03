@@ -138,7 +138,7 @@ stub_up() {
 
 # ---------------------------------------------------------------------- sandbox ---
 mkdir -p "$REAL/Library/LaunchAgents" "$REAL/.omnigent/"{bin,health,logs/host,daemons,locks,codex-native/rollout-a,pi-native/s1,attachments} \
-         "$REAL/.claude/skills/demo" "$REAL/.local/bin" "$REAL/.codex" "$SB/tools/bin" "$SB/fakepkg/omnigent/host" "$ST" \
+         "$REAL/.claude/skills/demo" "$REAL/.local/bin" "$REAL/.pi/agent" "$REAL/.codex" "$SB/tools/bin" "$SB/fakepkg/omnigent/host" "$ST" \
          "$PA/bin" "$PA/logs" "$PA/data/omnigent-plugin" "$PA/home/.omnigent" "$PA/home/.local/bin"
 # the fakes, under the names the real programs have, run by the test python
 fakeify() { { echo "#!$PY"; sed 1d "$FAKE_SRC"; } > "$1"; chmod 755 "$1"; }
@@ -226,6 +226,7 @@ EOF
   echo '{"ok": true}' > "$REAL/.omnigent/health/state.json"
   echo '{"mcpServers": {}}' > "$REAL/.claude.json"
   echo 'model = "x"' > "$REAL/.codex/config.toml"
+  echo '{"providers": {}}' > "$REAL/.pi/agent/models.json"
   echo '# demo skill' > "$REAL/.claude/skills/demo/SKILL.md"
 }
 write_new_install() {
@@ -514,6 +515,7 @@ t "...and is whole (everything but its own bookkeeping unchanged)" test "$(snap_
 t "codex-native is hard-linked into this install" test "$(stat -f %i "$PARKED/codex-native/rollout-a/rollout.jsonl")" = "$(stat -f %i "$PA/home/.omnigent/codex-native/rollout-a/rollout.jsonl")"
 t "pi-native and attachments carried over" eval "test -f '$PA/home/.omnigent/pi-native/s1/session.jsonl' && test -f '$PA/home/.omnigent/attachments/a.bin'"
 t "the owner's own job that logs under the old directory can still start: its log directory exists" test -d "$PA/home/.omnigent/health"
+t "the user's own Pi data (~/.pi/agent) was backed up before anything could write to it" eval "tar tzf '$(ls -d "$PA"/backups/cutover-*/ | tail -1)pi-agent-dir.tgz' | grep -q '.pi/agent/models.json'"
 t "...and that job's plist was left alone, byte for byte" test "$(sha "$LA/$L_DEP.plist")" = "$SHA_PLIST_DEP"
 
 C="$PA/home/.omnigent/config.yaml"
