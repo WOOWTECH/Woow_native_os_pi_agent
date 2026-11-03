@@ -22,6 +22,38 @@ OS="$(pa_os)"; ARCH="$(pa_arch)"
 
 mkdirs() { mkdir -p "$PI_AGENT_HOME" "$PA_BIN_DIR" "$PA_DATA_DIR" "$PA_HOME_DIR" "$PA_LOG_DIR" "$PA_TMP_DIR" "$PA_PLUGINS_DIR" "$PA_CLIS_DIR"; }
 
+# Host-name safety (docs/OPERATIONS-GOTCHAS.md section 13): two Omnigent hosts of
+# one account that share a name take each other's registration -- and the
+# conversations bound to it -- away on every reconnect. Two pieces keep that from
+# happening here, both idempotent and neither able to fail the install:
+#   * a plugin patch that refuses to start a host under a name already taken, and
+#   * a unique default name ("<hostname> (pi-agent)") seeded into this install's
+#     own host config when it has none.
+# `fetch` applies the patch to a fresh plugin tree; `wire` applies it again (a
+# no-op when present) and seeds the name, so an install that predates this
+# release is covered by re-running `wire`. A skipped patch or a plain-hostname
+# warning is shown as a warning, not as routine progress.
+relay_helper_output() {
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      WARN:*)  warn "${line#WARN: }" ;;
+      *WARN:*) warn "${line%%WARN: *}${line#*WARN: }" ;;
+      *)       log "$line" ;;
+    esac
+  done
+}
+apply_host_name_guard() {
+  local patch="$HERE/rootfs/bin/omnigent-plugin-host-name-guard-patch.mjs"
+  [ -f "$patch" ] && [ -d "$PA_PLUGINS_DIR/pi-omnigent-plugin" ] || return 0
+  PA_NODE "$patch" "$PA_PLUGINS_DIR/pi-omnigent-plugin" 2>&1 | relay_helper_output || true
+}
+seed_host_name() {
+  local tool="$HERE/rootfs/bin/pi-agent-host-name.mjs"
+  [ -f "$tool" ] || return 0
+  PA_NODE "$tool" seed 2>&1 | relay_helper_output || true
+}
+
 # ---------------------------------------------------------------- preflight ---
 stage_preflight() {
   log "stage preflight — os=$OS arch=$ARCH home=$PI_AGENT_HOME"
@@ -137,6 +169,10 @@ stage_fetch() {
     PA_NODE "$HERE/rootfs/bin/omnigent-plugin-darwin-patch.mjs" "$PA_PLUGINS_DIR/pi-omnigent-plugin" \
       2>&1 | while IFS= read -r line; do log "$line"; done || true
   fi
+  # Every platform: refuse to start a host under a name another host of the
+  # account already holds (see apply_host_name_guard above). Applied again by
+  # `wire` for installs that were fetched before this existed.
+  apply_host_name_guard
   log "fetch OK (plugins verified, settings patch verified)"
 }
 
@@ -380,9 +416,15 @@ stage_omnigent() {
 stage_wire() {
   log "stage wire — install scripts + symlinks"
   mkdirs
-  for f in pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-session-home pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs omnigent-plugin-session-home-patch.mjs; do
+  for f in pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-session-home pi-agent-host-name pi-agent-host-name.mjs pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs omnigent-plugin-session-home-patch.mjs omnigent-plugin-host-name-guard-patch.mjs; do
     [ -f "$HERE/rootfs/bin/$f" ] && install -m 0755 "$HERE/rootfs/bin/$f" "$PA_BIN_DIR/$f"
   done
+  # Host name: the plugin patch (also applied by `fetch`; a no-op when already
+  # there, which is what makes this cover an install fetched before it existed)
+  # and a unique default name when the install has none. An existing name is
+  # never replaced -- one that equals the machine's own gets a warning instead.
+  apply_host_name_guard
+  seed_host_name
   # macOS only: a flock(1) for the Omnigent plugin's locked(). macOS ships none,
   # and the darwin patch makes the plugin look on PATH, where pi-agent-env.sh puts
   # $PA_BIN_DIR first -- so this shim is what it finds, with or without Homebrew.
