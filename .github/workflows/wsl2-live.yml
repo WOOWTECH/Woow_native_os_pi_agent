@@ -1,0 +1,124 @@
+# A LIVE test of the WSL2 install against a REAL Omnigent server (docs/WSL2-LIVE-TEST.md; E10 of docs/WSL2-PLAN.md).
+#
+# Not CI. It runs only for a push to a branch named wsl2-live/..., it needs five repository secrets, and it holds the
+# machine open afterwards so that a person can open conversations on this host from Omnigent, log Claude Code and
+# Codex in, and switch models. The runner is a single-use VM: when the job ends the VM, and everything logged in on
+# it, is gone.
+#
+# The secrets reach only the steps that need them, as environment variables of that step, and go into the Linux side
+# through WSLENV -- never on a command line, never printed. GitHub masks them in the log as well.
+name: wsl2-live
+
+on:
+  push:
+    branches: ['wsl2-live/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wsl2-live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    name: live (a real Omnigent server)
+    runs-on: windows-2025
+    timeout-minutes: 140
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The five secrets are set?
+        shell: pwsh
+        env:
+          OMNIGENT_SERVER: ${{ secrets.OMNIGENT_SERVER }}
+          OMNIGENT_USERNAME: ${{ secrets.OMNIGENT_USERNAME }}
+          OMNIGENT_PASSWORD: ${{ secrets.OMNIGENT_PASSWORD }}
+          LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+        run: |
+          $names = @('OMNIGENT_SERVER', 'OMNIGENT_USERNAME', 'OMNIGENT_PASSWORD', 'LITELLM_BASE_URL', 'LITELLM_API_KEY')
+          $missing = @($names | Where-Object { [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($_)) })
+          if ($missing.Count -gt 0) {
+            Write-Host ('::error title=missing repository secrets::' + ($missing -join ', '))
+            exit 1
+          }
+          Write-Host 'all five secrets are set (values are not shown)'
+
+      - name: Build the installer bundle
+        shell: bash
+        run: |
+          mkdir -p dist
+          bash scripts/build-wsl-bundle.sh dist dev
+
+      # Windows PowerShell 5.1 on purpose: that is what a user has. No secrets in this step.
+      - name: Install
+        id: install
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $text = Get-Content -Raw -Encoding UTF8 windows\install-wsl.ps1
+          $script = Join-Path (Get-Location).Path 'dist\install-wsl.ps1'
+          [System.IO.File]::WriteAllText($script, $text, (New-Object System.Text.UTF8Encoding($true)))
+          $bundle = Join-Path (Get-Location).Path 'dist\pi-agent-installer-dev.tar.gz'
+          & $script -Yes -NoAutostart -SkipSmoke -BundlePath $bundle -PiWebArtifact 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.4/piweb-0.10.0-linux-x64.tar.gz' *>&1 | ForEach-Object { "$_" }
+          exit $LASTEXITCODE
+
+      - name: Point Pi at the LiteLLM gateway
+        shell: pwsh
+        env:
+          LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+        run: |
+          $env:WSL_UTF8 = '1'
+          $env:WSLENV = 'LITELLM_BASE_URL:LITELLM_API_KEY'
+          $envs = @('XDG_RUNTIME_DIR=/run/user/1000', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus')
+          wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /bin/bash /home/piagent/pi-agent-installer/tests/live/set-pi-gateway.sh 2>&1 | ForEach-Object { "$_" }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Connect this machine to Omnigent as a host
+        id: connect
+        shell: pwsh
+        env:
+          OMNIGENT_SERVER: ${{ secrets.OMNIGENT_SERVER }}
+          OMNIGENT_USERNAME: ${{ secrets.OMNIGENT_USERNAME }}
+          OMNIGENT_PASSWORD: ${{ secrets.OMNIGENT_PASSWORD }}
+          LIVE_HOST_NAME: WSL2 CI ${{ github.run_id }} (pi-agent)
+        run: |
+          $env:WSL_UTF8 = '1'
+          $env:WSLENV = 'OMNIGENT_SERVER:OMNIGENT_USERNAME:OMNIGENT_PASSWORD:LIVE_HOST_NAME'
+          $envs = @('XDG_RUNTIME_DIR=/run/user/1000', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus')
+          $pa = '/home/piagent/.local/share/pi-agent'
+          wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /bin/bash /home/piagent/pi-agent-installer/tests/live/connect-omnigent.sh 2>&1 | ForEach-Object { "$_" }
+          $code = $LASTEXITCODE
+          Write-Host ('connect exit code: ' + $code)
+          $st = (wsl -d PiAgent -u piagent --exec /usr/bin/env @envs "$pa/bin/pi-omnigent" status 2>&1 | Out-String).Trim()
+          if ($st.Length -gt 3000) { $st = $st.Substring(0, 3000) }
+          Write-Host $st
+          $enc = ('host name: ' + $env:LIVE_HOST_NAME + "`n" + $st).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+          Write-Host ('::notice title=HOST READY (open Omnigent and look for this name)::' + $enc)
+          if ($code -ne 0) { exit $code }
+
+      # Holds the machine open. Done = a file appears inside the Linux (somebody runs `touch /tmp/pa-live-done` in a
+      # terminal on this host), or the time runs out.
+      - name: Hold the machine open for the live test
+        shell: pwsh
+        run: |
+          $deadline = (Get-Date).AddMinutes(110)
+          while ((Get-Date) -lt $deadline) {
+            wsl -d PiAgent -u piagent --exec /usr/bin/test -f /tmp/pa-live-done
+            if ($LASTEXITCODE -eq 0) { Write-Host 'done marker found'; break }
+            Start-Sleep -Seconds 20
+          }
+          Write-Host ('left the hold at ' + (Get-Date -Format o))
+
+      - name: Disconnect and log everything out
+        if: always()
+        shell: pwsh
+        run: |
+          $envs = @('XDG_RUNTIME_DIR=/run/user/1000', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus')
+          $pa = '/home/piagent/.local/share/pi-agent'
+          wsl -d PiAgent -u piagent --exec /usr/bin/env @envs "$pa/bin/pi-omnigent" disconnect 2>&1 | ForEach-Object { "$_" }
+          wsl -d PiAgent -u piagent --exec /usr/bin/env @envs "$pa/bin/pi-agent" stop 2>&1 | ForEach-Object { "$_" }
+          exit 0
