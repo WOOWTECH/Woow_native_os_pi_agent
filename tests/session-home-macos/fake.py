@@ -93,10 +93,12 @@ def run_host(argv):
     with open(rec_path, "w") as f:
         json.dump(rec, f)
     if state:
+        mask = os.umask(0)
+        os.umask(mask)                       # read it without changing it: sessions of a real host inherit exactly this
         with open(os.path.join(state, "host-%d.json" % os.getpid()), "w") as f:
             json.dump({"pid": os.getpid(), "home": os.environ.get("HOME"), "cfg_home": cfg_home,
                        "path": os.environ.get("PATH"), "host_id": hid, "name": name,
-                       "session_home": os.environ.get("PI_AGENT_SESSION_HOME")}, f)
+                       "session_home": os.environ.get("PI_AGENT_SESSION_HOME"), "umask": "%03o" % mask}, f)
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())

@@ -464,6 +464,23 @@ old_host_path() {
     plist_get "$p" EnvironmentVariables:PATH; return 0
   done
 }
+# The umask the replaced launchd job ran with, as three octal digits. This script keeps umask 077 for
+# its own files (backups, tokens, the journal), but the host that `repair` starts lives on and every
+# session of it inherits the umask it was started with -- so that umask must be the job's, not ours.
+# launchd gives a job 022 unless its plist has a Umask key, and that key is an integer written in
+# DECIMAL (18 means 022). The first plist that exists decides; anything unusable means 022.
+# (`_old_umask PLIST...` answers from the given plists; tests.)
+old_host_umask() {
+  local p v
+  for p in "$@"; do
+    [ -f "$p" ] || continue
+    v="$(plist_get "$p" Umask)"
+    case "$v" in ''|*[!0-9]*) break ;; esac
+    if [ "$v" -le 511 ]; then printf '%03o\n' "$v"; return 0; fi
+    break
+  done
+  echo 022
+}
 # extend_path BASE EXTRAS: BASE with the directories of EXTRAS that exist appended, once each.
 # The rule pi-web-start.sh applies, so a host the plugin's CLI starts sees the PATH one started
 # from pi-web sees.
@@ -886,7 +903,8 @@ PLAN  (what \`cutover --apply\` would do; nothing has been changed)
        kept as this install has it: $kept
   7. write the session-home state file (sessions run with HOME=$REAL${PF_OLD_PATH:+; the PATH entries of the old job are appended})
   8. run the plugin's own "pi-omnigent repair --server ${PF_PSERVER:-...}" (env -i, service still down): it starts the host as the
-     adopted identity and rewrites the plugin's connection receipt itself; checked before going on: the receipt names the
+     adopted identity (with umask $(old_host_umask "$LA_DIR/$OLD_HOST_LABEL.plist"), the replaced job's, so sessions keep creating files as before)
+     and rewrites the plugin's connection receipt itself; checked before going on: the receipt names the
      adopted host and the SERVER shows it online, running with HOME=$REAL
   9. start the service (it resumes the host the plugin just started)
  10. verify on the SERVER: ${PF_OLD_ID:0:8}... online, name unchanged, all $PF_BOUND_N conversations still bound to it
@@ -1083,7 +1101,7 @@ do_write_state() {
 # what the wrapper needs goes in, plus PI_AGENT_SESSION_HOME so that host gets the real HOME
 # (the plugin patch reads it) and the old job's PATH entries appended after this install's own.
 do_repair() {
-  local srv penv out rc="" envv ok
+  local srv penv out rc="" envv ok hum
   srv="$(jget "$PSTATE" server)"
   penv="$(extend_path "/usr/bin:/bin:/usr/sbin:/sbin" "$PF_OLD_PATH")"
   envv=("PATH=$penv" "PI_AGENT_HOME=$PI_AGENT_HOME" "PI_AGENT_SESSION_HOME=$REAL" "USER=$USER_N" "LOGNAME=$USER_N" "LANG=${LANG:-en_US.UTF-8}")
@@ -1091,7 +1109,12 @@ do_repair() {
   mktmp; out="$TMPD/repair.out"
   j_set REPAIR_STARTED yes
   say "running the plugin's own repair (env -i), service still down: $WRAPPER repair --server $srv"
-  run_bounded "$T_REPAIR" "$out" env -i "${envv[@]}" "$WRAPPER" repair --server "$srv"; rc=$?
+  # umask first, THEN `env -i`: env -i clears the environment but not the umask, and the host this starts
+  # outlives the worker (see old_host_umask). The other order would let the shell that sets the umask add
+  # PWD, SHLVL and _ to what the plugin sees; this way env -i has the last word on the environment.
+  hum="$(old_host_umask "$LA_DIR/$OLD_HOST_LABEL.plist" "$PARK_DIR/$OLD_HOST_LABEL.plist")"
+  say "the host will start with umask $hum, as the job it replaces did"
+  run_bounded "$T_REPAIR" "$out" /bin/sh -c 'umask "$1"; shift; exec "$@"' sh "$hum" env -i "${envv[@]}" "$WRAPPER" repair --server "$srv"; rc=$?
   if [ -n "$BK" ] && [ -d "$BK" ]; then cp "$out" "$BK/repair.out" 2>/dev/null && chmod 600 "$BK/repair.out"; fi
   ok="$(jget "$out" ok)"
   if [ "$rc" = 124 ]; then fail_step "pi-omnigent repair did not finish within ${T_REPAIR}s"; return 1; fi
@@ -1337,5 +1360,6 @@ case "${1:-}" in
   _pyh) shift; pyh "$@" ;;                  # tests: the embedded python helper
   _classify) classify_hosts ;;               # tests: how the running hosts are classified
   _extend_path) shift; extend_path "$@" ;;  # tests
+  _old_umask) shift; old_host_umask "$@" ;; # tests
   *) usage; exit 2 ;;
 esac

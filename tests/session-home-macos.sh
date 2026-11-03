@@ -384,6 +384,29 @@ mkdir -p "$SB/ep/a" "$SB/ep/b"
 t "extend_path appends the extra directories that exist, once, in order, and skips the others" test "$("$MAC" _extend_path /usr/bin:/bin "$SB/ep/a:$SB/nope:/usr/bin:$SB/ep/b:$SB/ep/a")" = "/usr/bin:/bin:$SB/ep/a:$SB/ep/b"
 
 # ----------------------------------------------------------------------------------
+head1 "0b. which umask the started host gets: the replaced job's own, else the normal 022"
+mkplist() {   # mkplist FILE [BODY]: a launchd job plist with an optional extra key
+  printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>x</string>%s</dict></plist>\n' "${2:-}" > "$1"
+}
+um() { "$MAC" _old_umask "$@" 2>&1; }
+mkplist "$SB/u-none.plist"
+mkplist "$SB/u-18.plist"    '<key>Umask</key><integer>18</integer>'
+mkplist "$SB/u-2.plist"     '<key>Umask</key><integer>2</integer>'
+mkplist "$SB/u-63.plist"    '<key>Umask</key><integer>63</integer>'
+mkplist "$SB/u-str.plist"   '<key>Umask</key><string>abc</string>'
+mkplist "$SB/u-big.plist"   '<key>Umask</key><integer>4096</integer>'
+mkplist "$SB/u-neg.plist"   '<key>Umask</key><integer>-1</integer>'
+t "no plist at all -> 022 (launchd's default, which every replaced job without a Umask key ran with)" test "$(um "$SB/does-not-exist.plist")" = 022
+t "a plist without a Umask key -> 022" test "$(um "$SB/u-none.plist")" = 022
+t "Umask 18 (launchd wants decimal) -> 022" test "$(um "$SB/u-18.plist")" = 022
+t "Umask 2 -> 002: a job that was deliberately group-writable stays so" test "$(um "$SB/u-2.plist")" = 002
+t "Umask 63 -> 077: a job that was deliberately private stays so" test "$(um "$SB/u-63.plist")" = 077
+t "a Umask that is not an integer -> 022" test "$(um "$SB/u-str.plist")" = 022
+t "a Umask above 0777 -> 022" test "$(um "$SB/u-big.plist")" = 022
+t "a negative Umask -> 022" test "$(um "$SB/u-neg.plist")" = 022
+t "the first plist that exists wins (a missing one is skipped)" test "$(um "$SB/does-not-exist.plist" "$SB/u-2.plist" "$SB/u-63.plist")" = 002
+
+# ----------------------------------------------------------------------------------
 head1 "1. baseline: a fake old launchd host, and this install's fake service, both connected"
 write_old_install; write_new_install; write_plists
 launchctl bootstrap "gui/$UIDN" "$LA/$L_OLD.plist"
@@ -548,6 +571,10 @@ t "the host now running is this install's (adopted id), a new process" eval "tes
 t "it runs with HOME = the real home" test "$(hostinfo $OLD_ID home)" = "$REAL"
 t "...and PI_AGENT_SESSION_HOME = the real home" test "$(hostinfo $OLD_ID session_home)" = "$REAL"
 t "...and its config stays this install's directory" test "$(hostinfo $OLD_ID cfg_home)" = "$PA/home/.omnigent"
+# The worker keeps a strict umask for its own files (backups, tokens), but the host it starts through the plugin's
+# repair lives on and every session of it inherits that umask: it must be the one the replaced job had, not the worker's.
+# (Found on the first real Mac: sessions created files 600/700 and a pkg built in one came out unreadable.)
+t "the host the repair started has the replaced job's umask (022), not the worker's strict one" test "$(hostinfo $OLD_ID umask)" = 022
 t "the old job's PATH entries that exist were appended" eval "hostinfo $OLD_ID path | tr ':' '\n' | grep -qx '$SB/tools/bin'"
 tn "...and the ones that do not exist were not" eval "hostinfo $OLD_ID path | tr ':' '\n' | grep -qx '$SB/nonexistent/bin'"
 t "...after this install's own bin, which keeps winning" eval "p=\$(hostinfo $OLD_ID path); a=\${p%%$PA/bin*}; b=\${p%%$SB/tools/bin*}; [ \${#a} -lt \${#b} ]"
@@ -604,6 +631,10 @@ out="$("$SH" cutover --dry-run 2>&1)"; rc=$?
 t "a second cutover is refused" test "$rc" -ne 0
 
 # ----------------------------------------------------------------------------------
+if [ "${STOP_AFTER:-}" = cutover ]; then   # for debugging by hand: stop right after section 3 (about two minutes)
+  note "stopping after section 3 (STOP_AFTER=cutover)"; echo; echo "session-home macOS sandbox tests (partial): $pass passed, $fail failed"; [ "$fail" = 0 ]; exit
+fi
+
 head1 "4. restart, and the detached job outlives whoever scheduled it"
 rm -f "$PA/session-home.result"
 HP_BEFORE="$(hostinfo $OLD_ID pid)"
@@ -620,6 +651,7 @@ RES="$(result_line)"; note "$RES"
 t "restart: RESULT: OK, host with the real HOME" hasr "RESULT: OK.*HOME=$REAL"
 t "...the host process really was replaced" eval "test \"\$(hostinfo $OLD_ID pid)\" != '$HP_BEFORE'"
 t "...and is still the adopted identity with the real HOME" eval "test \"\$(hostinfo $OLD_ID home)\" = '$REAL' && test \"\$(hstatus $OLD_ID)\" = online"
+t "...and a restart keeps the normal umask too" test "$(hostinfo $OLD_ID umask)" = 022
 tn "the worker's plist removed itself" eval "ls $LA/$WPFX.* 2>/dev/null | grep -q ."
 tn "...and the worker job is gone" eval "launchctl list | grep -q '$WPFX'"
 
