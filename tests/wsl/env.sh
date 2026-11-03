@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2154  # rc and out are set by run() in lib.sh
 # Seam 3: rootfs/bin/pi-agent-env.sh -- what the agents' environment gets on WSL.
 ENV_SH="$REPO/rootfs/bin/pi-agent-env.sh"
 

@@ -1,0 +1,44 @@
+# The Linux side of the WSL2 support (docs/WSL2.md): tests/wsl.sh runs every tool and
+# script in a sandbox with stubbed Windows programs, so it needs neither WSL nor
+# Windows. It runs on Ubuntu (what a WSL2 distro is) and on macOS (bash 3.2, where the
+# scripts are developed), because the suite has to hold on both.
+name: wsl2-linux
+
+on:
+  push:
+    branches: [windows-wsl2]
+    paths: &paths
+      - 'rootfs/bin/**'
+      - 'lib/**'
+      - 'install.sh'
+      - 'scripts/wsl-*'
+      - 'scripts/build-wsl-bundle.sh'
+      - 'tests/wsl*'
+      - '.github/workflows/wsl2-linux.yml'
+  pull_request:
+    paths: *paths
+
+jobs:
+  suite:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the sandboxed suite
+        run: bash tests/wsl.sh
+
+  shellcheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          shellcheck -S warning \
+            rootfs/bin/pi-agent-win rootfs/bin/pi-agent \
+            scripts/wsl-root-setup.sh scripts/build-wsl-bundle.sh
+          # sourced, not executed: no shebang to tell shellcheck the shell
+          shellcheck -S warning -s bash rootfs/bin/pi-agent-env.sh lib/wsl.sh
+          shellcheck -S warning -s bash tests/wsl.sh tests/wsl/*.sh

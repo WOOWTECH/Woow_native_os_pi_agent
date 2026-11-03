@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2154  # rc and out are set by run() in lib.sh
 # Seam 5: scripts/wsl-root-setup.sh -- what runs as root inside the new distro.
 ROOTSETUP="$REPO/scripts/wsl-root-setup.sh"
 

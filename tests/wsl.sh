@@ -12,6 +12,7 @@
 #   rootsetup  scripts/wsl-root-setup.sh      what runs as root inside the new distro
 #   bundle     scripts/build-wsl-bundle.sh    the release bundle and the stamped installer
 # The Windows-side installer (windows/install-wsl.ps1) has its own Pester suite.
+# shellcheck disable=SC2034,SC2154  # REPO, pass and fail are used by the sourced sections
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"

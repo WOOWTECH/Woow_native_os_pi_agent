@@ -40,7 +40,11 @@ jobs:
         include:
           - { os: macos-14,      label: macos-arm64  }
           - { os: ubuntu-latest, label: linux-x64    }
+          # Windows on ARM runs WSL2 with an arm64 Ubuntu, which needs this tree. Not
+          # built in CI before, so a failure here must not stop the other releases.
+          - { os: ubuntu-24.04-arm, label: linux-arm64, experimental: true }
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental == true }}
     steps:
       - uses: actions/checkout@v4
 
@@ -60,8 +64,26 @@ jobs:
             dist/*.tar.gz
             dist/*.sha256
 
+  # The Windows (WSL2) installer: the bundle it unpacks inside the new Linux, and
+  # install-wsl.ps1 stamped with this release's version, URLs and the bundle's sha256
+  # (scripts/build-wsl-bundle.sh; docs/WSL2.md).
+  wsl-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the bundle and stamp the installer
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="${INPUT_VERSION:-${GITHUB_REF_NAME#v}}"
+          scripts/build-wsl-bundle.sh dist-wsl "$VERSION" --tag "v$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wsl-bundle
+          path: dist-wsl/*
+
   release:
-    needs: artifact
+    needs: [artifact, wsl-bundle]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -73,6 +95,7 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/*.sha256
+            dist/install-wsl.ps1
           body: |
             Built by CI from ${{ github.ref_name }}.
 
@@ -80,6 +103,10 @@ jobs:
             installer at it to skip the ~15 minute source build:
 
                 PI_AGENT_PIWEB_ARTIFACT=<url> ./install.sh
+
+            Windows (WSL2): `install-wsl.ps1` sets up a dedicated WSL2 Linux and
+            installs Pi Agent in it; `pi-agent-installer-*.tar.gz` is what it unpacks
+            there. The one-line command is in docs/WSL2.md.
 
             The macOS `.pkg` is not built here: it is signed and notarized on the
             maintainer's Mac and attached separately.

@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2154  # rc and out are set by run() in lib.sh
 # Seam 1: rootfs/bin/pi-agent-win -- how an agent reaches Windows programs.
 WIN="$REPO/rootfs/bin/pi-agent-win"
 

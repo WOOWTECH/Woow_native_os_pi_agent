@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2154  # rc and out are set by run() in lib.sh
 # Seam 6: scripts/build-wsl-bundle.sh -- the release bundle and the stamped installer.
 
 # bundle_world NAME -- a tiny git repository shaped like this one, so the script runs

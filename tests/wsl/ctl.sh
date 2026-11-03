@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2154  # rc and out are set by run() in lib.sh
 # Seam 2: rootfs/bin/pi-agent -- the control command, on WSL.
 CTL_SRC="$REPO/rootfs/bin/pi-agent"
 

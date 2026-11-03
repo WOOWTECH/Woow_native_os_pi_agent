@@ -1,4 +1,5 @@
 # Helpers for tests/wsl.sh. Sourced, never executed.
+# shellcheck disable=SC2034  # out, rc and friends are read by the sections that source this
 #
 # The point of this suite is that it can run anywhere -- the dev Mac, a Linux box, CI
 # -- and still say something true about the WSL2 support. Everything the code under

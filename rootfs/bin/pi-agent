@@ -18,8 +18,9 @@ is_wsl() { grep -qiE '(microsoft|wsl)' "${PA_WSL_PROC_VERSION:-/proc/version}" 2
 # them; `wsl.exe -u USER --exec ...` is not a PAM login, so a session started that way
 # has neither and `status` would claim a running service is not under systemd. Only
 # fills in what is missing; there is no /run/user on macOS, so nothing happens there.
-if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "${PA_RUN_USER_DIR:-/run/user}/$(id -u)" ]; then
-  export XDG_RUNTIME_DIR="${PA_RUN_USER_DIR:-/run/user}/$(id -u)"
+_pa_runtime="${PA_RUN_USER_DIR:-/run/user}/$(id -u)"
+if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "$_pa_runtime" ]; then
+  export XDG_RUNTIME_DIR="$_pa_runtime"
 fi
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -e "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ]; then
   export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"

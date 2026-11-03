@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2154  # rc and out are set by run() in lib.sh
 # Seam 4: install.sh -- the WSL preflight and the service stage.
 INSTALL="$REPO/install.sh"
 
@@ -56,3 +57,12 @@ install_world inst-service-plain plain
 run isbx XDG_RUNTIME_DIR="$S/runuser/$(id -u)" USER=me "$INSTALL" service
 eq    "service: plain Linux still works" "0" "$rc"
 lacks "service: and does not talk about Windows" "localhost" "$out"
+
+# wire: the tools land in $PI_AGENT_HOME/bin. pi-agent open falls back to xdg-open when
+# pi-agent-win is not next to it, so a tool missing from wire's list would degrade
+# without anyone noticing.
+install_world inst-wire
+run isbx "$INSTALL" wire
+eq "wire: completes in a bare install" "0" "$rc"
+[ -x "$S/pa/bin/pi-agent" ] && ok "wire: installs pi-agent" || no "wire: installs pi-agent" "$out"
+[ -x "$S/pa/bin/pi-agent-win" ] && ok "wire: installs pi-agent-win next to it" || no "wire: installs pi-agent-win next to it"
