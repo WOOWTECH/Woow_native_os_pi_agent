@@ -83,11 +83,33 @@ jobs:
           Import-Module Pester -MinimumVersion 5.5.0 -Force
           $cfg = New-PesterConfiguration
           $cfg.Run.Path = 'windows/tests'
-          $cfg.Run.Exit = $true
+          $cfg.Run.PassThru = $true
           $cfg.Output.Verbosity = 'Detailed'
           $cfg.TestResult.Enabled = $true
           $cfg.TestResult.OutputPath = 'pester-${{ matrix.shell }}.xml'
-          Invoke-Pester -Configuration $cfg
+          $r = Invoke-Pester -Configuration $cfg
+          # The job log needs a GitHub sign-in to read; annotations do not. Say what failed there too.
+          try {
+            $L = New-Object System.Collections.ArrayList
+            [void]$L.Add(('passed ' + $r.PassedCount + ', failed ' + $r.FailedCount + ', blocks failed ' + $r.FailedBlocksCount + ', containers failed ' + $r.FailedContainersCount + ', not run ' + $r.NotRunCount))
+            foreach ($t in @($r.Failed)) {
+              $err = (@($t.ErrorRecord) | ForEach-Object { "$_" }) -join ' | '
+              [void]$L.Add('* ' + $t.ExpandedPath + ' :: ' + $err)
+            }
+            foreach ($c in @($r.Containers)) {
+              if ($c.Result -eq 'Failed' -and $c.ErrorRecord) {
+                $err = (@($c.ErrorRecord) | ForEach-Object { "$_" }) -join ' | '
+                [void]$L.Add('* container ' + $c.Name + ' :: ' + $err)
+              }
+            }
+            $text = ($L -join "`n")
+            if ($text.Length -gt 7000) { $text = $text.Substring(0, 7000) }
+            $enc = $text.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host ('::notice title=Pester result (${{ matrix.shell }})::' + $enc)
+          } catch {
+            Write-Host ('::warning::could not summarise the Pester result: ' + $_)
+          }
+          if ($r.FailedCount -gt 0 -or $r.FailedBlocksCount -gt 0 -or $r.FailedContainersCount -gt 0) { exit 1 }
 
       # Errors fail the job; warnings are shown as annotations. Write-Host is how this script talks to
       # the user, and the file has no BOM in the repository (the release adds it), so those two rules
@@ -228,6 +250,24 @@ jobs:
           $log = Join-Path $env:LOCALAPPDATA 'PiAgent\install.log'
           if (Test-Path $log) { Copy-Item $log ci-out/install.log }
           Get-ChildItem dist -ErrorAction SilentlyContinue | Select-Object Name, Length | Out-String | Set-Content ci-out/dist-listing.txt
+
+      # Annotations can be read through GitHub's API without signing in; the job log and the
+      # artifact below cannot. So the facts this spike exists to find out are repeated there.
+      - name: Summarise into annotations
+        if: always()
+        shell: pwsh
+        run: |
+          try {
+            foreach ($f in @(Get-ChildItem ci-out -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
+              $lines = @(Get-Content -LiteralPath $f.FullName -Tail 60 -ErrorAction SilentlyContinue)
+              $text = ($lines -join "`n")
+              if ($text.Length -gt 6000) { $text = $text.Substring($text.Length - 6000) }
+              $enc = $text.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Host ('::notice title=' + $f.Name + '::' + $enc)
+            }
+          } catch {
+            Write-Host ('::warning::could not summarise ci-out: ' + $_)
+          }
 
       - uses: actions/upload-artifact@v4
         if: always()
