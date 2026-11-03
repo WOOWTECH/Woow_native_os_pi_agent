@@ -12,6 +12,18 @@ PLIST="io.woowtech.pi-agent"
 
 sd() { command -v systemctl >/dev/null 2>&1 && systemctl --user "$@" 2>/dev/null; }
 is_mac() { [ "$(uname -s)" = "Darwin" ]; }
+is_wsl() { grep -qiE '(microsoft|wsl)' "${PA_WSL_PROC_VERSION:-/proc/version}" 2>/dev/null; }
+
+# systemd --user needs XDG_RUNTIME_DIR (and the user bus). A login through PAM sets
+# them; `wsl.exe -u USER --exec ...` is not a PAM login, so a session started that way
+# has neither and `status` would claim a running service is not under systemd. Only
+# fills in what is missing; there is no /run/user on macOS, so nothing happens there.
+if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "${PA_RUN_USER_DIR:-/run/user}/$(id -u)" ]; then
+  export XDG_RUNTIME_DIR="${PA_RUN_USER_DIR:-/run/user}/$(id -u)"
+fi
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -e "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ]; then
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+fi
 
 case "${1:-}" in
   start)
@@ -30,7 +42,16 @@ case "${1:-}" in
   logs)
     if sd --version >/dev/null 2>&1; then journalctl --user -u "$UNIT" -f 2>/dev/null || tail -f "$PI_AGENT_HOME/logs/pi-web.log"
     else tail -f "$PI_AGENT_HOME/logs/pi-web.log"; fi ;;
-  open) (xdg-open "http://127.0.0.1:$PORT" || open "http://127.0.0.1:$PORT") 2>/dev/null || echo "open http://127.0.0.1:$PORT" ;;
+  open)
+    if is_wsl && [ -x "$SELF/pi-agent-win" ]; then
+      # The browser is a Windows one, and Windows reaches pi-web as localhost.
+      "$SELF/pi-agent-win" open "http://localhost:$PORT" || echo "open http://localhost:$PORT in your Windows browser"
+    else
+      (xdg-open "http://127.0.0.1:$PORT" || open "http://127.0.0.1:$PORT") 2>/dev/null || echo "open http://127.0.0.1:$PORT"
+    fi ;;
   url)  echo "http://127.0.0.1:$PORT" ;;
-  *) echo "usage: pi-agent {start|stop|restart|status|logs|open|url}"; exit 1 ;;
+  doctor)
+    if is_wsl && [ -x "$SELF/pi-agent-win" ]; then exec "$SELF/pi-agent-win" doctor
+    else echo "pi-agent doctor: only available on WSL for now"; exit 64; fi ;;
+  *) echo "usage: pi-agent {start|stop|restart|status|logs|open|url|doctor}"; exit 1 ;;
 esac

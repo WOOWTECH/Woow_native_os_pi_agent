@@ -41,6 +41,27 @@ if [ "$(uname -s)" = "Darwin" ]; then
     export PATH
 fi
 
+# WSL only: let the agents reach Windows. windows-interop.env is written by the
+# Windows-side installer, and only when Windows interop is on; without it, or when the
+# directory it names is not there, nothing changes. The two Windows directories go
+# LAST, so the scoped Node and our wrappers above still win and a Windows node, npm or
+# git cannot shadow them. Claude Code and Codex open their login pages through
+# $BROWSER; point it at Windows unless the user chose one.
+if [ -r "${PI_AGENT_HOME}/windows-interop.env" ]; then
+    _pa_w32="$(sed -n 's/^PA_WIN_SYSTEM32=//p' "${PI_AGENT_HOME}/windows-interop.env" | head -1)"
+    if [ -n "$_pa_w32" ] && [ -d "$_pa_w32" ]; then
+        for _pa_d in "$_pa_w32" "$_pa_w32/WindowsPowerShell/v1.0"; do
+            case ":${PATH}:" in
+                *":${_pa_d}:"*) ;;
+                *) PATH="${PATH}:${_pa_d}" ;;
+            esac
+        done
+        export PATH
+        [ -n "${BROWSER:-}" ] || export BROWSER="${PI_AGENT_HOME}/bin/pi-agent-win open"
+    fi
+    unset _pa_w32 _pa_d
+fi
+
 # Plugin + runtime roots (match the k3s image ENV so the seeds/routes resolve).
 export PI_OMNIGENT_PLUGIN_ROOT="${PI_AGENT_HOME}/plugins/pi-omnigent-plugin"
 export PI_OMNIGENT_SDK_ROOT="${PI_AGENT_HOME}/piweb/lib/node_modules/@agegr/pi-web"

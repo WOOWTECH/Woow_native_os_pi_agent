@@ -18,7 +18,7 @@ REPO="$(cd "$HERE/.." && pwd)"
 # shellcheck source=wsl/lib.sh
 . "$HERE/wsl/lib.sh"
 
-[ $# -gt 0 ] || set -- win
+[ $# -gt 0 ] || set -- win ctl env
 for s in "$@"; do
   [ -f "$HERE/wsl/$s.sh" ] || { echo "no such section: $s" >&2; exit 2; }
   echo "## $s"
