@@ -322,6 +322,10 @@ credentials are **not** visible to it, and a full checksum comparison of
 `telemetry.json` and `.update_check.json` before and after the whole install and
 test run came back identical, 6/6.
 
+**What that does not cover:** the *server's* view. File isolation says nothing
+about the host registration, which the server keys by name — see
+[Host names must differ](#host-names-must-differ).
+
 ### The footgun this exposed, and the fix
 
 `pi-omnigent` and `pi-paseo` used to be **symlinks** straight to the plugins'
@@ -440,9 +444,14 @@ $ pi-omnigent connect --server https://omnigent.woowtech.io --username … --pas
   "host": { "id": "655a7a82…", "name": "ElmodeMacBook-Air.local", "connected": true } }
 ```
 
-A **separate** host: the machine owner's own registration (`2b8a18bc…`) is
-untouched, and their five identity/credential files still match the pre-connect
-snapshot byte-for-byte.
+The machine owner's five **local** identity/credential files still match the
+pre-connect snapshot byte-for-byte. That is all this measurement covered. An
+earlier version of this section went on to call the new host "separate" and the
+owner's registration (`2b8a18bc…`) "untouched" — the *server's* side was never
+looked at, and it turned out not to be separate: both hosts carried the same name.
+See [Host names must differ](#host-names-must-differ) below. (The name in the
+output above is the machine's own hostname, which is what a v0.2.1 install
+registers; v0.2.2 registers `<hostname> (pi-agent)` instead.)
 
 Two things remain before the three engines are usable through Omnigent on a Mac,
 neither caused by the installer:
@@ -454,14 +463,79 @@ neither caused by the installer:
    `src/omnigent.py` do read `/proc` (4 sites) with no try/catch fallback, and
    that is still the M1 port.
 
-### A naming wrinkle
+### Host names must differ
 
-`connect` takes no host name, and the plugin only honours a `hostName` field
-coming from an `initialize` request, which the CLI does not expose. The name is
-the machine's, so a scoped install on a machine that already has its own host
-registers a **second host with the same display name** — distinguishable only by
-host id. Rename it in the Omnigent UI if that matters; nothing functional
-depends on it.
+An earlier version of this section called the shared name a "wrinkle": two hosts
+with one display name, "distinguishable only by host id", and "nothing functional
+depends on it". **That is wrong.** The server identifies a host by its `host_id`
+*and*, per account, by its name. A daemon that connects under a name another host
+of the account already holds makes the server delete that host's registration,
+create a new one and repoint the conversations bound to it; the other daemon does
+the same to it when it reconnects. On this Mac a scoped install and the owner's own
+Omnigent, both named `ElmodeMacBook-Air.local`, took each other's registrations —
+and the conversations bound to them — away over and over. The mechanism, the
+symptoms and the recovery are in
+[`OPERATIONS-GOTCHAS.md`](OPERATIONS-GOTCHAS.md) §13–§15.
+
+Mechanically: omnigent reads `host.name` from the host config
+(`$PI_AGENT_HOME/home/.omnigent/config.yaml` for this install) and falls back to
+the machine's hostname when there is none. The plugin removes `OMNIGENT_HOST_NAME`
+and `OMNIGENT_HOST_ID` from the environment of the host it starts, so that file is
+the one place the name can be set; `connect` takes no name.
+
+Since v0.2.2 a machine can run a second host in two deliberately different ways.
+
+**A. Side by side — the default.** The new install next to a host that keeps
+running: the owner's Omnigent app, an older pi-agent. `wire` gives the install its
+own name, `<hostname> (pi-agent)`, so the server sees two hosts and neither touches
+the other's registration or conversations. There is nothing to do.
+
+```
+pi-agent-host-name check            # the name, and whether it can collide
+pi-agent-host-name set "Some name"  # change it (then: pi-agent restart)
+```
+
+An install that already had a name is not renamed — it may be registered and in
+use. If that name equals the plain hostname, `wire` and `check` warn about it.
+
+**B. Replacing a host — the same name on purpose.** The new install takes over the
+old host's registration so that its conversations follow. In this order:
+
+1. **Stop the old host.** Two live daemons with one name are the problem being
+   prevented; the plugin refuses a takeover while the server still shows the old
+   host online.
+2. **Give this install the old host's exact name:** `pi-agent-host-name set
+   "<the name as the host picker shows it>"`.
+3. **Connect, naming the host being replaced** by the first 8 (or more) hex
+   characters of its id: `PI_AGENT_TAKEOVER_HOST_ID=2b8a18bc pi-omnigent repair
+   --server <url>` (or `connect … --password-stdin` for a first connect). Without
+   it the plugin refuses with `HOST_NAME_COLLISION`. **Where to read the refusal:**
+   `pi-agent-host-name check` prints it in full — the other host, and this exact
+   line with its id filled in. (`pi-omnigent connect` prints only the code;
+   `pi-omnigent status` and `repair` print the message as JSON; Settings →
+   Omnigent shows a short hint pointing at `pi-agent-host-name check`.) `1`,
+   `true` or a mistyped id do not work, and neither does one that does not cover
+   every host that has the name.
+4. **Then session home:** `pi-agent-session-home enable`, `restart`
+   ([`SESSION-HOME.md`](SESSION-HOME.md)), so the conversations run with the user's
+   own HOME rather than the scoped one.
+
+**Mode B is not available on macOS in this release.** Step 4 is the obstacle:
+`pi-agent-session-home` supports Linux with `systemd --user` only — on a Mac every
+subcommand (`status`, `enable`, …) exits at once with `[session-home] ERROR: only
+systemd --user is supported so far (this is Darwin)` and changes nothing (measured
+here). Steps 1–3 would work on a Mac, since the guard is the same code on both
+platforms, but they would move the conversations to a daemon that runs them under
+the **scoped HOME** — the situation `SESSION-HOME.md` measured on a Linux
+workstation: MCP servers 15 → 0, Claude Code plugins 3 → 0, no git identity, no
+`gh` or SSH keys. The same mechanism applies on a Mac but has not been measured
+there. So on macOS use **mode A**, and keep the previous host for the
+conversations that live on it; a cutover on a Mac is not supported until the
+session-home script has a macOS port.
+
+What the guard does and does not cover (it covers the hosts the *plugin* starts,
+not one started by hand), and why it fails closed when the server cannot be asked,
+is in `OPERATIONS-GOTCHAS.md` §13.
 
 ## Adopting the user's existing engine logins
 

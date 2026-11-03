@@ -179,3 +179,131 @@ without `pipefail` reports success when signing failed, and a following
 `codesign --verify` on a copied system binary then "passes" against **Apple's
 original signature**. Check `Authority=` in `codesign -dv`, not just that
 verification passed.
+
+## 13. Two Omnigent hosts with one name take each other's registration away
+
+Sections 13–16 were added with v0.2.2, after the host-name incident on this Mac
+(2026-11-02/03): this install's scoped host and the owner's own Omnigent host were
+both named `ElmodeMacBook-Air.local`, under one account. `docs/MACOS.md` used to
+call that cosmetic ("a second host with the same display name … nothing
+functional depends on it"). **That was wrong.**
+
+The server (`omnigent` 0.16.0, `host_store.upsert_on_connect`, read in the package
+this installer pins) finds a connecting host by `host_id` and, failing that, by
+the (workspace, user, **name**) triple. A new `host_id` arriving under a taken
+name is treated as the same machine coming back with a new identity, and
+`_rotate_host_id` runs: the conversations bound to the old row get `host_id =
+NULL`, the old row is **deleted**, a new one is inserted (it keeps the old
+`created_at`), and the conversations are bound to the new row. Two live daemons
+with one name therefore do this to each other on every tunnel reconnect. What it
+looks like:
+
+- one entry in the host picker flipping between online and offline;
+- `GET /v1/hosts/<id>` answering 404 for an id that was valid a minute ago (§14
+  is what that does to a restart);
+- conversations that open on the *other* daemon (§15).
+
+What v0.2.2 does about it:
+
+| | |
+|---|---|
+| unique by construction | `wire` writes `host: {name: "<hostname> (pi-agent)"}` into this install's own `home/.omnigent/config.yaml` when it has no name. omnigent keeps a name it finds and generates only the `host_id`. |
+| refused when taken | a plugin patch checks `GET /v1/hosts` just before the plugin starts a host. Any other host of the account with the same name — online **or offline**, an offline duplicate still owns bound conversations — and nothing is started: `HOST_NAME_COLLISION`, whose message names the other host and gives the exact line to proceed. |
+| fail closed | if the server cannot be asked (unreachable, 401/403/5xx, not the expected JSON) nothing is started either: `HOST_NAME_UNVERIFIABLE`. Connect and resume already need the server one call earlier, so this blocks nothing that could have worked, and failing open would let a flaky link trigger the one thing that cannot be undone. There is no generic bypass variable. |
+| intentional takeover | `PI_AGENT_TAKEOVER_HOST_ID=<first 8+ hex characters of the host being replaced>`; every colliding host's id must start with it, and that host must be offline. `1`, `true` or a typo do not work. |
+| tooling | `pi-agent-host-name check` / `set NAME` / `seed`. |
+
+**Where a person sees a refusal** (measured through the plugin's own Node layer by
+`tests/host-name.test.mjs` D2, not assumed):
+the plugin stores it in `data/omnigent-plugin/state.json` as `{code, message}`.
+`pi-omnigent connect` prints **only the code** — the plugin prints codes only, by
+design. `pi-omnigent status` and `repair` print the whole message, as JSON. Settings →
+Omnigent shows the localized *hint* the plugin keeps per code, not the message, so
+the patch adds hints for the three new codes (without them Settings would say only
+"something needs attention"). All of them lead to `pi-agent-host-name check`, which
+prints the last refusal as written — real newlines, the other host's id, the exact
+commands — and exits 1 while one is pending.
+
+An install that already has a name — including one equal to the plain hostname —
+is **not** renamed (it may be registered and in use): `wire` prints a warning and
+`pi-agent-host-name check` says so. To fix it: `pi-agent-host-name set "<hostname>
+(pi-agent)"`, then `pi-agent restart` — a running host keeps the name it started
+with.
+
+The seeded name is unique against hosts that are *not* pi-agent installs. Two
+pi-agent installs on one machine (a second one on another `PI_WEB_PORT`) would
+seed the same `<hostname> (pi-agent)`; the second to connect is refused by the
+guard and told to `set` a name of its own.
+
+Limits, stated plainly: the guard covers hosts *the plugin starts*, at the moment
+it is about to start one. It does not stop someone running `omnigent host` by
+hand, or an Omnigent app, under a taken name — the seeded default is what keeps
+the common case apart. And nothing in the rotation moves conversations *back*, so
+after a collision check which host each conversation is bound to.
+
+The two ways to run a second host — side by side, or replacing one on purpose —
+are laid out in `docs/MACOS.md` ("Host names must differ") and, for the
+replacement, `docs/SESSION-HOME.md`.
+
+## 14. A deleted registration deadlocks the restart — recover with `repair`, under `env -i`
+
+Once the `host_id` in this install's config has no registration row — rotated out
+by §13, deleted in the UI, or replaced by `omnigent host reset-id`, which mints an
+id nothing has registered yet — restarting pi-web does not bring the host back.
+The plugin's `resume()` asks `GET /v1/hosts/<host_id>` **before** it calls
+`ensure_host()`; the answer is 404 (`HTTP_404`), `resume()` raises, and the host
+is never started — so it can never register again. The restart reports the error
+every time and heals nothing.
+
+`connect()` has no such pre-check, and reuses the stored login when it is given no
+credentials. The plugin CLI's `repair` goes through it when `state.json` has
+`loginConfirmed: true` for the same server:
+
+```bash
+env -i "$HOME/.local/share/pi-agent/bin/pi-omnigent" repair --server https://omnigent.woowtech.io
+```
+
+(your `PI_AGENT_HOME` instead of the default path if you moved it). If it answers
+`FRESH_LOGIN_REQUIRED`, there is no confirmed login to reuse: use `connect --server
+… --username … --password-stdin`.
+
+Why `env -i`: `ensure_host()` scrubs only six variables from the environment of the
+host it spawns (`OMNIGENT_HOST_ID`, `OMNIGENT_HOST_NAME`, `RUNNER_SERVER_URL`,
+`RUNNER_AUTH_TOKEN`, `OMNIGENT_RUNNER_AUTH_TOKEN`, `OMNIGENT_HOST_BINDING_TOKEN`).
+Typed in a shell that belongs to an Omnigent session — a conversation's terminal,
+a coding agent's shell — the rest (`OMNIGENT_RUNNER_*` and friends) come along
+into a daemon that is supposed to be this install's own. `env -i` clears them; the
+wrapper re-establishes `PATH`, `HOME` and the install's variables itself, which is
+why the command uses the absolute path. To take over a host on purpose, add the
+variable after `-i`: `env -i PI_AGENT_TAKEOVER_HOST_ID=2b8a18bc …/pi-omnigent
+repair …`.
+
+## 15. A conversation follows its host binding — and the daemon behind it may have another HOME
+
+A conversation is bound to a `host_id`; whichever daemon currently holds that
+registration serves it. After a rotation (§13) or a takeover, that can be a daemon
+with a different `HOME`, working directory, MCP servers and plugins than the one
+the conversation started on — here, the scoped install (`HOME=$PI_AGENT_HOME/home`)
+versus the owner's own host (their real home).
+
+Measured on this Mac: the work on this track ran in a conversation served by the
+owner's live daemon — the real `HOME` — while its working directory was the scoped
+home. `~` is the real home there, until a script sources `pi-agent-env.sh`, after
+which it is the scoped one (§4); a relative path means the scoped home either way.
+Use **absolute paths** in anything run from such a conversation, and check which
+daemon serves it before trusting `~` or the working directory. Never run
+`omnigent`, `pi-omnigent connect` or `repair` from there without knowing whose
+config it will resolve.
+
+## 16. Read the RESULT line of a script's result file, not whether the script finished
+
+The host-rename script on this Mac ran to the end and exited 0 — and its result
+file ended `RESULT: UNVERIFIED`. The rename had gone through but the check that
+proves it could not run, because of §14. "Finished" told nothing; the last line
+did, and reading only the first would have reported success.
+
+For any script whose job is to change something and prove it: make the last line of
+its result file exactly one of `RESULT: OK`, `RESULT: FAILED <why>` or `RESULT:
+UNVERIFIED <why>`; read *that* line (`grep '^RESULT' file | tail -1`), not the exit
+status, the presence of the file or the word "done"; and treat a missing RESULT
+line as a failure, not as a pass.

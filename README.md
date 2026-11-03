@@ -48,7 +48,30 @@ local file path works too.
   keep running while you try this one: prefix `PI_WEB_PORT=30142`.
 - **Replacing a pi-agent your Omnigent conversations already use** — they expect
   your own MCP servers, plugins, git identity and keys; see
-  [`docs/SESSION-HOME.md`](docs/SESSION-HOME.md).
+  [`docs/SESSION-HOME.md`](docs/SESSION-HOME.md) and, for the host name that
+  replacement has to take over, [a machine that already runs an Omnigent
+  host](#a-machine-that-already-runs-an-omnigent-host) below.
+
+### A machine that already runs an Omnigent host
+
+Two hosts of one Omnigent account must not share a name: on every reconnect the
+server deletes and re-creates their registrations in turn, and the conversations
+bound to them change hands. Since v0.2.2 this install registers as
+`<hostname> (pi-agent)`, and the plugin refuses to start a host under a name that
+another host of the account holds.
+
+| | |
+|---|---|
+| **A. Side by side** (the default) | A second install next to a host that keeps running — the owner's Omnigent app, an older pi-agent. Nothing to do: the name is already unique. `pi-agent-host-name check` shows it, `pi-agent-host-name set NAME` changes it. |
+| **B. Replace a host** | The same name **on purpose**, so the old host's conversations follow: stop the old host, `pi-agent-host-name set "<its exact name>"`, connect with `PI_AGENT_TAKEOVER_HOST_ID=<first 8+ hex characters of its id>`, then [`pi-agent-session-home`](docs/SESSION-HOME.md). **Linux with systemd only for now — not available on macOS**: the last step, `pi-agent-session-home`, does not run there yet, so use A on a Mac. |
+
+An install that already has a name is never renamed; if that name is the plain
+hostname, `wire` warns. Two pi-agent installs on one machine need two names (the
+second one is told so, and how, when it connects). The steps, the macOS limit and
+the reasoning:
+[`docs/MACOS.md`](docs/MACOS.md#host-names-must-differ); what went wrong without
+this, and how to recover: [`docs/OPERATIONS-GOTCHAS.md`](docs/OPERATIONS-GOTCHAS.md)
+§13–§16.
 
 ### From source
 
@@ -73,6 +96,7 @@ root with `PI_AGENT_HOME=/custom ./install.sh`.
 
 ```bash
 pi-agent start | stop | restart | status | logs | open | url
+pi-agent-host-name check | set NAME     # the name this install's Omnigent host registers under
 ```
 
 pi-web serves on `http://127.0.0.1:30141` (localhost only by default; it already
