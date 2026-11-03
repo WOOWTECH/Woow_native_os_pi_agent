@@ -59,6 +59,7 @@ SB="$(mktemp -d "$ROOT/pa-shtest.XXXXXX")" || exit 2
 SB="$(cd "$SB" && pwd -P)"
 TAG="pa-shtest.$$"
 L_OLD="io.woowtech.$TAG.oldhost"; L_WATCH="io.woowtech.$TAG.watch"; L_SVC="io.woowtech.$TAG.svc"; WPFX="io.woowtech.$TAG.worker"
+L_DEP="io.woowtech.$TAG.health"      # an owner's own job that rests on the old host (a health check)
 REAL="$SB/real"; PA="$SB/pa"; LA="$REAL/Library/LaunchAgents"; ST="$SB/state"
 OLD_ID=aaaaaaaa11111111aaaaaaaa11111111; NEW_ID=bbbbbbbb22222222bbbbbbbb22222222; OTH_ID=cccccccc33333333cccccccc33333333
 OLD_NAME="TestMac.local"; NEW_NAME="TestMac.local (pi-agent)"
@@ -136,8 +137,8 @@ stub_up() {
 }
 
 # ---------------------------------------------------------------------- sandbox ---
-mkdir -p "$REAL/Library/LaunchAgents" "$REAL/.omnigent/"{bin,logs/host,daemons,locks,codex-native/rollout-a,pi-native/s1,attachments} \
-         "$REAL/.claude/skills/demo" "$REAL/.codex" "$SB/tools/bin" "$SB/fakepkg/omnigent/host" "$ST" \
+mkdir -p "$REAL/Library/LaunchAgents" "$REAL/.omnigent/"{bin,health,logs/host,daemons,locks,codex-native/rollout-a,pi-native/s1,attachments} \
+         "$REAL/.claude/skills/demo" "$REAL/.local/bin" "$REAL/.codex" "$SB/tools/bin" "$SB/fakepkg/omnigent/host" "$ST" \
          "$PA/bin" "$PA/logs" "$PA/data/omnigent-plugin" "$PA/home/.omnigent" "$PA/home/.local/bin"
 # the fakes, under the names the real programs have, run by the test python
 fakeify() { { echo "#!$PY"; sed 1d "$FAKE_SRC"; } > "$1"; chmod 755 "$1"; }
@@ -222,6 +223,7 @@ EOF
   echo 'pi session' > "$REAL/.omnigent/pi-native/s1/session.jsonl"
   echo 'blob' > "$REAL/.omnigent/attachments/a.bin"
   : > "$REAL/.omnigent/logs/host/service.log"
+  echo '{"ok": true}' > "$REAL/.omnigent/health/state.json"
   echo '{"mcpServers": {}}' > "$REAL/.claude.json"
   echo 'model = "x"' > "$REAL/.codex/config.toml"
   echo '# demo skill' > "$REAL/.claude/skills/demo/SKILL.md"
@@ -308,6 +310,24 @@ EOF
 </dict></plist>
 EOF
   chmod 600 "$LA/$L_OLD.plist"
+  # an owner's own job that rests on the old host, as the health check on the real MacBook does:
+  # it asks launchd whether the old job runs, and logs under ~/.omnigent. Never loaded here.
+  cat > "$REAL/.local/bin/fake-health" <<EOS
+#!/bin/bash
+launchctl print "gui/\$(id -u)/$L_OLD" 2>/dev/null | grep -q 'state = running'
+EOS
+  chmod 755 "$REAL/.local/bin/fake-health"
+  cat > "$LA/$L_DEP.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>$L_DEP</string>
+<key>ProgramArguments</key><array><string>/bin/bash</string><string>$REAL/.local/bin/fake-health</string></array>
+<key>StartInterval</key><integer>3600</integer>
+<key>StandardOutPath</key><string>$REAL/.omnigent/health/fake-health.log</string>
+<key>StandardErrorPath</key><string>$REAL/.omnigent/health/fake-health.log</string>
+</dict></plist>
+EOF
 }
 
 # What the code under test is told. In production none of these is set.
@@ -370,7 +390,7 @@ OLD_CREATED="$(hcreated $OLD_ID)"
 OLD_PID_BEFORE="$(lc_pid "$L_OLD")"
 t "launchd knows the old host's pid" test -n "$OLD_PID_BEFORE"
 # originals, for the byte-for-byte comparisons later
-SHA_PLIST_OLD="$(sha "$LA/$L_OLD.plist")"; SHA_PLIST_WATCH="$(sha "$LA/$L_WATCH.plist")"; SHA_PLIST_SVC="$(sha "$LA/$L_SVC.plist")"
+SHA_PLIST_OLD="$(sha "$LA/$L_OLD.plist")"; SHA_PLIST_WATCH="$(sha "$LA/$L_WATCH.plist")"; SHA_PLIST_SVC="$(sha "$LA/$L_SVC.plist")"; SHA_PLIST_DEP="$(sha "$LA/$L_DEP.plist")"
 SHA_CFG_NEW="$(sha "$PA/home/.omnigent/config.yaml")"; SHA_RECEIPT="$(sha "$PA/data/omnigent-plugin/connection.json")"
 SHA_PSTATE="$(sha "$PA/data/omnigent-plugin/state.json")"
 SNAP_OLD="$SB/snap-old.before"; snap_old "$REAL/.omnigent" > "$SNAP_OLD"
@@ -468,6 +488,8 @@ t "a plugin that is not patched to hand the real HOME to its host blocks it" rcn
 mv "$SB/omnigent.py.keep" "$PA/plugins/pi-omnigent-plugin/src/omnigent.py"
 out="$("$SH" cutover --dry-run 2>&1)"; rc=$?
 t "all three put back: ready again" test "$rc" = 0
+t "...and the owner's own job that rests on the old host (a health check) is named as a note, not a blocker" has "note:.*launchd job $L_DEP"
+tn "(precondition) this install's directory has no health/ yet" test -d "$PA/home/.omnigent/health"
 
 # ----------------------------------------------------------------------------------
 head1 "3. the cutover"
@@ -491,6 +513,8 @@ t "the old directory is parked, not deleted" test -d "$PARKED"
 t "...and is whole (everything but its own bookkeeping unchanged)" test "$(snap_old "$PARKED")" = "$(cat "$SNAP_OLD")"
 t "codex-native is hard-linked into this install" test "$(stat -f %i "$PARKED/codex-native/rollout-a/rollout.jsonl")" = "$(stat -f %i "$PA/home/.omnigent/codex-native/rollout-a/rollout.jsonl")"
 t "pi-native and attachments carried over" eval "test -f '$PA/home/.omnigent/pi-native/s1/session.jsonl' && test -f '$PA/home/.omnigent/attachments/a.bin'"
+t "the owner's own job that logs under the old directory can still start: its log directory exists" test -d "$PA/home/.omnigent/health"
+t "...and that job's plist was left alone, byte for byte" test "$(sha "$LA/$L_DEP.plist")" = "$SHA_PLIST_DEP"
 
 C="$PA/home/.omnigent/config.yaml"
 t "config: host_id adopted" test "$(yget "$C" host.host_id)" = "$OLD_ID"

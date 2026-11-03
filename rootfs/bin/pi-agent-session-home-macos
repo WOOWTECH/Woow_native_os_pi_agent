@@ -704,7 +704,7 @@ session_at_rest() { case "$1" in idle|failed|completed|done|stopped|archived|can
 # Read-only. Reports EVERY blocker, not just the first.
 preflight() {
   PF_PROBLEMS=0; PF_WARNINGS=0
-  local line rec code n id st f old_job_pid
+  local line rec code n id st f old_job_pid prog
 
   launchctl print "gui/$UID_N" >/dev/null 2>&1 || pf_fail "no GUI launchd session for uid $UID_N (run this from the logged-in user's session)"
   have_python || pf_fail "no python with PyYAML at $PY (the omnigent tool the plugin installs)"
@@ -789,6 +789,21 @@ preflight() {
     case " $OLD_HOST_LABEL $OLD_AUX_LABELS $SVC_LABEL " in *" $n "*) continue ;; esac
     case "$n" in "$WORKER_PREFIX".*) continue ;; esac
     if grep -aqE "$HOST_RE|[.]omnigent/bin/host-service" "$f" 2>/dev/null; then pf_fail "another launchd job ($n) starts an Omnigent host: unknown to me, so not retired"; fi
+  done
+  # Not a blocker, but the owner should hear it from the dry run and not from a notification the
+  # next morning: a job that names the old host job, or lives under ~/.omnigent, keeps running
+  # and then sees the new layout. A health check that asks launchd whether the old job runs will
+  # say it is gone, because from then on the host runs under the pi-agent service.
+  for f in "$LA_DIR"/*.plist; do
+    [ -f "$f" ] || continue
+    n="$(basename "$f" .plist)"
+    case " $OLD_HOST_LABEL $OLD_AUX_LABELS $SVC_LABEL " in *" $n "*) continue ;; esac
+    case "$n" in "$WORKER_PREFIX".*) continue ;; esac
+    prog="$(plist_get "$f" ProgramArguments:0)"
+    if grep -aqF -e "$OLD_HOST_LABEL" -e '.omnigent' "$f" 2>/dev/null \
+       || { [ -n "$prog" ] && [ -f "$prog" ] && grep -aqF -e "$OLD_HOST_LABEL" -e '.omnigent' "$prog" 2>/dev/null; }; then
+      pf_warn "launchd job $n (${prog:-no program}) names $OLD_HOST_LABEL or lives under ~/.omnigent: it keeps running but sees the new layout, and a check that asks launchd whether $OLD_HOST_LABEL runs will say it is gone. Review it first (docs/MACOS-CUTOVER.md)"
+    fi
   done
   [ ! -e "$PARK_DIR/$OLD_HOST_LABEL.plist" ] || pf_fail "$PARK_DIR/$OLD_HOST_LABEL.plist exists already (a previous cutover?)"
 
@@ -1004,6 +1019,26 @@ do_stop_new() {
   say "stopped this install's service and host"
 }
 
+# A launchd job of the owner's that logs under the old directory needs that directory when it
+# starts, and launchd does not create it: the job would silently stop starting. Only conversation
+# state is carried over, so make the log directories such jobs name (empty; their history stays in
+# the parked directory).
+ensure_job_log_dirs() {
+  local f key p d
+  for f in "$LA_DIR"/*.plist; do
+    [ -f "$f" ] || continue
+    for key in StandardOutPath StandardErrorPath; do
+      p="$(plist_get "$f" "$key")"
+      case "$p" in
+        "$OLD_OMNI"/*)
+          d="$(dirname "$p")"
+          if [ ! -d "$d" ] && mkdir -p "$d" 2>/dev/null; then say "created $d: the launchd job $(basename "$f" .plist) logs there"; fi ;;
+      esac
+    done
+  done
+  return 0
+}
+
 do_park_link() {
   local parked="$REAL/.omnigent.pre-pi-agent"
   [ ! -e "$parked" ] || parked="$parked-$TS"
@@ -1013,6 +1048,7 @@ do_park_link() {
   j_set LINKED yes
   say "parked $OLD_OMNI at $parked and linked it to $SCOPED_OMNI"
   carry_state "$parked"
+  ensure_job_log_dirs
 }
 
 do_adopt() {

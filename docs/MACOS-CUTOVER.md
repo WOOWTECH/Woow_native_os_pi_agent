@@ -167,6 +167,18 @@ afterwards (it is bound to the same host, so it comes back).
   `uncutover` (which enables them again).
 - macOS may show a "background item added" notice for the one-shot job the cutover (and
   `restart`, `uncutover`) schedules; it removes its own plist when it finishes.
+- **Your own jobs and scripts that rest on the old host.** Anything that names
+  `ai.omnigent.host` or lives under `~/.omnigent` keeps running and sees the new layout.
+  The dry run lists the launchd jobs among its notes ("launchd job … names
+  ai.omnigent.host or lives under ~/.omnigent"). Typical cases: a health check that asks
+  launchd whether `ai.omnigent.host` is running will say it is gone, because from then on
+  the host runs under the pi-agent service (`io.woowtech.pi-agent`), so point such a check
+  at that label (it can also raise a misleading "login lost" notice once); a job that logs
+  under `~/.omnigent/…` finds its log directory created again in the new place, empty
+  (launchd does not create it, and the job would silently stop starting; the old logs stay
+  in the parked directory); a script that runs `omnigent host enable` by hand would install
+  a second service for the same host, so do not. Scripts the dry run cannot see (anything
+  not started by launchd) are yours to check.
 
 ### Going back later
 
