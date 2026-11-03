@@ -1,0 +1,23 @@
+#!/bin/bash
+# `pi-agent-host-name` -- show or choose the name this install's Omnigent host
+# registers under: seed | check | set NAME. Why that matters (two same-named
+# hosts take each other's registration away) is in pi-agent-host-name.mjs and
+# docs/OPERATIONS-GOTCHAS.md section 13.
+#
+# Only PI_AGENT_HOME is needed, and it is deliberately NOT pi-agent-env.sh that
+# supplies it: that script would also export the LiteLLM credentials and scope
+# HOME, neither of which this command uses. It edits one file, under
+# $PI_AGENT_HOME/home/.omnigent, and never reads OMNIGENT_CONFIG_HOME -- in a
+# shell on a workstation with its own Omnigent that variable can point at the
+# owner's live host.
+set -euo pipefail
+
+SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+: "${PI_AGENT_HOME:=$(dirname "$SELF")}"
+export PI_AGENT_HOME
+
+NODE="${PI_AGENT_HOME}/node/bin/node"
+[ -x "$NODE" ] || NODE="$(command -v node || true)"
+[ -n "$NODE" ] || { echo "pi-agent-host-name: no node found (looked in ${PI_AGENT_HOME}/node/bin and on PATH)" >&2; exit 127; }
+
+exec "$NODE" "${SELF}/pi-agent-host-name.mjs" "$@"
