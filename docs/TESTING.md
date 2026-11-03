@@ -201,7 +201,7 @@ Recorded 2026-11-03 for v0.2.2:
 
 | platform | result |
 |---|---|
-| macOS 26.4 arm64 · node 24.11 · Python 3.12 · omnigent 0.16.0 | **134 passed, 0 failed, 0 skipped** |
+| macOS 26.4 arm64 · node 24.11 · Python 3.12 · omnigent 0.16.0 | **134 passed, 0 failed, 0 skipped** (v0.2.2); **138 passed, 0 failed, 0 skipped** with v0.2.3's four cutover-name cases (A19–A22) |
 | Ubuntu 24.04 (Linux 7.0) · node 20.20 · Python 3.12.3, throwaway venv, isolated tree under `/tmp` | **128 passed, 0 failed, 1 skipped** (K: no `omnigent` package without using the machine's live install) |
 
 Test strength was checked by hand with 26 deliberate regressions (guard fails open;
@@ -246,10 +246,12 @@ privacy prompts for the new host program; a real reboot mid-cutover; the woowtec
 
 ## The `pi` wrapper under session home — validated 2026-11-03
 
-`tests/pi-wrapper-session-home.sh`: **9 passed, 0 failed**, hermetic (a temp directory and a fake
+`tests/pi-wrapper-session-home.sh`: **12 passed, 0 failed**, hermetic (a temp directory and a fake
 node that only reports its environment). It pins which HOME and which Pi data directory the
-wrapper hands to pi with session home off and on, and it **fails against the previous
-wrapper** (4 of the 9, the session-home cases): run it with `PI_TEST_WRAPPER=<older pi>` to see
-the bug it guards. The bug was found on the first Mac cut over: Omnigent's own verification
-of the Pi engine answered `MODELS_UNAVAILABLE` (claude verified fine), because the scoped pi
-kept the user's HOME but read this install's empty data dir. See docs/SESSION-HOME.md.
+wrapper hands to pi with session home off and on -- including that a user with **no** Pi
+configuration of their own keeps the install's data dir -- and it **fails against the wrapper
+published in v0.2.2** (4 of the 12, the cases where the user has a Pi of their own): run it
+with `PI_TEST_WRAPPER=<older pi>` to see the bug it guards. The bug was found on the first Mac
+cut over: Omnigent's own verification of the Pi engine answered `MODELS_UNAVAILABLE` (claude
+verified fine), because the scoped pi kept the user's HOME but read this install's empty data
+directory instead of the user's own `~/.pi/agent`. See docs/SESSION-HOME.md.

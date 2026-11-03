@@ -188,10 +188,13 @@ afterwards (it is bound to the same host, so it comes back).
   in the parked directory); a script that runs `omnigent host enable` by hand would install
   a second service for the same host, so do not. Scripts the dry run cannot see (anything
   not started by launchd) are yours to check.
-- **Pi now runs from your own `~/.pi/agent`.** The Pi the install brings can be much newer
-  than the one that wrote that directory (1.4.0 over 0.87.1 on the first Mac), so Pi
-  conversations continue with the same models, login and history, written from now on by
-  the newer Pi. The directory is backed up first (`pi-agent-dir.tgz`). See
+- **Pi now runs from your own `~/.pi/agent`** (when it holds a `models.json` or an
+  `auth.json`), so the Pi models and login you already had are the ones Omnigent offers.
+  The Pi the install brings can be much newer than the one that wrote that directory
+  (1.4.0 over 0.85.0 on the second Mac) and writes there; measured, the only changes were
+  one version marker in `settings.json` and a clean-up time-stamp. The directory is backed
+  up first (`pi-agent-dir.tgz`). A gateway that lives only in the install's own Pi data
+  (for example LiteLLM) is not offered until you add it to your `models.json`. See
   [SESSION-HOME.md](SESSION-HOME.md), "Pi is the one engine whose data is not under HOME".
 
 ### Going back later

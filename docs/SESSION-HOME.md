@@ -100,25 +100,37 @@ skills into this install's data dir, where an uninstall deletes them. So when
 
 ### Pi is the one engine whose data is not under `HOME`
 
-Claude and Codex keep their login, settings and history under `HOME`, so keeping the
-caller's HOME is enough. Pi keeps its models, login, settings and session history in a
-single directory chosen by `PI_CODING_AGENT_DIR`, and `pi-agent-env.sh` points that at
-this install's data dir. A scoped `pi` that kept the user's HOME but that directory
-found **no models at all** (Omnigent: `MODELS_UNAVAILABLE`) and could not resume the Pi
-conversations the host already had — found on the first Mac cut over, where Claude
-verified fine and Pi did not.
+Claude and Codex keep their login and settings under `HOME`, so keeping the caller's
+HOME is enough. Pi keeps its models, login and settings in a single directory chosen by
+`PI_CODING_AGENT_DIR`, and `pi-agent-env.sh` points that at this install's data dir. A
+scoped `pi` that kept the user's HOME but that directory found **no models at all**
+(Omnigent: `MODELS_UNAVAILABLE`) although the user's own `~/.pi/agent` had them — found
+on the first Mac cut over, where Claude verified fine and Pi did not.
 
 So while session home is on, the `pi` wrapper points `PI_CODING_AGENT_DIR` at the
-caller's own `~/.pi/agent` when the caller runs with the user's own HOME (which is what
-the Omnigent host hands to its sessions). A caller with this install's HOME (pi-web's
-own terminal) keeps this install's data dir, and a directory the caller chose itself is
-honoured unless it is just the inherited scoped default.
-`tests/pi-wrapper-session-home.sh` pins this, and fails against the previous wrapper.
+caller's own `~/.pi/agent` when two things hold: the caller runs with the user's own HOME
+(which is what the Omnigent host hands to its sessions), **and that directory holds a Pi
+configuration — a `models.json` or an `auth.json`**. A user with no Pi of their own keeps
+this install's data dir, where `pi-agent-litellm` put the gateway; redirecting them would
+leave Pi without models. A caller with this install's HOME (pi-web's own terminal) keeps
+the install's data dir too, and a directory the caller chose itself is honoured unless it
+is just the inherited scoped default. `tests/pi-wrapper-session-home.sh` pins all of
+this, and fails against the wrapper published in v0.2.2.
 
-The scoped `pi` can be newer than the one that wrote the user's directory (1.4.0 over
-0.87.1 on that Mac). Reading was tested on a **copy** first: all 53 models listed and
-no file changed. New session files are written by the newer version, so `enable` and
-`cutover` back `~/.pi/agent` up beforehand (`pi-agent-dir.tgz` in the backup directory).
+Two consequences to know:
+
+- **One Pi directory, one set of models.** A user whose `~/.pi/agent` has its own
+  `models.json` sees only those providers in Omnigent sessions; a gateway that lives only
+  in this install's data dir is not offered. Add it to the user's file (the `litellm`
+  provider block of `<install>/data/models.json`; the key stays an `${LITELLM_API_KEY}`
+  reference). Done on the first Mac and tested first on a copy with the Pi that wrote the
+  file and the newer one: both list the old and the added models, and without the key the
+  gateway's models are simply not shown.
+- **The scoped `pi` can be newer** than the one that wrote the user's directory (1.4.0
+  over 0.85.0 on that Mac) and writes there. Measured: after a session, the only changes
+  under `~/.pi/agent` were `settings.json`'s `lastChangelogVersion` and a clean-up
+  time-stamp. `enable` and `cutover` back `~/.pi/agent` up first (`pi-agent-dir.tgz` in
+  the backup directory).
 
 ## Use
 

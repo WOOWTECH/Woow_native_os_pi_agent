@@ -1,12 +1,17 @@
 #!/bin/bash
 # The `pi` wrapper under session home: which HOME and which Pi data directory it hands to pi.
 #
-# Why this exists. Pi keeps its models, login, settings and session history in one
-# directory, and pi-agent-env.sh points that at THIS install's data dir. Session home
-# keeps the caller's HOME for the engines the Omnigent host runs -- but a Pi that still
-# read the install's own (empty) data dir found no models at all (Omnigent: MODELS_UNAVAILABLE)
-# and could not resume the Pi conversations the host already had. Found on the first Mac cut
-# over; claude and codex were fine because their data lives under HOME.
+# Why this exists. Pi keeps its models, login and settings in one directory, and
+# pi-agent-env.sh points that at THIS install's data dir. Session home keeps the caller's
+# HOME for the engines the Omnigent host runs -- but a Pi that still read the install's own
+# (empty) data dir found no models at all (Omnigent: MODELS_UNAVAILABLE) although the user's
+# own ~/.pi/agent had them. Found on the first Mac cut over; claude and codex were fine
+# because their data lives under HOME.
+#
+# The rule under test: while session home is on, a caller running with a HOME that is not the
+# install's own gets <HOME>/.pi/agent -- but ONLY when that directory holds a Pi configuration
+# (models.json or auth.json). A user with no Pi of their own keeps the install's data dir,
+# where pi-agent-litellm put the gateway; redirecting them would leave Pi without models.
 #
 #   tests/pi-wrapper-session-home.sh
 #   PI_TEST_WRAPPER=/path/to/an/older/pi tests/pi-wrapper-session-home.sh     (expect failures: that is the check)
@@ -21,8 +26,11 @@ no() { printf '  FAIL  %s\n        %s\n' "$1" "${2:-}"; fail=$((fail + 1)); }
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/pa-piwrap.XXXXXX")" || exit 2
 trap 'rm -rf "$W"' EXIT
-PA="$W/pa"; REAL="$W/real"; REAL_NOPI="$W/real-without-pi"
-mkdir -p "$PA/bin" "$PA/node/bin" "$PA/home" "$PA/data" "$REAL/.pi/agent" "$REAL_NOPI"
+PA="$W/pa"; REAL="$W/real"; REAL_AUTH="$W/real-auth-only"; REAL_EMPTY="$W/real-empty-pi-dir"; REAL_NOPI="$W/real-without-pi"
+mkdir -p "$PA/bin" "$PA/node/bin" "$PA/home" "$PA/data" "$REAL/.pi/agent" "$REAL_AUTH/.pi/agent" "$REAL_EMPTY/.pi/agent" "$REAL_NOPI"
+echo '{"providers": {}}' > "$REAL/.pi/agent/models.json"      # the user's own Pi: models
+echo '{}' > "$REAL_AUTH/.pi/agent/auth.json"                    # ...only a login
+# $REAL_EMPTY/.pi/agent exists but holds nothing; $REAL_NOPI has no .pi at all
 CLI_DIR="$PA/piweb/lib/node_modules/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent/dist"
 mkdir -p "$CLI_DIR"; : > "$CLI_DIR/cli.js"
 cp "$WRAPPER" "$PA/bin/pi"
@@ -57,12 +65,17 @@ session_home_off
 expect "a caller with the user's own HOME still gets the install's HOME and data dir" "$REAL" "" "$PA/home" "$PA/data"
 expect "...and so does a caller that passes no Pi dir and no HOME" - "" "$PA/home" "$PA/data"
 
-echo "== session home ON"
+echo "== session home ON, the user has a Pi of their own"
 session_home_on
-expect "the Omnigent host's session (the user's own HOME) uses the user's own ~/.pi/agent" "$REAL" "" "$REAL" "$REAL/.pi/agent"
-expect "...even when ~/.pi/agent does not exist yet (pi creates it)" "$REAL_NOPI" "" "$REAL_NOPI" "$REAL_NOPI/.pi/agent"
+expect "the Omnigent host's session (the user's own HOME) uses the user's own ~/.pi/agent (it has models.json)" "$REAL" "" "$REAL" "$REAL/.pi/agent"
+expect "...also when only a login (auth.json) is there" "$REAL_AUTH" "" "$REAL_AUTH" "$REAL_AUTH/.pi/agent"
 expect "...and when the scoped default is merely inherited from the host's environment" "$REAL" "$PA/data" "$REAL" "$REAL/.pi/agent"
 expect "a Pi directory the caller chose itself is honoured" "$REAL" "$W/elsewhere/pi" "$REAL" "$W/elsewhere/pi"
+echo "== session home ON, the user has no Pi configuration of their own: nothing changes for them"
+expect "~/.pi/agent exists but holds no models.json or auth.json -> the install's data dir" "$REAL_EMPTY" "" "$REAL_EMPTY" "$PA/data"
+expect "no ~/.pi at all -> the install's data dir" "$REAL_NOPI" "" "$REAL_NOPI" "$PA/data"
+expect "...also when the scoped default is inherited" "$REAL_NOPI" "$PA/data" "$REAL_NOPI" "$PA/data"
+echo "== session home ON, other callers"
 expect "pi-web's own terminal (this install's HOME) keeps this install's data dir" "$PA/home" "" "$PA/home" "$PA/data"
 expect "...and ignores an inherited scoped default the same way" "$PA/home" "$PA/data" "$PA/home" "$PA/data"
 expect "a caller with no HOME stays scoped (nothing to keep)" - "" "$PA/home" "$PA/data"

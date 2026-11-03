@@ -24,18 +24,21 @@ _pa_caller_pi_dir="${PI_CODING_AGENT_DIR:-}"
 # omnigent gives each codex session, and the scoped HOME of pi-web's terminal.
 if [ -f "${PI_AGENT_HOME}/session-home.state" ] && [ -n "${_pa_caller_home:-}" ]; then
   export HOME="$_pa_caller_home"
-  # Pi keeps its models, login, settings and session history in ONE directory, and
-  # pi-agent-env.sh points it at this install's data dir. A caller that runs with the
-  # user's own HOME is a session of the user's own, and its Pi data is where the user's
-  # own pi keeps it: ~/.pi/agent. Without this the scoped pi finds no models at all
-  # (Omnigent reports MODELS_UNAVAILABLE) and cannot resume the Pi conversations the
-  # host already has -- measured on the first Mac cut over. A caller with THIS install's
-  # HOME (pi-web's terminal) keeps this install's data dir, and a directory the caller
-  # chose itself is honoured unless it is just the inherited scoped default.
+  # Pi keeps its models, login and settings in ONE directory, and pi-agent-env.sh points
+  # it at this install's data dir. A caller that runs with the user's own HOME is a session
+  # of the user's own, and if that user has a Pi of their own -- a models.json or an
+  # auth.json in ~/.pi/agent -- that is the Pi configuration their Omnigent conversations
+  # expect. Without this the scoped pi found no models at all (Omnigent reports
+  # MODELS_UNAVAILABLE) although ~/.pi/agent had them -- measured on the first Mac cut over.
+  # A user with NO Pi configuration of their own keeps this install's data dir, where
+  # pi-agent-litellm put the gateway: redirecting them would leave Pi without models.
+  # A caller with THIS install's HOME (pi-web's terminal) keeps the install's data dir too,
+  # and a directory the caller chose itself is honoured unless it is just the inherited
+  # scoped default.
   if [ "$_pa_caller_home" != "${PI_AGENT_HOME}/home" ]; then
     if [ -n "$_pa_caller_pi_dir" ] && [ "$_pa_caller_pi_dir" != "${PI_AGENT_DATA_DIR}" ]; then
       export PI_CODING_AGENT_DIR="$_pa_caller_pi_dir"
-    else
+    elif [ -f "$_pa_caller_home/.pi/agent/models.json" ] || [ -f "$_pa_caller_home/.pi/agent/auth.json" ]; then
       export PI_CODING_AGENT_DIR="$_pa_caller_home/.pi/agent"
     fi
   fi
