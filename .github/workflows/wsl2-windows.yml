@@ -247,14 +247,32 @@ jobs:
           Run 'systemd state' { wsl -d PiAgent -u root --exec /usr/bin/systemctl is-system-running }
           Run 'systemctl --user status pi-web' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/systemctl --user status pi-web --no-pager }
           Run 'journalctl --user -u pi-web' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/journalctl --user -u pi-web -n 200 --no-pager }
-          Run 'windows-interop.env' { wsl -d PiAgent -u piagent --exec /bin/cat /home/piagent/.local/share/pi-agent/windows-interop.env }
-          Run 'E6 pi-agent-win ps (an ordinary session)' { wsl -d PiAgent -u piagent --exec /home/piagent/.local/share/pi-agent/bin/pi-agent-win ps 'Get-Date -Format o' }
-          Run 'E7 pi-agent-win ps from a systemd user service (no WSL_INTEROP in its environment)' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/systemd-run --user --pipe --wait --collect /home/piagent/.local/share/pi-agent/bin/pi-agent-win ps 'Get-Date -Format o' }
-          Run 'E7 the same service, what its environment has' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/systemd-run --user --pipe --wait --collect /usr/bin/printenv WSL_INTEROP }
           Run 'memory and disk inside the distro' { wsl -d PiAgent -u root --exec /usr/bin/free -m; wsl -d PiAgent -u root --exec /usr/bin/df -h / }
 
       # E3: with no terminal open, does the distro stay up? First with the keep-alive the installer
       # started, then (control) with it stopped, past instanceIdleTimeout (15 s) and vmIdleTimeout (60 s).
+      - name: E6 E7 Windows interop, from a session and from a systemd user service
+        if: always() && steps.install.outcome == 'success'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory -Force ci-out | Out-Null
+          $env:WSL_UTF8 = '1'
+          $log = 'ci-out/25-interop.txt'
+          function Say($t) { $t | Tee-Object -FilePath $log -Append }
+          function Run($title, [scriptblock]$sb) {
+            Say ('=== ' + $title)
+            try { Say ((& $sb 2>&1 | Out-String).TrimEnd()) } catch { Say ('ERROR: ' + $_) }
+          }
+          $pa = '/home/piagent/.local/share/pi-agent/bin'
+          $envs = @('XDG_RUNTIME_DIR=/run/user/1000', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus')
+          Run 'windows-interop.env' { wsl -d PiAgent -u piagent --exec /bin/cat /home/piagent/.local/share/pi-agent/windows-interop.env }
+          Run 'E6 pi-agent-win ps, an ordinary session' { wsl -d PiAgent -u piagent --exec "$pa/pi-agent-win" ps 'Get-Date -Format o' }
+          Run 'E7 does a systemd user service have WSL_INTEROP? (empty = no)' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/systemd-run --user --pipe --wait --collect /usr/bin/printenv WSL_INTEROP }
+          Run 'E7 pi-agent-win ps from that service' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/systemd-run --user --pipe --wait --collect "$pa/pi-agent-win" ps 'Get-Date -Format o' }
+          Run 'E6 pi-agent-win run cmd.exe' { wsl -d PiAgent -u piagent --exec "$pa/pi-agent-win" run cmd.exe /c ver }
+          Run 'pi-agent doctor' { wsl -d PiAgent -u piagent --exec "$pa/pi-agent" doctor }
+
       - name: E3 keep-alive experiment
         if: always()
         shell: pwsh
@@ -305,7 +323,7 @@ jobs:
           if ($t) {
             Say ('action: ' + $t.Actions[0].Execute + ' ' + $t.Actions[0].Arguments)
             Say ('trigger: ' + ($t.Triggers | ForEach-Object { $_.CimClass.CimClassName }))
-            Say ('settings: battery-start-ok=' + $t.Settings.AllowStartIfOnBatteries + ' stop-on-battery=' + $t.Settings.StopIfGoingOnBatteries + ' limit=' + $t.Settings.ExecutionTimeLimit + ' hidden=' + $t.Settings.Hidden)
+            Say ('settings: disallow-start-on-battery=' + $t.Settings.DisallowStartIfOnBatteries + ' stop-on-battery=' + $t.Settings.StopIfGoingOnBatteries + ' limit=' + $t.Settings.ExecutionTimeLimit + ' hidden=' + $t.Settings.Hidden)
           }
 
           Say '=== uninstall, keeping the data'

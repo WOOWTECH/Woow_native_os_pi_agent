@@ -1,8 +1,10 @@
 # Pi Agent on Windows 11 (WSL2)
 
-> **狀態:預覽版。** Linux 那一半在沙盒裡測過(`tests/wsl.sh`,150 項,全過)。
-> Windows 這一半(`windows/install-wsl.ps1`)**還沒有在真正的 Windows 上跑過**,也沒有跑過
-> Pester 測試。下面「尚未驗證」一節列出了哪些行為還只是推測。請先拿一台可以隨時重來的電腦試。
+> **狀態:預覽版。** Linux 那一半在沙盒裡測過(`tests/wsl.sh`,152 項),也在 GitHub 的 Ubuntu 與 macOS 上跑過。
+> Windows 那一半(`windows/install-wsl.ps1`)已經在 **GitHub 的 Windows Server 2025 雲端機**上完整跑通:用
+> Windows PowerShell 5.1 裝完、自我檢查 24 項全過、Windows 這邊連得到 `http://localhost:30141`、保活有效、
+> 重跑與兩種解除安裝都試過。但那是雲端機,**不是一般人的 Windows 11 電腦**:沒有測到「第一次啟用 WSL 並重新開機」、
+> 「登入時自動啟動」、睡眠喚醒,也沒有用真的 Omnigent 帳號開過對話。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
 
 一行 PowerShell 指令,替你的 Windows 11 建一個**專用的 Linux 小系統**(WSL2 裡的 Ubuntu 24.04,
 名叫 `PiAgent`),把 Linux 版的 Pi Agent 裝進去,登入 Windows 時自動啟動。Omnigent 看到的就是一台
@@ -18,7 +20,7 @@ Linux 主機,所以 Pi Agent、Claude Code、Codex 三個代理的行為跟 Linu
 | CPU | x64。ARM64 是盡力支援,**尚未測試** |
 | 虛擬化 | BIOS/UEFI 要開啟。在虛擬機器裡要有「巢狀虛擬化」;**Apple 晶片上的 Parallels 不行**(Parallels 官方知識庫寫明 WSL2 不能用) |
 | 記憶體 | 建議 8 GB 以上(4 GB 是底線) |
-| 磁碟 | 可用空間 10 GB 以上 |
+| 磁碟 | 可用空間至少 10 GB,建議 15 GB(裝好後 Linux 約佔 7 GB) |
 | 網路 | 安裝時要連網:Ubuntu 映像約 371 MB、pi-web 約 180 MB |
 | 權限 | 一般帳號就行。只有「這台電腦還沒有 WSL」時才會跳出系統管理員授權(UAC),而且要重新開機一次 |
 | 公司電腦 | IT 可以用 Intune 或群組原則關掉 WSL;被關掉的話這個安裝程式會告訴你原因,但幫不上忙 |
@@ -141,7 +143,7 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 
 不加 `-PurgeData` 的解除安裝,除了移除 Windows 端的設定,也會**停止並關掉 Linux 裡的 pi-web 服務**(`systemctl --user disable`),所以之後即使你自己開了 `wsl -d PiAgent`,它和 Omnigent host 也不會自己跑起來;重新安裝會再開啟。
 
-`-PurgeData` 會先 `wsl --export` 到 `%USERPROFILE%\PiAgent-backup-<日期>.tar`,**備份失敗就一個檔都不刪**;
+`-PurgeData` 會先 `wsl --export` 到 `%USERPROFILE%\PiAgent-backup-<日期>.tar`(大小和 Linux 現在差不多;雲端機上測到約 7 GB,要有這麼多空間,也要幾分鐘),**備份失敗就一個檔都不刪**;
 而且只會刪「這個安裝程式建立的」Linux(看 `/etc/pi-agent-distro`),不會刪同名的別人的 Linux。`wsl --unregister`
 會永久刪除資料,這是微軟文件的警告。
 
@@ -158,21 +160,32 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 | 電腦睡眠後 Omnigent 離線 | 睡眠期間 Linux 一起暫停;醒來後應該自動重新連線。若沒有,`pi-agent restart` |
 | 安裝到一半失敗 | 看 `%LOCALAPPDATA%\PiAgent\install.log`,重跑一次(會從失敗的地方繼續) |
 
-## 尚未驗證
+## 驗證到哪裡
 
-這些是**推測**,對應 [`WSL2-PLAN.md`](WSL2-PLAN.md) 裡要在真機上做的實驗。在做完之前,不要當成事實:
+**已在 GitHub 的 Windows 雲端機上驗證**(`windows-2025`:Windows Server 2025、build 26100、WSL 3.0.3.0、Windows PowerShell 5.1;
+工作流程 `wsl2-windows.yml`,每次推送都會跑):
 
-- `wsl --import` 匯入 Ubuntu 的 `.wsl` 檔、第一次啟動完全沒有提問(E1)
-- 非互動的 `wsl.exe -u … --exec` 下 `systemctl --user` 可用(E2)
-- 保活真的讓 Linux 不被關掉(E3)
-- 一般使用者能登錄「登入時」的工作排程,不閃視窗(E4)。**已知風險**:如果你的預設終端機是 Windows Terminal,`-WindowStyle Hidden` 可能不生效,登入後會多一個視窗在跑保活;關掉那個視窗,Linux 就會停。另外,公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活、自動續跑都不會執行
-- Windows 瀏覽器經 `localhost` 連得到 WSL 裡綁在 127.0.0.1 的 pi-web(E5)
-- 背景服務下 `pi-agent-win` 找得到互通通道(E7)
-- 睡眠喚醒後 host 自動重連(E8)
-- 乾淨電腦:自動提權 → 裝 WSL → 重開機 → 自動接續(E13)
-- 虛擬化關閉、WSL 被政策停用時的錯誤訊息(E14)
-- ARM64(E12)
-- **Omnigent 端對端**:三個代理各開對話並切換模型(E10)
+- 匯入 Ubuntu 24.04.5 的 `.wsl` 映像,第一次啟動完全沒有提問;從 `/mnt/d/...` 讀安裝包。
+- systemd、使用者級 systemd 服務、`enable-linger` 都正常;整套安裝(pi-web、Claude Code、Codex、Omnigent 外掛、Paseo)
+  走完,自我檢查 24 項全過。
+- Windows 這邊用 `localhost:30141` 連得到 WSL 裡綁在 `127.0.0.1` 的 pi-web。
+- **保活有效,而且需要**:有保活時 90 秒後服務還在;把保活停掉,Linux 就被 Windows 關掉了。
+- `pi-agent-win` 在一般 session 裡、以及在 systemd 使用者服務裡(沒有互通環境變數的那種環境)都能執行 PowerShell。
+- 重跑安裝、解除安裝(保留資料:Windows 端移除、之後手動再開 Linux,pi-web 不會自己跑起來)、解除安裝並清除資料(真的備份、
+  真的 `--unregister`、資料夾清乾淨)。
+- 以系統管理員登錄「登入時」的工作排程:登錄成功,觸發條件、電池與執行時間設定如設計。
+- 文件裡那行安裝指令(用 UTF-8 解碼、去 BOM、建 ScriptBlock、後面接參數),在本機 HTTP 伺服器上的 dry run。
+
+**還沒驗證**(這些在雲端機上測不到或沒測):
+
+- 一般 Windows 11 電腦:乾淨機器的「自動提權 → 裝 WSL → 重開機 → 自動續跑」(E13)、被擋的情況(虛擬化關閉、WSL 被政策停用、
+  磁碟或記憶體不足)的訊息(E14)。
+- 真的「登入時」自動啟動:一般(非系統管理員)使用者能不能登錄排程、有沒有閃視窗(E4)。**已知風險**:如果預設終端機是
+  Windows Terminal,`-WindowStyle Hidden` 可能不生效,登入後會多一個視窗在跑保活;關掉那個視窗,Linux 就會停。另外,
+  公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活與自動續跑都不會執行。
+- 睡眠喚醒後 host 自動重連(E8)。
+- Windows ARM64(E12)。
+- **Omnigent 端對端**:三個代理各開對話並切換模型(E10),需要真的帳號與登入。
 
 ## 給工程師
 

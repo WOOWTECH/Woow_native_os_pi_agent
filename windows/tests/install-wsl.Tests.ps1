@@ -439,7 +439,7 @@ Describe 'a fresh install' {
         $script:Scn.Info.Arch = 'arm64'
         Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
         Should -Invoke Save-PaFile -Times 1 -Exactly -ParameterFilter { $Url -match 'ubuntu-24\.04\.5-wsl-arm64\.wsl$' }
-        (Get-CallIndex -Pattern '^--import PiAgent .* ubuntu-24\.04\.5-wsl-arm64\.wsl --version 2$') | Should -BeGreaterThan -1
+        (Get-CallIndex -Pattern '^--import PiAgent .*ubuntu-24\.04\.5-wsl-arm64\.wsl --version 2$') | Should -BeGreaterThan -1
         $script:Streams[1] | Should -Match 'PI_AGENT_PIWEB_ARTIFACT=https://example\.invalid/piweb-arm64\.tar\.gz'
     }
 

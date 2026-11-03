@@ -303,13 +303,27 @@ loaded, output not UTF-8, quotes not doubled, `$USER` unguarded under `set -u`, 
 install allowed, `wire` forgetting the tool, interop always on, user created every time, root accepted, bus not
 awaited, no BOM, VERSION not checked, ...). Every one makes the suite fail. `shellcheck -S warning` is clean.
 
-**Windows side: not run.** `windows/install-wsl.ps1` (about 1650 lines) and its Pester suite
-(`windows/tests/install-wsl.Tests.ps1`, about 60 cases) were written without PowerShell or Windows available. The
-author parsed both with tree-sitter (0 error nodes) and linted them for brackets, quotes and PowerShell-7-only
-syntax; nothing has been executed. They run in CI (`wsl2-windows.yml`: Pester under pwsh and Windows PowerShell 5.1,
-PSScriptAnalyzer, then an end-to-end attempt on a hosted Windows runner that is also the experiment for whether such a
-runner can start WSL2 at all). Expect the first CI run to fail in the mock plumbing before it says anything about the
-installer.
+**Windows side: written without PowerShell or Windows, then run in CI** (`.github/workflows/wsl2-windows.yml`,
+`windows-2025`: Windows Server 2025 build 26100, WSL 3.0.3.0, Windows PowerShell 5.1 and pwsh 7). The first run
+answered the open question: **a hosted Windows runner does run a real WSL2 distro**. What it showed, in order:
+
+1. GitHub refused the workflow file (`matrix` is not allowed in a step's `shell:`).
+2. The installer got as far as the first call into the VM and died: the bundle's scripts had **CRLF** (`git archive`
+   honours the Windows `core.autocrlf=true`), so bash stopped at `set -euo pipefail\r`. Fixed by turning the conversion
+   off when archiving and by `.gitattributes`; `tests/wsl/bundle.sh` now reproduces it on any machine. The independent
+   review had predicted this one.
+3. With that fixed the **whole install ran green under Windows PowerShell 5.1**: exit 0, smoke 24/24, Windows reaches
+   pi-web on `localhost:30141`, and the keep-alive keeps the distro up where the control without it stops.
+4. Pester refused a `BeforeEach` in the root of the file (Pester 6 now exists; the tests are written for 5 and pinned
+   to it) and then, once wrapped in a `Describe`, 102 of 103 passed under both shells -- the one failure was a wrong
+   regular expression in the test itself.
+5. The end-to-end job also runs the installer again over the finished install, the interop from an ordinary session
+   and from a systemd user service, the logon task registration, `-Uninstall` (the service stays off when the distro is
+   started by hand), and `-Uninstall -PurgeData` with a real `wsl --export` (about 7 GB here) and `--unregister`.
+
+An independent review of the PowerShell (17 findings, each checked against the code) found, among others, two ways
+the uninstaller could delete data it should not, and that `tests/smoke.sh` overwrote and then emptied the user's own
+`mcp.json` (it now restores it, also when interrupted; that fix has no test of its own).
 
 **Not covered at all:** a real WSL2; the first-time enablement with a reboot; start at logon and the keep-alive; sleep
 and wake; ARM64; and the Omnigent end to end (three agents, each opening a conversation and switching model).
