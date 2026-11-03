@@ -4,7 +4,7 @@
 開對話、切換模型,Paseo 也能配對。對應 [`WSL2-PLAN.md`](WSL2-PLAN.md) 的實驗 E10。
 
 工作流程是 [`.github/workflows/wsl2-live.yml`](../.github/workflows/wsl2-live.yml)。它**不是 CI**:只有推送到名叫
-`wsl2-live/…` 的分支才會跑,需要下面五個 Secrets,跑起來後會把測試機**保持開著**讓人操作。
+`wsl2-live/…` 的分支才會跑,需要下面三個必填的 Secrets,跑起來後會把測試機**保持開著**讓人操作。
 
 ## 為什麼需要你的帳號
 
