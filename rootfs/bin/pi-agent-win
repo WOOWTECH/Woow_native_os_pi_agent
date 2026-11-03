@@ -1,0 +1,155 @@
+#!/bin/bash
+# pi-agent-win -- reach Windows from inside WSL, also from a systemd service.
+#
+#   pi-agent-win run <exe> [args...]
+#
+# Self-contained on purpose: it is installed into $PI_AGENT_HOME/bin and cannot source
+# anything from the repository.
+set -uo pipefail
+
+SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+: "${PI_AGENT_HOME:=$(dirname "$SELF")}"
+RUN_DIR="${PA_WSL_RUN_DIR:-/run/WSL}"
+
+# Where the Windows system directory is, as seen from Linux. The Windows-side
+# installer records it (windows-interop.env) because the drive need not be C:.
+win_sys32() {
+  local v=""
+  [ -r "$PI_AGENT_HOME/windows-interop.env" ] \
+    && v="$(sed -n 's/^PA_WIN_SYSTEM32=//p' "$PI_AGENT_HOME/windows-interop.env" | head -1)"
+  echo "${v:-/mnt/c/Windows/System32}"
+}
+
+find_exe() {
+  local name="$1" d
+  for d in "$(win_sys32)" "$(win_sys32)/WindowsPowerShell/v1.0"; do
+    [ -x "$d/$name" ] && { echo "$d/$name"; return 0; }
+  done
+  command -v "$name"
+}
+
+# /run/WSL holds one <pid>_interop socket per session; sessions that ended can leave
+# theirs behind. Oldest first: the one belonging to the distro's own init lives longest.
+candidates() {
+  ls "$RUN_DIR" 2>/dev/null \
+    | sed -n 's/^\([0-9][0-9]*\)_interop$/\1 &/p' | sort -n | awk -v d="$RUN_DIR" '{print d "/" $2}'
+}
+
+# A channel is live when a Windows program can start through it.
+pick_channel() {
+  local probe c
+  probe="$(find_exe cmd.exe)" || return 1
+  for c in $(candidates); do
+    if WSL_INTEROP="$c" "$probe" /c exit 0 >/dev/null 2>&1; then echo "$c"; return 0; fi
+  done
+  return 1
+}
+
+fail() { echo "pi-agent-win: $2" >&2; exit "$1"; }
+
+# Leave WSL_INTEROP pointing at a channel that works. A session that already has
+# one (an interactive shell) keeps it; a systemd service has none and has to look.
+ensure_channel() {
+  if [ -n "${WSL_INTEROP:-}" ] && [ -e "$WSL_INTEROP" ]; then return 0; fi
+  local ch
+  ch="$(pick_channel)" || return 1
+  export WSL_INTEROP="$ch"
+}
+
+cmd_run() {
+  [ $# -ge 1 ] || fail 64 "usage: pi-agent-win run <exe> [args...]"
+  local exe
+  exe="$(find_exe "$1")" || fail 127 "Windows program not found: $1 (looked in $(win_sys32) and on PATH)"
+  shift
+  ensure_channel || fail 3 "no working Windows interop channel in $RUN_DIR. Is interop enabled ([interop] enabled=true in /etc/wsl.conf)? 'pi-agent-win doctor' shows what is wrong."
+  exec "$exe" "$@"
+}
+
+cmd_ps() {
+  [ $# -ge 1 ] || fail 64 "usage: pi-agent-win ps '<PowerShell command>'"
+  # Windows PowerShell answers in the console code page (950 on a Traditional Chinese
+  # Windows), which reaches Linux as mojibake: force UTF-8. -NoProfile and
+  # -NonInteractive keep an agent's call from loading the user's profile or hanging on
+  # a prompt; -ExecutionPolicy Bypass lets script files run (a stock Windows client
+  # blocks them) -- it is not a security boundary, the agent can run any code anyway.
+  cmd_run powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass \
+    -Command "[Console]::OutputEncoding=[Text.UTF8Encoding]::new(\$false); $1"
+}
+
+# Open a URL or a file with the Windows default program. wslview (wslu) when it is
+# installed, PowerShell's Start-Process when not. explorer.exe would do too but exits
+# 1 even on success.
+cmd_open() {
+  [ $# -ge 1 ] || fail 64 "usage: pi-agent-win open <url-or-path>"
+  local target="$1" q
+  if command -v wslview >/dev/null 2>&1; then
+    ensure_channel || fail 3 "no working Windows interop channel in $RUN_DIR. 'pi-agent-win doctor' shows what is wrong."
+    exec wslview "$target"
+  fi
+  case "$target" in
+    *://*) ;;                                   # a URL: Windows opens it as it is
+    *) target="$(wslpath -w "$target")" || fail 1 "cannot convert $1 to a Windows path" ;;
+  esac
+  q="$(printf '%s' "$target" | sed "s/'/''/g")"  # inside a PowerShell '...' string a quote is doubled
+  cmd_ps "Start-Process -FilePath '$q'"
+}
+
+# systemd --user needs XDG_RUNTIME_DIR. A session started by `wsl.exe -u USER --exec`
+# does not go through PAM, so it may not have one.
+user_runtime_dir() { echo "${XDG_RUNTIME_DIR:-${PA_RUN_USER_DIR:-/run/user}/$(id -u)}"; }
+
+# One line per check, never stopping at the first problem. A check whose prerequisite
+# failed is skipped rather than failed a second time.
+cmd_doctor() {
+  local bad=0 port="${PI_WEB_PORT:-30141}" mnt="${PA_WSL_MNT_ROOT:-/mnt}" got ps_ok=0
+  pass_() { echo "[PASS] $1: $2"; }
+  fail_() { echo "[FAIL] $1: $2"; bad=1; }
+  skip_() { echo "[SKIP] $1: $2"; }
+
+  if ! grep -qiE '(microsoft|wsl)' "${PA_WSL_PROC_VERSION:-/proc/version}" 2>/dev/null; then
+    fail_ wsl "this is not WSL"
+    return 1
+  fi
+  pass_ wsl "running inside WSL"
+
+  if [ -d "${PA_WSL_SYSTEMD_DIR:-/run/systemd/system}" ]; then pass_ systemd "running"
+  else fail_ systemd "not running -- add [boot] systemd=true to /etc/wsl.conf, then run 'wsl --shutdown' in Windows PowerShell"; fi
+
+  case "$PI_AGENT_HOME" in
+    "$mnt"/*) fail_ home "$PI_AGENT_HOME is on a Windows drive -- slow, and it does not keep Linux file permissions; reinstall on the Linux filesystem" ;;
+    *)        pass_ home "$PI_AGENT_HOME" ;;
+  esac
+
+  if ensure_channel; then
+    pass_ interop "channel $WSL_INTEROP"
+    got="$(cmd_ps '1+1' 2>&1 | tr -d '\r')"
+    if [ "$got" = 2 ]; then pass_ powershell "answers"; ps_ok=1
+    else fail_ powershell "did not answer (got: $got)"; fi
+  else
+    fail_ interop "no working channel in $RUN_DIR -- is [interop] enabled=true in /etc/wsl.conf? then run 'wsl --shutdown' in Windows PowerShell"
+    skip_ powershell "needs interop"
+  fi
+
+  if [ "$ps_ok" = 1 ]; then
+    got="$(cmd_ps "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 -Uri 'http://localhost:$port/api/home').StatusCode } catch { 0 }" 2>&1 | tr -d '\r')"
+    if [ "$got" = 200 ]; then pass_ localhost "Windows reaches pi-web on port $port"
+    else fail_ localhost "Windows cannot reach http://localhost:$port (pi-web not running, or Windows already uses port $port)"; fi
+  else
+    skip_ localhost "needs PowerShell"
+  fi
+
+  if [ "$(XDG_RUNTIME_DIR="$(user_runtime_dir)" systemctl --user is-active pi-web 2>/dev/null)" = active ]; then
+    pass_ service "pi-web is active"
+  else
+    fail_ service "pi-web is not active -- 'pi-agent status' and 'pi-agent logs' show why"
+  fi
+  return "$bad"
+}
+
+case "${1:-}" in
+  run)    shift; cmd_run "$@" ;;
+  ps)     shift; cmd_ps "$@" ;;
+  open)   shift; cmd_open "$@" ;;
+  doctor) shift; cmd_doctor "$@" ;;
+  *)      fail 64 "usage: pi-agent-win {run <exe> [args...] | ps '<PowerShell command>' | open <url-or-path> | doctor}" ;;
+esac
