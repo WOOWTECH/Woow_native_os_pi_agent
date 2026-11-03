@@ -164,6 +164,14 @@ afterwards (it is bound to the same host, so it comes back).
   host, as it did for the old `(pi-agent)` host; if they exist already it reuses them.
 - A second row, `<hostname> (pi-agent)`, stays on the server, offline. It is this
   install's old identity; it is harmless and is deliberately not deleted.
+  (The server offers no way to delete an ordinary host row, so it stays until Omnigent's
+  administrator removes it; it also keeps `uncutover` clean, because the scoped identity it
+  restores still has its row.)
+- The host's name is now the replaced host's own, usually the machine's plain hostname.
+  `pi-agent-host-name check` reports it as **adopted** (exit 0) and `install.sh wire` keeps it
+  without the "name equals the machine's own" warning; with no cutover record in
+  `session-home.state` the same name is still reported as collision-prone. Do not rename it:
+  on an adopted identity that would rename the host on the server.
 - `launchctl print-disabled gui/$(id -u)` lists the two old labels as disabled until
   `uncutover` (which enables them again).
 - macOS may show a "background item added" notice for the one-shot job the cutover (and

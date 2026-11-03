@@ -326,6 +326,19 @@ function lastRefusal(home = process.env.PI_AGENT_HOME) {
 
 const same = (a, b) => typeof a === 'string' && typeof b === 'string' && a.trim().toLowerCase() === b.trim().toLowerCase();
 
+// A cutover (docs/MACOS-CUTOVER.md) leaves CUTOVER=yes and the replaced host's name in
+// $PI_AGENT_HOME/session-home.state: this install's host then carries that identity ON PURPOSE,
+// and on a Mac that name is usually the plain hostname. It is not a collision -- the replaced
+// host is gone and its server row is this host's -- and "renaming" it would rename the owner's
+// own host on the server. Exact on purpose: only a cutover record naming this very name counts.
+function adoptedByCutover(name, home = process.env.PI_AGENT_HOME) {
+  if (!home) return false;
+  let text;
+  try { text = fs.readFileSync(path.join(home, 'session-home.state'), 'utf8'); } catch { return false; }
+  const value = (key) => { const m = new RegExp(`^${key}=(.*)$`, 'm').exec(text); return m ? m[1] : null; };
+  return value('CUTOVER') === 'yes' && same(value('OLD_HOST_NAME'), name);
+}
+
 function collisionWarning(name, host) {
   return [
     `WARN: this install's Omnigent host is named "${name}", the same as the machine itself ("${host}").`,
@@ -346,6 +359,9 @@ function seed(file) {
   }
   const hasName = (a.state === 'block' || a.state === 'flow') && typeof a.name === 'string' && a.name !== '';
   if (hasName) {
+    if (same(a.name, host) && adoptedByCutover(a.name)) {
+      return { code: 0, lines: [`KEPT host.name="${a.name}" (taken over from the replaced host by the cutover, on purpose; docs/MACOS-CUTOVER.md)`] };
+    }
     const lines = [`KEPT host.name="${a.name}" (already set; seed never overwrites)`];
     if (same(a.name, host)) lines.push(...collisionWarning(a.name, host));
     return { code: 0, lines };
@@ -365,9 +381,10 @@ function check(file, json) {
   const registered = typeof a.hostId === 'string' && a.hostId !== '' ? a.hostId : null;
   const bad = a.state === 'unsupported';
   const collides = name !== null && same(name, host);
-  const status = bad ? 'unreadable' : name === null ? 'unset' : collides ? 'plain-hostname' : 'ok';
+  const adopted = collides && adoptedByCutover(name);
+  const status = bad ? 'unreadable' : name === null ? 'unset' : adopted ? 'adopted' : collides ? 'plain-hostname' : 'ok';
   const refusal = lastRefusal();
-  const code = bad ? 3 : status === 'ok' && !refusal ? 0 : 1;
+  const code = bad ? 3 : (status === 'ok' || status === 'adopted') && !refusal ? 0 : 1;
   if (json) {
     return { code, lines: [JSON.stringify({ config: file, hostname: host, name, hostId: registered, status, lastRefusal: refusal })] };
   }
@@ -379,6 +396,7 @@ function check(file, json) {
   ];
   if (bad) lines.push(`status:    unreadable — ${a.reason}`);
   else if (status === 'ok') lines.push('status:    ok — differs from the machine\'s own name; the server also checks it before every connect');
+  else if (status === 'adopted') lines.push('status:    adopted — the replaced host\'s own name, taken over by the cutover on purpose; leave it (docs/MACOS-CUTOVER.md)');
   else if (status === 'unset') lines.push(`status:    not set — the host would register as "${host}". Run: pi-agent-host-name seed`);
   else lines.push('status:    COLLISION-PRONE — equals the machine\'s own name, the default of every other Omnigent host here', ...collisionWarning(name, host).slice(1).map((l) => l.replace(/^WARN: /, '  ')));
   if (refusal) lines.push('', `The plugin refused to start this host (${refusal.code}); its message:`, '', refusal.message);

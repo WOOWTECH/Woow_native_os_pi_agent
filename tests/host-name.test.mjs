@@ -278,6 +278,54 @@ await t('A18 check shows the plugin\'s last HOST_NAME_* refusal as written (real
   assert.equal(JSON.parse(cli(d, ['check', '--json'], { PI_AGENT_DATA_DIR: data }).out).lastRefusal.code, 'HOST_NAME_UNVERIFIABLE');
 });
 
+// A cutover (docs/MACOS-CUTOVER.md) makes this install's host take over the REPLACED host's identity,
+// name included -- and on a Mac that name is usually the plain hostname. That is the point of it, not a
+// collision: the replaced host is gone and its server row is this host's. The tool must say so, instead of
+// warning on every `install.sh wire` that the name "may collide" and telling the owner to rename it
+// (which, on an adopted identity, would rename the owner's own host on the server).
+const putState = (home, lines) => fs.writeFileSync(path.join(home, 'session-home.state'), lines.join('\n') + '\n');
+const ADOPTED = (name = HOST) => ['REAL_HOME=/Users/someone', 'PARKED=/Users/someone/.omnigent.pre-pi-agent', 'CUTOVER=yes', `OLD_HOST_ID=0123456789abcdef0123456789abcdef`, `OLD_HOST_NAME=${name}`];
+const PLAIN_CFG = `host:\n  host_id: 0123456789abcdef0123456789abcdef\n  name: ${HOST}\n`;
+
+await t('A19 seed: a name a cutover adopted from the replaced host is kept WITHOUT the collision warning', () => {
+  const h = newHome(); put(h, PLAIN_CFG); putState(h, ADOPTED());
+  const r = cli(h, ['seed']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^KEPT host\.name="testbox\.local"/);
+  assert.match(r.out, /cutover/i);
+  assert.doesNotMatch(r.out, /WARN|NOT renamed|pi-agent-host-name set/);
+  assert.equal(get(h), PLAIN_CFG);
+});
+
+await t('A20 seed: the exception is exact -- another name in the state, a plain session home, or a missing CUTOVER=yes still warn', () => {
+  const other = newHome(); put(other, PLAIN_CFG); putState(other, ADOPTED('some-other-host'));
+  assert.match(cli(other, ['seed']).out, /WARN: .*the same as the machine itself/);
+  const plainSessionHome = newHome(); put(plainSessionHome, PLAIN_CFG); putState(plainSessionHome, ['REAL_HOME=/Users/someone', 'PARKED=', 'BACKUP=', 'ENABLED_AT=x']);
+  assert.match(cli(plainSessionHome, ['seed']).out, /WARN: .*the same as the machine itself/);
+  const notYes = newHome(); put(notYes, PLAIN_CFG); putState(notYes, ADOPTED().map((l) => l.replace('CUTOVER=yes', 'CUTOVER=no')));
+  assert.match(cli(notYes, ['seed']).out, /WARN: .*the same as the machine itself/);
+  const noState = newHome(); put(noState, PLAIN_CFG);
+  assert.match(cli(noState, ['seed']).out, /WARN: .*the same as the machine itself/);
+});
+
+await t('A21 seed: the adopted-name comparison ignores case and surrounding blanks, like the hostname one', () => {
+  const h = newHome(); put(h, PLAIN_CFG); putState(h, ADOPTED('  TestBox.LOCAL '));
+  const r = cli(h, ['seed']);
+  assert.match(r.out, /^KEPT/); assert.doesNotMatch(r.out, /WARN/);
+});
+
+await t('A22 check: an adopted name is status "adopted", exit 0, and says why; --json carries it', () => {
+  const h = newHome(); put(h, PLAIN_CFG); putState(h, ADOPTED());
+  const c = cli(h, ['check']);
+  assert.equal(c.code, 0, c.out);
+  assert.match(c.out, /adopted/i); assert.doesNotMatch(c.out, /COLLISION-PRONE|pi-agent-host-name set/);
+  const j = JSON.parse(cli(h, ['check', '--json']).out);
+  assert.equal(j.status, 'adopted'); assert.equal(j.name, HOST);
+  // and without the cutover record the very same file is still collision-prone
+  const plain = newHome(); put(plain, PLAIN_CFG);
+  assert.equal(cli(plain, ['check']).code, 1); assert.equal(JSON.parse(cli(plain, ['check', '--json']).out).status, 'plain-hostname');
+});
+
 // ---------------------------------------------------------------- helpers B ---
 const havePristine = PRISTINE && fs.existsSync(path.join(PRISTINE, 'src', 'omnigent.py'));
 function newPlugin(version) {
