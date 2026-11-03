@@ -46,11 +46,14 @@ jobs:
       fail-fast: false
       matrix:
         shell: [pwsh, powershell]
+    # `matrix` is not available in a step's own `shell:`, but it is here.
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Pester 5 and PSScriptAnalyzer
-        shell: ${{ matrix.shell }}
         run: |
           if ($PSVersionTable.PSEdition -eq 'Desktop') {
             Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
@@ -62,7 +65,6 @@ jobs:
       # The release adds a BOM to install-wsl.ps1; Windows PowerShell 5.1 reads a file without one as
       # ANSI and would break on the Chinese messages. Parse the BOM copy with this very shell.
       - name: Parse check
-        shell: ${{ matrix.shell }}
         run: |
           $text = [System.IO.File]::ReadAllText((Resolve-Path 'windows/install-wsl.ps1').Path, [System.Text.Encoding]::UTF8)
           $copy = Join-Path $env:RUNNER_TEMP 'install-wsl-bom.ps1'
@@ -77,7 +79,6 @@ jobs:
           Write-Host ('parses cleanly under PowerShell ' + $PSVersionTable.PSVersion)
 
       - name: Pester
-        shell: ${{ matrix.shell }}
         run: |
           Import-Module Pester -MinimumVersion 5.5.0 -Force
           $cfg = New-PesterConfiguration
