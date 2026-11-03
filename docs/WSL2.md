@@ -6,7 +6,7 @@
 > 重跑與兩種解除安裝都試過。2026-11-03 還用**真的 Omnigent 伺服器**驗證過:那台雲端機登記成 Omnigent 主機,
 > Claude Code 與 Codex 在 Omnigent、Paseo 網頁版開對話並切換模型都成功,代理也能控制 Windows(PowerShell、Notepad、
 > 瀏覽器、檔案互通)。但那是雲端機,**不是一般人的 Windows 11 電腦**:沒有測到「第一次啟用 WSL 並重新開機」、
-> 「登入時自動啟動」、睡眠喚醒,Pi 也還沒拿到模型測過對話。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
+> 「登入時自動啟動」、睡眠喚醒;Pi 登入與切換模型都過了,但沒看到它回答(被 ChatGPT 帳號的用量上限擋下)。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
 
 一行 PowerShell 指令,替你的 Windows 11 建一個**專用的 Linux 小系統**(WSL2 裡的 Ubuntu 24.04,
 名叫 `PiAgent`),把 Linux 版的 Pi Agent 裝進去,登入 Windows 時自動啟動。Omnigent 看到的就是一台
@@ -205,6 +205,11 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 - **Paseo**:daemon 在 WSL2 裡跑;`pi-paseo acceptance`(真的對話加追問)Claude 與 Codex 通過。用官方加密 relay
   (`relay.paseo.sh`)在瀏覽器配對 Paseo 網頁版後,開對話、Sonnet 5.5 → Opus 5.5 切換都成功。
 - 代理自己控制 Windows:見上面「實測過的控制能力」。
+- **Pi**(第 5 輪):在 Pi 裡 `/login` → OpenAI,用 ChatGPT 帳號登入成功(Pi 給授權網址;授權後瀏覽器轉到打不開的
+  `http://127.0.0.1:1455/…`,把那整串網址貼回 Pi)。Omnigent 列出 Pi 的 38 個 OpenAI 模型、可以切換;GPT-6-Luna 與
+  GPT-5.6-Terra 被 OpenAI 接受,但**回覆被這個 ChatGPT 帳號的「訂閱分享用量上限」擋下**,所以沒看到 Pi 的回答。
+  兩個要注意:這個帳號的後端只收 GPT-6 / GPT-5.6 系列(Pi 登入時自選的 `gpt-5.5` 回 `model_not_found`);登入之後要開
+  **新的** Omnigent 對話才看得到模型(舊對話仍顯示「沒有可用模型」)。
 
 **還沒驗證**(這些在雲端機上測不到或沒測):
 
@@ -215,8 +220,8 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活與自動續跑都不會執行。
 - 睡眠喚醒後 host 自動重連(E8)。
 - Windows ARM64(E12)。
-- **Pi 拿到模型後的對話與切換模型**:Pi 本身連上了 Omnigent、能開對話,但這次沒有模型可用(你的 LiteLLM 閘道對測試給的值回
-  HTTP 401;改用訂閱登入要人按授權,這次沒做)。
+- **Pi 實際回答一句話**:登入與切換模型都過了,但回覆被 ChatGPT 帳號的用量上限擋下(見上)。LiteLLM 閘道那條路沒測到(使用者
+  給的值被閘道回 HTTP 401)。
 - Paseo 在剛裝完的那次 `models claude` 失敗的原因(重啟 daemon 可解,見疑難排解)。
 
 ## 給工程師

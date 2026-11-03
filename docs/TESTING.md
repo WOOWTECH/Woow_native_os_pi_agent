@@ -341,7 +341,13 @@ Omnigent in the background for about 40 seconds while holding its `flock -n` loc
 - Agents drove Windows: PowerShell 5.1, Notepad and Edge started and closed, installed software listed, files written
   both ways. The processes were **administrator** on this runner.
 
+- **Pi** (fifth run): `/login` -> OpenAI with the user's ChatGPT account worked (an authorize link, then the whole
+  `http://127.0.0.1:1455/auth/callback?...` redirect pasted back); Omnigent listed Pi's 38 OpenAI models and switched
+  between them. `gpt-5.5` (Pi's own pick) came back `model_not_found` for this account; `gpt-6-luna` and `gpt-5.6-terra`
+  were accepted and then refused with "The ChatGPT user has reached their Subscription Sharing usage limit" -- the
+  account's quota, so no Pi reply was ever seen. A session opened before the login kept its "no usable models" list.
+
 **Not covered at all:** a real Windows 11 PC; the first-time enablement with a reboot; start at logon (as a standard
-user) and the keep-alive window; sleep and wake; ARM64; and **Pi with a model** (no credentials were available: the
-user's gateway answered 401, a subscription login needs a person).
+user) and the keep-alive window; sleep and wake; ARM64; and **a Pi reply** (the ChatGPT account's usage limit; the
+user's LiteLLM gateway answered 401).
 Parallels on Apple silicon cannot host WSL2 (Parallels KB 129497), so this Mac is not a test machine for it.

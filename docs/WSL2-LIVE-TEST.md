@@ -70,7 +70,8 @@
 | Codex 對話 + 切換模型 | 通過(GPT-6-Luna → GPT-5.6-Terra) |
 | Paseo `acceptance`、網頁版配對、對話 + 切換模型 | Claude、Codex 通過(Sonnet 5.5 → Opus 5.5);Pi 因沒有模型沒過 |
 | 代理控制 Windows(PowerShell、Notepad、瀏覽器、檔案) | 通過(Claude Code 與 Codex 各做一次) |
-| Pi 的對話與切換模型 | **沒測**:沒有模型(LiteLLM 值被閘道回 401;訂閱登入要人按,這次沒做) |
+| Pi 的登入與切換模型(第 5 輪) | 通過:ChatGPT 帳號登入、Omnigent 列出 38 個模型、GPT-6-Luna → GPT-5.6-Terra 都被 OpenAI 接受 |
+| Pi 實際回答一句話 | **沒看到**:回覆被 ChatGPT 帳號的「訂閱分享用量上限」擋下(帳號額度,不是安裝問題)。LiteLLM 值被閘道回 401,那條路沒測 |
 
 前三輪踩到的問題:
 
