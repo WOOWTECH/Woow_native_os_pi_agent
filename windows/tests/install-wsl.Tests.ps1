@@ -49,6 +49,8 @@ AfterAll {
     Remove-Item -LiteralPath Env:\PI_AGENT_WSL_TEST -ErrorAction SilentlyContinue
 }
 
+# One wrapper: Pester refuses BeforeEach directly in the root of a file ("Each test setup is not supported in root").
+Describe 'install-wsl.ps1' {
 BeforeEach {
     $script:Calls = New-Object System.Collections.ArrayList
     $script:Streams = New-Object System.Collections.ArrayList
@@ -832,4 +834,5 @@ Describe 'the final message' {
         $m | Should -Match 'example\.invalid/install-wsl\.ps1'
         $m | Should -Match '-Uninstall'
     }
+}
 }

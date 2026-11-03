@@ -59,7 +59,7 @@ jobs:
             Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
           }
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module Pester -MinimumVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          Install-Module Pester -MinimumVersion 5.5.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
 
       # The release adds a BOM to install-wsl.ps1; Windows PowerShell 5.1 reads a file without one as
@@ -85,7 +85,7 @@ jobs:
 
       - name: Pester
         run: |
-          Import-Module Pester -MinimumVersion 5.5.0 -Force
+          Import-Module Pester -MinimumVersion 5.5.0 -MaximumVersion 5.99.99 -Force
           $cfg = New-PesterConfiguration
           $cfg.Run.Path = 'windows/tests'
           $cfg.Run.PassThru = $true
@@ -220,6 +220,10 @@ jobs:
           Run 'systemd state' { wsl -d PiAgent -u root --exec /usr/bin/systemctl is-system-running }
           Run 'systemctl --user status pi-web' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/systemctl --user status pi-web --no-pager }
           Run 'journalctl --user -u pi-web' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/journalctl --user -u pi-web -n 200 --no-pager }
+          Run 'windows-interop.env' { wsl -d PiAgent -u piagent --exec /bin/cat /home/piagent/.local/share/pi-agent/windows-interop.env }
+          Run 'E6 pi-agent-win ps (an ordinary session)' { wsl -d PiAgent -u piagent --exec /home/piagent/.local/share/pi-agent/bin/pi-agent-win ps 'Get-Date -Format o' }
+          Run 'E7 pi-agent-win ps from a systemd user service (no WSL_INTEROP in its environment)' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/systemd-run --user --pipe --wait --collect /home/piagent/.local/share/pi-agent/bin/pi-agent-win ps 'Get-Date -Format o' }
+          Run 'E7 the same service, what its environment has' { wsl -d PiAgent -u piagent --exec /usr/bin/env @envs /usr/bin/systemd-run --user --pipe --wait --collect /usr/bin/printenv WSL_INTEROP }
           Run 'memory and disk inside the distro' { wsl -d PiAgent -u root --exec /usr/bin/free -m; wsl -d PiAgent -u root --exec /usr/bin/df -h / }
 
       # E3: with no terminal open, does the distro stay up? First with the keep-alive the installer
@@ -247,6 +251,60 @@ jobs:
           Get-Process -Name wsl -ErrorAction SilentlyContinue | Stop-Process -Force
           Start-Sleep -Seconds 90
           Probe 'after 90 s with NO keep-alive (control)'
+
+      - name: E4 E11 run again, uninstall keeping the data, uninstall purging it
+        if: always() && steps.install.outcome == 'success'
+        shell: powershell
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force ci-out | Out-Null
+          if (Test-Path "$env:LOCALAPPDATA\PiAgent\install.log") { Copy-Item "$env:LOCALAPPDATA\PiAgent\install.log" ci-out/install.log }
+          $log = 'ci-out/40-rerun-uninstall.txt'
+          function Say($t) { $t | Tee-Object -FilePath $log -Append }
+          $script = Join-Path (Get-Location).Path 'dist\install-wsl.ps1'
+          $bundle = Join-Path (Get-Location).Path 'dist\pi-agent-installer-dev.tar.gz'
+          $art = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.4/piweb-0.10.0-linux-x64.tar.gz'
+          $env:WSL_UTF8 = '1'
+
+          Say '=== run again over the finished install, this time WITH the autostart (E11, E4)'
+          $out = & $script -Yes -SkipSmoke -BundlePath $bundle -PiWebArtifact $art *>&1
+          $code = $LASTEXITCODE
+          Say (($out | Select-Object -Last 12 | Out-String).Trim())
+          Say ('exit code: ' + $code)
+          Say '--- the logon task (E4)'
+          Say ((Get-ScheduledTask -TaskName PiAgentWsl -ErrorAction SilentlyContinue | Select-Object TaskName, State | Format-List | Out-String).Trim())
+          $t = Get-ScheduledTask -TaskName PiAgentWsl -ErrorAction SilentlyContinue
+          if ($t) {
+            Say ('action: ' + $t.Actions[0].Execute + ' ' + $t.Actions[0].Arguments)
+            Say ('trigger: ' + ($t.Triggers | ForEach-Object { $_.CimClass.CimClassName }))
+            Say ('settings: battery-start-ok=' + $t.Settings.AllowStartIfOnBatteries + ' stop-on-battery=' + $t.Settings.StopIfGoingOnBatteries + ' limit=' + $t.Settings.ExecutionTimeLimit + ' hidden=' + $t.Settings.Hidden)
+          }
+
+          Say '=== uninstall, keeping the data'
+          $out = & $script -Uninstall -Yes -BundlePath $bundle *>&1
+          $code = $LASTEXITCODE
+          Say (($out | Select-Object -Last 8 | Out-String).Trim())
+          Say ('exit code: ' + $code)
+          Say ('distros: ' + ((wsl -l -q | Out-String).Trim() -replace "`r?`n", ', '))
+          Say ('logon task still there: ' + [bool](Get-ScheduledTask -TaskName PiAgentWsl -ErrorAction SilentlyContinue))
+          Say ('pi-agent command folder still there: ' + (Test-Path "$env:LOCALAPPDATA\PiAgent\bin"))
+          Say ('distro folder still there: ' + (Test-Path "$env:LOCALAPPDATA\PiAgent\distro"))
+          Say '--- start the distro again by hand: the service must NOT come back (item 11 of the review)'
+          wsl -d PiAgent -u root --exec /bin/true
+          Start-Sleep -Seconds 20
+          Say ('is-enabled: ' + ((wsl -d PiAgent -u piagent --exec /usr/bin/env XDG_RUNTIME_DIR=/run/user/1000 /usr/bin/systemctl --user is-enabled pi-web.service 2>&1 | Out-String).Trim()))
+          Say ('is-active:  ' + ((wsl -d PiAgent -u piagent --exec /usr/bin/env XDG_RUNTIME_DIR=/run/user/1000 /usr/bin/systemctl --user is-active pi-web.service 2>&1 | Out-String).Trim()))
+          Say ('http from Windows: ' + (curl.exe -s -o NUL -w '%{http_code}' --max-time 8 http://localhost:30141/api/home))
+
+          Say '=== uninstall, purging the data'
+          $out = & $script -Uninstall -PurgeData -Yes -BundlePath $bundle *>&1
+          $code = $LASTEXITCODE
+          Say (($out | Select-Object -Last 8 | Out-String).Trim())
+          Say ('exit code: ' + $code)
+          Say ('distros: ' + ((wsl -l -q | Out-String).Trim() -replace "`r?`n", ', '))
+          Say ('backup: ' + ((Get-ChildItem $env:USERPROFILE -Filter 'PiAgent-backup-*.tar' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name + ' ' + [math]::Round($_.Length / 1MB) + ' MiB' }) -join '; '))
+          Say ('install folder still there: ' + (Test-Path "$env:LOCALAPPDATA\PiAgent"))
 
       - name: Collect logs
         if: always()
