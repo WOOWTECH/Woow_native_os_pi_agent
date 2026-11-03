@@ -22,7 +22,9 @@ What changes
     old host's exact name when replacing that host on purpose. `check` also prints
     the plugin's last refusal to start a host (exit 1 while one is pending).
 
-  - pi-omnigent-plugin 0.3.31 is patched, by fetch and again by wire, to ask
+  - pi-omnigent-plugin 0.3.31 is patched, by fetch, again by wire and again at
+    every service start (pi-web-start.sh, so a plugin tree re-extracted outside
+    the installer is covered at once), to ask
     GET /v1/hosts just before it starts a host. If any other host of the account
     has the same name -- online or offline -- nothing is started:
     HOST_NAME_COLLISION, naming the other host and printing the exact command to
