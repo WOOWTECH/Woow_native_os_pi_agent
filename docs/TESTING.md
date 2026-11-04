@@ -279,7 +279,7 @@ Measured on real Macs rather than in a sandbox (the commands are in OPERATIONS-G
   16 conversations bound; Claude and Pi verified afterwards; memory never below 33% free, the two
   Apple review demos running throughout.
 
-## Windows 11 (WSL2) — 2026-11-04: preview; run on a hosted Windows runner, against a real Omnigent and on one real Windows 10 PC, not yet on Windows 11
+## Windows 11 (WSL2) — 2026-11-05: preview; run on a hosted Windows runner, against a real Omnigent, on one real Windows 10 PC and in a Windows 11 virtual machine; not yet on a real Windows 11 PC
 
 See [`WSL2.md`](WSL2.md) for the feature and [`WSL2-PLAN.md`](WSL2-PLAN.md) for the design and the
 experiments (E1-E14) a real machine still has to settle.
@@ -333,6 +333,32 @@ same options and stdin from NUL. `v0.3.0-rc.2`: both exit 0, smoke 24/24 on the 
 runner where WSL is already in place, not a real PC, and `cmd.exe` running the file is not a double-click: no mouse, no Windows warning. The same
 release: marked pre-release, `releases/latest` still v0.2.4, and the script, bundle and double-click file byte for byte what a local build of that
 commit gives.
+
+**A Windows 11 virtual machine (2026-11-05), not a real PC.** Nothing else answers what a double-click, a first-time WSL enable with a
+reboot, a sign-out, or a default Windows Terminal do, and no Windows 11 PC was within reach. A throw-away Actions job on a branch outside
+the repository's history (never merged, deleted afterwards) boots Windows 11 Enterprise Evaluation (zh-TW, build 26300.9457 = 26H2) under QEMU/KVM
+on an `ubuntu-latest` runner (4 vCPU, 15 GB, nested virtualization on) and is driven from outside. The runner cannot be reached, so
+commands go in through one git branch, results and screenshots come out through another, and a small agent inside the guest fetches PowerShell
+scripts and posts their output. Windows is installed unattended (LabConfig bypass for TPM and Secure Boot). Edge, Explorer and Windows Terminal were
+used by mouse and keyboard, as a user would, and judged from screenshots.
+
+The CPU flags Windows 11 with Hyper-V accepts on that host are `host,pmu=off,amd-psfd=off,+invtsc,hv_relaxed,hv_vapic,hv_time,hv_spinlocks=0x1fff`.
+More `hv_*` flags reset-loop the first boot from disk; none at all gives blue screen 0x3B in `HalpAllocatePmcCounterSetEx` (an `rdpmc`; KVM has no PMU there);
+`amd-psfd` left on makes Hyper-V's write to MSR 0x48 fault; without `invtsc` the root partition makes about 24 000 MSR exits a second and sign-in hangs.
+
+Limits. Windows under KVM under Azure is two levels of virtualization, WSL2 inside it a third: everything is 10 to 30 times slower and the machine froze
+four times (three at sign-in, one in the middle of the install) until it was reset by force. With Hyper-V running, three of four sign-ins hung.
+Adding `-svm` to the CPU (no AMD-V visible, so Windows starts no hypervisor) fixed that: 4 sign-ins and 2 reboots in a row, sign-in in 25 seconds. The sign-out/in,
+reboot, standard-user and no-virtualization checks ran in that state. So the Linux half did not finish on this machine (an import took close to 6 minutes, each
+`wsl.exe` that starts the Linux 1-2): its results come from the other environments. S3 sleep is not offered to the guest (hibernate is), so sleep and wake cannot
+be tested in a VM at all.
+
+What it showed is listed in [`WSL2.md`](WSL2.md) under "已在 Windows 11 的雲端虛擬機上驗證": the real Edge and Explorer warnings; Smart App Control blocking a `.cmd`
+and the two ways round it; first-time WSL enable, UAC, reboot prompt, reboot, automatic resume (twice); the 60 seconds the built-in `wsl.exe` waits for a key on a console
+(rc.2 sat still for 2 minutes there); the message when virtualization is off (E14); a standard user registering the logon task (E4); and three bugs found and fixed:
+a Windows Terminal window opened at every sign-in (`-WindowStyle Hidden` cannot hide it; `conhost.exe --headless` leaves no window), `ERROR_TIMEOUT` on the first import
+after a reboot, and a Linux that WSL could not start being called "not created by this installer" with `wsl --unregister` as the advice. Each fix has Pester tests; the
+keep-alive change was also run through the same logon task, a sign-out and in, and a reboot.
 
 **Against a real Omnigent server** (`wsl2-live.yml`, run by hand on the same kind of runner; procedure and results in
 [`WSL2-LIVE-TEST.md`](WSL2-LIVE-TEST.md)). The fourth attempt passed; each of the first three taught something:

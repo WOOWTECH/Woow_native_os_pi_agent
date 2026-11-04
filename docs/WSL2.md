@@ -1,15 +1,14 @@
 # Pi Agent on Windows 11 (WSL2)
 
-> **狀態:預覽版(`v0.3.0-rc.2`)。** Linux 那一半在沙盒裡測過(`tests/wsl.sh`,204 項),也在 GitHub 的 Ubuntu 與 macOS 上跑過。
-> Windows 那一半(`windows/install-wsl.ps1`)已經在 **GitHub 的 Windows Server 2025 雲端機**上完整跑通:用
-> Windows PowerShell 5.1 裝完、自我檢查 24 項全過、Windows 這邊連得到 `http://localhost:30141`、保活有效、
-> 重跑與兩種解除安裝都試過。2026-11-03 還用**真的 Omnigent 伺服器**驗證過:那台雲端機登記成 Omnigent 主機,
-> Claude Code 與 Codex 在 Omnigent、Paseo 網頁版開對話並切換模型都成功,代理也能控制 Windows(PowerShell、Notepad、
-> 瀏覽器、檔案互通)。2026-11-04 也在**一台真的 Windows 10 22H2 電腦**上裝成功(一般權限的桌面環境,自我檢查 24 項全過),
-> 連上 Omnigent 之後,Pi(走 LiteLLM)、Claude Code、Codex 都開對話、切模型、操作了 Windows 的 PowerShell 與記事本(Codex 自己的沙盒會擋,由它的自動審核放行),
-> 重開機後一登入就自己回來。
-> **那台實機在測試途中藍屏當機一次。傾印檔指向它的 USB Wi-Fi 驅動,不是 WSL 的元件,但不能完全排除測試有間接影響(見「驗證到哪裡」)。**
-> **還沒在 Windows 11 實機上跑過**,也還沒測到「第一次啟用 WSL 並重新開機」、睡眠喚醒;Pi 用 ChatGPT 登入在那台實機上失敗(`invalid_grant`,原因未明),要改走 LiteLLM。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
+> **狀態:預覽版。** 已發佈的是 `v0.3.0-rc.2`;這份文件寫的是分支上的內容,比 rc.2 多了 2026-11-05 在 Windows 11 上試出來的幾個修正(登入時多出一個關不得的終端機視窗、電腦還沒裝 WSL 時畫面靜止 2 分鐘、WSL 啟動逾時、把自己的 Linux 誤判成別人的),那些修正還沒發佈。
+> 驗證到哪裡(每一項的細節在最後的「驗證到哪裡」):
+>
+> - **GitHub 的 Windows Server 2025 雲端機**:完整跑通(自我檢查 24 項全過、保活、重跑、兩種解除安裝),也從真網址裝過發佈版。
+> - **真的 Omnigent 伺服器**:Claude Code、Codex、Pi 與 Paseo 開對話、切換模型都成功,代理也能控制 Windows(PowerShell、記事本、瀏覽器、檔案)。
+> - **一台真的 Windows 10 22H2 電腦**(2026-11-04):裝成功、24 項全過,重開機後一登入就自己回來。那台測試途中藍屏一次,傾印檔指向它的 USB Wi-Fi 驅動,不是 WSL 的元件,但不能完全排除測試有間接影響。
+> - **Windows 11(2026-11-05),是雲端虛擬機,不是實體電腦**:雙擊安裝檔的兩次警告、「第一次啟用 WSL → 重新開機 → 自動繼續安裝」、登出再登入、重開機後自動啟動、虛擬化不能用時的說明都實際看過。但那台機器慢十幾倍,**沒有在 Windows 11 上把整個安裝走完**。
+>
+> **還沒驗證:** Windows 11 實體電腦、睡眠喚醒、ARM64 上的 WSL2 本身、Pi 用 ChatGPT 帳號回答。請先拿一台可以隨時重來的電腦試。
 
 一行 PowerShell 指令,替你的 Windows 11 建一個**專用的 Linux 小系統**(WSL2 裡的 Ubuntu 24.04,
 名叫 `PiAgent`),把 Linux 版的 Pi Agent 裝進去,登入 Windows 時自動啟動。Omnigent 看到的就是一台
@@ -43,7 +42,17 @@ $u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3
 這裡明確用 UTF-8 解碼。
 
 **不想貼指令的話,也可以雙擊:** 到發佈頁下載 `Install-Pi-Agent.cmd`,雙擊它。它做的事和上面那兩行一樣,跑完視窗會停著讓你看結果,按任意鍵才關。
-這個檔案沒有程式碼簽章,所以瀏覽器可能問你要不要保留,Windows 也會跳「Windows 已保護您的電腦」:按「其他資訊」→「仍要執行」。它是純文字,可以先用記事本打開看。
+這個檔案沒有程式碼簽章,所以會跳兩次警告。它是純文字,可以先用記事本打開看。以下是在 Windows 11 上實際看到的畫面:
+
+1. 下載時,Edge 問「Install-Pi-Agent.cmd 可能會危害您的裝置。是否仍要保留?」:按「保留」。
+2. 雙擊時,Windows 問「無法確認發行者,您確定要執行這個軟體?」:按「執行」。
+
+有些電腦跳的可能是「Windows 已保護您的電腦」(這個畫面還沒有實際看過):按「其他資訊」→「仍要執行」。
+
+**如果跳的是「智慧型應用程式控制已封鎖可能不安全的檔案」**,只有「確定」可以按,這個檔案就執行不了。新電腦可能開著這個功能(Smart App Control)。有兩個辦法,都試過可行:
+
+- 改用上面那兩行指令。
+- 在檔案上按右鍵 →「內容」→ 勾選「解除封鎖」→「確定」,再雙擊一次。
 
 現在是預覽版,所以網址寫明版本:GitHub 的 `releases/latest` 不會指到預覽版。發佈頁在 [v0.3.0-rc.2](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/tag/v0.3.0-rc.2)。
 
@@ -84,12 +93,17 @@ $u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3
 | 位置 | 內容 |
 |---|---|
 | `%LOCALAPPDATA%\PiAgent\` | `distro\`(Linux 的虛擬硬碟)、`cache\`(下載的檔案)、`bin\pi-agent.cmd`、`keepalive.ps1`、`resume.ps1`、`install.log` |
-| 工作排程器 `PiAgentWsl` | 登入時啟動 `keepalive.ps1`;建不起來就退回 `HKCU\...\Run` |
+| 工作排程器 `PiAgentWsl` | 登入時用 `conhost.exe --headless powershell.exe …` 啟動 `keepalive.ps1`(沒有視窗);建不起來就退回 `HKCU\...\Run` |
 | 使用者的 `Path` | 加入 `%LOCALAPPDATA%\PiAgent\bin`(新開的 PowerShell 才找得到 `pi-agent`) |
 | 開始功能表 | `Pi Agent`(開啟 `http://localhost:30141/`) |
 
 **為什麼要保活**:WSL 的官方文件說 systemd 服務**不會**讓 Linux 保持運作,沒人開終端機時,Linux 約 15 秒後就會被
 Windows 關掉。`keepalive.ps1` 在你登入期間讓一個 `sleep infinity` 一直掛著。你登出後 Linux 就會停。
+
+**為什麼用 `conhost.exe --headless` 啟動,而不是 `powershell -WindowStyle Hidden`**:Windows 11 的預設終端機是 Windows Terminal,
+`-WindowStyle Hidden` 藏不住它的視窗。實測(Windows 11 build 26300,從排程啟動):舊寫法在登入後多出一個標題是 `powershell.exe` 的終端機視窗,
+一直留著、工作列也有按鈕,而關掉它保活就停了,Linux 約 15 秒後跟著停。用 `conhost.exe --headless` 沒有任何視窗、也沒有 Windows Terminal 程序。
+安裝程式啟動保活之後會先確認它真的跑起來;如果這台電腦不吃這個寫法,就退回舊寫法(排程與開機項目也一起退回)並說明。
 
 ## 日常使用
 
@@ -204,7 +218,11 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 | `pi-omnigent verify` 回 `SERVER_UNREACHABLE` | 這台連不到伺服器。實機上是 Wi-Fi 不穩造成的,再跑一次就過 |
 | 重開機後連不上,Omnigent 顯示主機離線 | Linux 要等有人登入 Windows 才會啟動(2026-11-04 藍屏重開後就停在登入畫面)。登入後不到 30 秒回來,不用做別的。要不用人登入,得讓 Windows 自動登入:這會讓碰得到這台電腦的人直接進你的帳號,要不要開由你決定,而且要系統管理員權限,代理做不了 |
 | 藍屏 `DPC_WATCHDOG_VIOLATION` | 2026-11-04 在一台用 USB Wi-Fi 的電腦上碰到一次,傾印檔指向網卡驅動(`rtwlanu6.sys`),見「驗證到哪裡」。先更新網卡驅動,或改接網路線 |
-| 登入時閃一下黑框 | 正常。保活程式啟動時會有一個主控台視窗出現約 30–50 毫秒,然後隱藏 |
+| 登入後桌面上多一個終端機視窗,標題是 `powershell.exe` | 這是舊版(`v0.3.0-rc.1`、`rc.2`)在 Windows 11 上的行為:那個視窗就是保活,**關掉它 Linux 就會停**。重跑同樣的安裝就會換成沒有視窗的寫法,下次登入起生效 |
+| 登入時閃一下黑框 | Windows 11 上用現在的寫法看不到視窗(實測)。Windows 10 上舊寫法量到 30–50 毫秒;現在的寫法預期不會閃,但還沒在 Windows 10 實測 |
+| 訊息說 Linux「PiAgent」已經存在,但 WSL 現在啟動不了它 | 先看訊息裡的原因(例如虛擬化被關掉、電腦還在忙)。**不要刪這個 Linux**,裡面可能有你的資料。處理好之後重跑同樣的安裝 |
+| 訊息說 WSL 的 Linux 虛擬機沒有在時間內啟動(`ERROR_TIMEOUT`) | 電腦正忙,常見在剛重開機、剛登入的前幾分鐘。安裝程式會先自己等 1 分鐘再試一次;還是不行就等幾分鐘後重跑同樣的安裝,不用先移除 |
+| 跳出「歡迎使用 Windows 子系統 Linux 版」視窗 | 是 Microsoft 自己的 WSL 設定程式(顯示 WSL 的簡介),跟 Pi Agent 無關,關掉就好。Windows 11 測試機上 WSL 第一次啟動 Linux 之後看到過一次,觸發條件沒查清楚 |
 | Paseo 裡 Claude 顯示停用、`pi-paseo models claude` 失敗 | 全新安裝後 Paseo 的 Claude 提供者可能被標成停用(設定檔只在 daemon 啟動時寫一次)。`pi-paseo stop && pi-paseo start` 之後即恢復,實測 `acceptance` 的 Claude 與 Codex 都通過。還沒找出剛安裝完那次為什麼沒準備好 |
 
 ## 驗證到哪裡
@@ -280,21 +298,46 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   **但不能說和測試完全無關**:開機 28 天都沒事,偏偏在裝了 Linux、跑代理的這天當機;藍屏前半小時網路已經時好時壞,記憶體只剩約 0.3 GB。傾印只有當下一個瞬間,也不能證明那 20 秒做的都是同一件事。
   **在平常工作用的電腦上試之前,請先存好檔案**;用 USB Wi-Fi 的話先更新網卡驅動,或改接網路線。
 
+**已在 Windows 11 的雲端虛擬機上驗證**(2026-11-05;**不是實體電腦**:GitHub 的 Linux 雲端機用 QEMU/KVM 跑 Windows 11 企業評估版繁體中文,
+build 26300.9457(26H2),3 個 vCPU、10 GB 記憶體,沒有 TPM 與 Secure Boot;以一般使用者身分用 Edge、檔案總管、Windows Terminal 操作,用螢幕截圖確認。做法與限制在 [`TESTING.md`](TESTING.md)):
+
+- **雙擊安裝檔**(用 Edge 真的下載、用檔案總管真的雙擊):Edge 問「Install-Pi-Agent.cmd 可能會危害您的裝置。是否仍要保留?」,按「保留」;雙擊時跳「開啟檔案 - 安全性警告」
+  「無法確認發行者,您確定要執行這個軟體?」,按「執行」。**不是** SmartScreen 的「其他資訊 → 仍要執行」。檔案帶著網路來源標記(ZoneId=3),sha256 和發佈頁一致。
+  跑起來是 Windows Terminal,中文正常。
+- **Smart App Control**(新裝的 Windows 11 預設是「評估中」):開啟後 `.cmd` 被擋,只有「確定」可按。貼那兩行指令可以(試了 `-DryRun`,每一步都過,PowerShell 仍是完整語言模式);
+  在檔案上「內容」→「解除封鎖」再雙擊也可以,而且不再跳任何警告。
+- **第一次啟用 WSL → 重新開機 → 自動繼續**(E13,跑了兩次,兩次都成功):系統管理員授權視窗(UAC)就在安裝程式說的時候出現;下載 WSL 3.0.3;
+  判斷「需要重新開機」的檢查(兩個登錄鍵,任一個存在就算)在 WSL 裝完後成立,問「現在重新開機嗎? [y/N]」,答 y 就重開;
+  重開、登入之後,安裝程式自己在新視窗接著跑(開頭寫「重新開機後繼續安裝...」),不用再下指令。
+- **Windows 11 內建的 `wsl.exe` 在還沒裝 WSL 時會等按鍵**:在真的主控台上,它印出「按任意鍵安裝…」並等最多 60 秒。安裝程式有兩處呼叫它,各靜止 60 秒,畫面看起來當掉 2 分鐘(rc.2 在這種電腦上的樣子)。
+  修法是不讓它拿到主控台輸入(`$null | wsl.exe`);修好後 30 秒內就走到「步驟 1/6」。雲端機上看不到這件事,因為那邊沒有主控台。
+- **虛擬化不能用時**(E14,把虛擬機的 AMD-V 藏起來):`wsl --import` 不到 1 秒回 `-1` 與「WSL2 無法啟動,因為此機未啟用虛擬化」(錯誤碼 `HCS_E_HYPERV_NOT_INSTALLED`);
+  安裝程式顯示完整的中文說明(檢查「虛擬機器平台」、BIOS 的虛擬化、虛擬機要支援巢狀虛擬化),沒有留下 Linux 或資料夾,只剩下載好的映像快取。
+- **一般使用者能自己建立登入排程**(E4):用沒有系統管理員身分的帳號,`Register-ScheduledTask` 的登入觸發成功,不必退回 `Run` 登錄項目。(只試了建立,沒有真的用那個帳號登入。)
+- **登入時自動啟動**:登出再登入、重開機再登入,兩次都是排程在登入同一秒觸發,保活 5–10 秒內起來,只有一個,沒有多出視窗。
+  **舊寫法在這裡出了問題**(見上面「為什麼用 `conhost.exe --headless`」):登入後多出一個標題是 `powershell.exe` 的 Windows Terminal 視窗,一直留著。
+  同一台、都從排程啟動,比較四種寫法:`powershell -WindowStyle Hidden` 視窗留著;`conhost --headless powershell` 沒有視窗;`conhost powershell -WindowStyle Hidden` 閃一下;
+  `wscript` 加 `.vbs` 沒有視窗(但 VBScript 微軟正在淘汰)。現在用第二種;從使用者自己開的 Windows Terminal 分頁裡直接啟動也沒有視窗。
+- **試出並修掉的三件事**:(1) 上面那個終端機視窗;(2) 重開機後第一次匯入 Linux,`wsl --import` 因 `ERROR_TIMEOUT` 失敗(電腦正忙)——現在先自己等 1 分鐘再試一次,再失敗就說清楚怎麼辦;
+  (3) Linux「PiAgent」啟動不了時,安裝程式把它當成「不是這個安裝程式建立的」,還建議 `wsl --unregister`,那會把使用者自己的 Linux 和資料刪掉——現在只有確定標記檔不存在才這樣說,啟動不了時會說原因、叫使用者不要刪。
+- **這台機器的限制**:兩層虛擬化(GitHub 的主機 → QEMU → Windows),WSL2 在裡面是第三層,慢十幾到三十倍,而且常常卡住:凍住四次(三次在登入畫面,一次在安裝進行中),都要強制重置才回來。
+  匯入 Linux 要近 6 分鐘、啟動 Linux 的 `wsl.exe` 呼叫常要 1~2 分鐘,所以**沒有把安裝走完**,也沒有看到 Linux 在 Windows 11 上被保活叫回來。把虛擬機的 AMD-V 藏起來(Windows 就不啟動 Hyper-V)之後,
+  登入只要 25 秒,連續 4 次登入、2 次重開機都沒再凍住,上面「登入時自動啟動」「虛擬化不能用時」「一般使用者」三項就是在這個狀態下測的。
+
 **還沒驗證**:
 
-- Windows 11 實機。上面那台是 Windows 10。
-- 在真的電腦上從發佈網址裝:那台實機用的是開發版安裝包,這條指令從真網址只在雲端機上跑過。
-- 乾淨機器的「自動提權 → 裝 WSL → 重開機 → 自動續跑」(E13):那台的 WSL 功能本來就開著,不用重開機,也沒跳過 UAC。安裝程式內建的
-  `--web-download` 退路也沒實跑,因為 WSL 已先手動升好。被擋的情況(虛擬化關閉、WSL 被政策停用、磁碟或記憶體不足)的訊息(E14)也還沒看過。
-- 登入時自動啟動的其餘部分:重開機後第一次登入過了(見上),登出再登入還沒試(E4)。**已知風險**:如果預設終端機是
-  Windows Terminal,`-WindowStyle Hidden` 可能不生效,登入後會多一個視窗在跑保活;關掉那個視窗,Linux 就會停。另外,
-  公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活與自動續跑都不會執行。
-- 睡眠喚醒後 host 自動重連(E8)。
+- Windows 11 **實體電腦**。Windows 11 只在上面那台雲端虛擬機看過,Linux 那一半(裝 pi-web、代理、自我檢查)在 Windows 11 上沒有走完。
+- **Linux 被保活叫回來**:Windows 10 實機驗過(重開機後登入,不到 30 秒回來),Windows Server 2025 驗過保活有效;`wsl --shutdown` 之後保活會不會把 Linux 叫回來(疑難排解那一列)只有讀程式推論,沒有實跑。
+- **新的保活寫法在 Windows 10 上**:`conhost.exe --headless` 在 Windows 11 build 26300 上實測過;Windows 10 實機驗證時用的是舊寫法,沒有用新寫法測。
+- 在真的電腦上從發佈網址裝:那台 Windows 10 實機用的是開發版安裝包,這條指令從真網址只在雲端機(Windows Server 2025)與 Windows 11 虛擬機(雙擊檔)上跑過。
+- 輸出文字錯位(「階梯狀」)的修法:rc.2 在 Windows 11 的 Windows Terminal 上看過那個問題,修法只有單元測試;虛擬機沒跑到串流輸出那一步。
+- 安裝程式內建的 `--web-download` 退路沒實跑過(WSL 3.0.3 的 `wsl --update` 在這幾台都成功)。被擋的其他情況(WSL 被政策停用、磁碟或記憶體不足)的訊息也還沒看過。
+- 公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活與自動續跑都不會執行。
+- 睡眠喚醒後 host 自動重連(E8):虛擬機沒有 S3 睡眠(只有休眠),這項只能在實體電腦上測。
 - 真機上的 Paseo 網頁版(雲端機上驗過)。
 - 真機上用 Omnigent 網頁的選單切換模型:實機上網頁只開過第一個對話,切換是走同一個 API(`PATCH /v1/sessions/{id}`);選單本身是在雲端機上點過的。
-- Windows ARM64(E12)。
-- 更新 Wi-Fi 驅動或改接網路線之後,那台還會不會藍屏。
-- 在真的電腦上雙擊 `Install-Pi-Agent.cmd`:同一個檔案只在雲端機上用命令列跑過,Windows 跳的警告和瀏覽器的提示都是依一般行為寫的,沒有實際看過。
+- Windows ARM64 上的 WSL2(E12):雲端的 ARM64 機器沒有虛擬化,`wsl --import` 回 `-1`,安裝程式正確抓到並顯示說明。Linux 那一半(真的 arm64 映像、安裝、24 項自我檢查)在 arm64 容器裡跑過,全過。
+- 更新 Wi-Fi 驅動或改接網路線之後,那台 Windows 10 還會不會藍屏。
 - **Pi 用 ChatGPT 帳號回答一句話**:雲端機上回覆被用量上限擋下,實機上登入就失敗。走 LiteLLM 的已經過了。
 - Paseo 在剛裝完的那次 `models claude` 失敗的原因(重啟 daemon 可解,見疑難排解)。
 

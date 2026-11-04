@@ -426,7 +426,8 @@ function Get-PaSmokeResult {
 function ConvertTo-PaFriendlyWslError {
     param([string]$Text)
     if ([string]::IsNullOrEmpty($Text)) { return $null }
-    # UNVERIFIED(E14): the exact error text of a machine without usable virtualization.
+    # E14, seen on Windows 11 build 26300 (zh-TW) with virtualization off: exit -1 in under a second and a text that ends in
+    # "Wsl/Service/.../HCS/HCS_E_HYPERV_NOT_INSTALLED". The wording is localized, the error code is not, so the code is what is matched.
     if ($Text -match 'HCS_E_HYPERV_NOT_INSTALLED|0x80370102|Virtual Machine Platform|not supported with your current machine configuration') {
         return '這台電腦目前不能啟動 WSL2。請依序檢查:(1) Windows 的「虛擬機器平台」沒開:用系統管理員身分開 PowerShell,執行 wsl --install --no-distribution,重新開機後再重跑安裝;(2) BIOS/UEFI 沒開虛擬化(Intel VT-x 或 AMD-V);(3) 這是虛擬機:虛擬機軟體要支援巢狀虛擬化(Parallels 在 Apple 晶片上不支援)。(virtualization is off or not available)'
     }
@@ -725,7 +726,7 @@ function Test-PortInUse {
     return [pscustomobject]@{ InUse = $false; Process = '' }
 }
 
-# UNVERIFIED(E13): that these two keys are what Windows sets after "wsl --install" needs a reboot.
+# E13, seen on Windows 11 build 26300: after "wsl --install" one of these two keys exists, and the reboot prompt and the resume after it work.
 function Test-RebootPending {
     $keys = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending',
@@ -752,7 +753,7 @@ function Restart-PaComputer {
 
 # Runs one PowerShell command line elevated and returns its exit code. Only used for "wsl --install":
 # the user may elevate with another administrator account, so nothing else may run in that process.
-# UNVERIFIED(E13): the quoting of -Command through Start-Process in Windows PowerShell 5.1.
+# E13: the quoting of -Command through Start-Process in Windows PowerShell 5.1 works (the elevated install ran on Windows 11 build 26300).
 function Start-PaElevated {
     param([string]$Command)
     $argString = '-NoProfile -ExecutionPolicy Bypass -Command "' + $Command + '"'
@@ -788,7 +789,7 @@ function Get-PaKeepaliveCommand {
 }
 
 # Returns 'task' or 'runkey'.
-# UNVERIFIED(E4): that a standard user may register a logon task for itself; the Run key is the fallback.
+# E4, seen on Windows 11 build 26300: a standard user (not in Administrators) can register a logon task for itself; the Run key is the fallback.
 function Register-PaAutostart {
     param([string]$ScriptPath, [string]$TaskName, [bool]$Plain = $false)
     $cmd = Get-PaKeepaliveCommand -ScriptPath $ScriptPath -Plain $Plain

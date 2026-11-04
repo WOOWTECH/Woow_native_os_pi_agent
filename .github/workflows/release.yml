@@ -117,7 +117,8 @@ jobs:
                 & ([ScriptBlock]::Create(([Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing $u).RawContentStream.ToArray())).TrimStart([char]0xFEFF)))
 
             Or download `Install-Pi-Agent.cmd` from this page and double-click it. It does the same, and it is
-            plain text you can read first. It is not code-signed, so Windows warns about it: More info, then Run anyway.
+            plain text you can read first. It is not code-signed, so the browser and Windows warn about it: Keep, then Run.
+            If Smart App Control blocks it, use the command above, or tick Unblock in the file's Properties.
 
             Options, what it changes and how to remove it:
             https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/docs/WSL2.md

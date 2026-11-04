@@ -377,6 +377,20 @@ jobs:
           Probe 'now, keep-alive running'
           Start-Sleep -Seconds 90
           Probe 'after 90 s, keep-alive running'
+          # What the guide promises: after wsl --shutdown the keep-alive brings the Linux back by itself.
+          Say '=== wsl --shutdown, keep-alive running'
+          wsl --shutdown 2>&1 | Out-Null
+          $t0 = Get-Date
+          $down = $false
+          $back = $null
+          while (((Get-Date) - $t0).TotalSeconds -lt 150) {
+            $http = (curl.exe -s -o NUL -w '%{http_code}' --max-time 5 http://localhost:30141/api/home 2>&1 | Out-String).Trim()
+            if ($http -ne '200') { $down = $true }
+            if ($down -and $http -eq '200') { $back = [int]((Get-Date) - $t0).TotalSeconds; break }
+            Start-Sleep -Seconds 2
+          }
+          if ($null -ne $back) { Say ('pi-web went down with the shutdown and answered again after ' + $back + ' s') } else { Say ('pi-web did NOT come back within 150 s (seen down: ' + $down + ')') }
+          Probe 'after wsl --shutdown, keep-alive running'
           Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'" | Where-Object { $_.CommandLine -like '*keepalive.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
           Get-Process -Name wsl -ErrorAction SilentlyContinue | Stop-Process -Force
           Start-Sleep -Seconds 90
