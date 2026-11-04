@@ -32,7 +32,8 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # a system Node this works by accident; on a clean macOS there is none, and the
 # install fails with `sh: node: command not found`.
 PA_NODE() { PATH="$PA_NODE_DIR/bin:$PATH" "$PA_NODE_DIR/bin/node" "$@"; }
-PA_NPM()  { PATH="$PA_NODE_DIR/bin:$PATH" "$PA_NODE_DIR/bin/node" "$PA_NODE_DIR/bin/npm" "$@"; }
+# Five tries instead of npm's two: one lost connection among a thousand tarballs ended an install on a slow network.
+PA_NPM()  { PATH="$PA_NODE_DIR/bin:$PATH" npm_config_fetch_retries="${npm_config_fetch_retries:-5}" "$PA_NODE_DIR/bin/node" "$PA_NODE_DIR/bin/npm" "$@"; }
 
 # Total RAM in MiB (Linux /proc/meminfo, macOS sysctl).
 pa_ram_mib() {

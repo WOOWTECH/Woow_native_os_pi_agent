@@ -725,6 +725,28 @@ Describe 'WSL itself' {
     }
 }
 
+Describe 'what wsl.exe gets on stdin' {
+    # On a console, the wsl.exe of a Windows 11 without WSL waits 60 seconds for a key, and the installer shows nothing meanwhile.
+    BeforeEach {
+        $global:PaTestWslPiped = @()
+        function global:wsl.exe { $global:PaTestWslPiped += $MyInvocation.ExpectingInput; $global:LASTEXITCODE = 0; 'ok' }
+        Mock Write-PaLogLine { }
+        Mock Write-Host { }
+    }
+    AfterEach {
+        Remove-Item Function:\wsl.exe -ErrorAction SilentlyContinue
+        Remove-Variable PaTestWslPiped -Scope Global -ErrorAction SilentlyContinue
+    }
+    It 'is not the console when the output is captured' {
+        (Invoke-Wsl -Arguments @('--version')).ExitCode | Should -Be 0
+        $global:PaTestWslPiped | Should -Be @($true)
+    }
+    It 'is not the console when the output is streamed' {
+        Invoke-WslStream -Arguments @('--version') | Should -Be 0
+        $global:PaTestWslPiped | Should -Be @($true)
+    }
+}
+
 Describe 'the console it ran in' {
     # Found by the e2e job: `wsl -l -q` read differently before and after a dry run, because
     # WSL_UTF8 stayed set in the process the documented command shares with the user.

@@ -878,7 +878,10 @@ function Invoke-Wsl {
         } catch {
             $null = $_
         }
-        $raw = & wsl.exe @Arguments 2>&1
+        # stdin must not be the console. When WSL is not installed yet, the wsl.exe built into Windows 11 asks
+        # "press any key to install" and waits 60 seconds, unseen because the output is captured here, and a key
+        # pressed meanwhile starts an install of its own. Nothing run through wsl.exe here reads input.
+        $raw = $null | & wsl.exe @Arguments 2>&1
         $code = $LASTEXITCODE
     } catch {
         $raw = @($_.Exception.Message)
@@ -910,10 +913,11 @@ function Invoke-WslStream {
         } catch {
             $null = $_
         }
-        & wsl.exe @Arguments 2>&1 | ForEach-Object {
+        $null | & wsl.exe @Arguments 2>&1 | ForEach-Object {   # stdin: see Invoke-Wsl
             $line = ConvertTo-PaCleanText -Lines @($_)
             [void]$script:PaLastStream.Add($line)
-            Write-Host ('    ' + $line)
+            # "`r": while wsl.exe runs, a line feed on this console keeps its column, and the text walks across the window.
+            Write-Host ("`r    " + $line)
             Write-PaLogLine -Text ('  | ' + $line)
         }
         $code = $LASTEXITCODE
@@ -925,6 +929,7 @@ function Invoke-WslStream {
             try { [Console]::OutputEncoding = $oldEnc } catch { $null = $_ }
         }
     }
+    Write-Host -NoNewline "`r"
     Write-PaLogLine -Text ('  exit=' + $code)
     return $code
 }
@@ -1453,7 +1458,7 @@ function Invoke-PaStepInstall {
     $args4 = Get-PaUserExecArgs -Distro $name -User $user -Uid $Ctx.Uid -Port $Opts.Port -Artifact $artifact -Command @('/bin/bash', './install.sh')
     $code = Invoke-WslStream -Arguments $args4
     if ($code -ne 0) {
-        Write-PaMsg 'Error' ('Pi Agent 安裝失敗(代碼 {0})。完整紀錄在 {1}。(install.sh failed)' -f $code, $script:PaLogFile)
+        Write-PaMsg 'Error' ('Pi Agent 安裝失敗(代碼 {0})。如果上面是網路錯誤,重跑一次同樣的安裝就好,不用先移除。完整紀錄在 {1}。(install.sh failed)' -f $code, $script:PaLogFile)
         return 50
     }
     Write-PaMsg 'Ok' 'Pi Agent 安裝完成。'
