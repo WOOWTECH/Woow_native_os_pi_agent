@@ -67,6 +67,26 @@ eq "wire: completes in a bare install" "0" "$rc"
 [ -x "$S/pa/bin/pi-agent" ] && ok "wire: installs pi-agent" || no "wire: installs pi-agent" "$out"
 [ -x "$S/pa/bin/pi-agent-win" ] && ok "wire: installs pi-agent-win next to it" || no "wire: installs pi-agent-win next to it"
 
+# The agents find out how to reach Windows from a shared skill: only while interop is on,
+# and it has to go away when interop is turned off by a later install.
+install_world inst-wire-skill
+interop_env
+run isbx "$INSTALL" wire
+SKILL="$S/pa/data/skills/windows-from-wsl/SKILL.md"
+[ -f "$SKILL" ] && ok "wire: with interop on, the agents get the Windows skill" || no "wire: with interop on, the agents get the Windows skill" "$out"
+has "wire: the skill has the name agents look it up by" "name: windows-from-wsl" "$(cat "$SKILL" 2>/dev/null)"
+has "wire: the skill says what to do when Codex's sandbox is in the way" "outside the sandbox" "$(cat "$SKILL" 2>/dev/null)"
+rm -f "$S/pa/windows-interop.env"
+run isbx "$INSTALL" wire
+[ ! -e "$S/pa/data/skills/windows-from-wsl" ] && ok "wire: with interop off, the skill is gone" || no "wire: with interop off, the skill is gone"
+mkdir -p "$S/pa/data/skills/my-own"; : > "$S/pa/data/skills/my-own/SKILL.md"
+run isbx "$INSTALL" wire
+[ -f "$S/pa/data/skills/my-own/SKILL.md" ] && ok "wire: leaves the user's own skills alone" || no "wire: leaves the user's own skills alone"
+
+install_world inst-wire-skill-plain plain
+run isbx "$INSTALL" wire
+[ ! -e "$S/pa/data/skills/windows-from-wsl" ] && ok "wire: plain Linux gets no Windows skill" || no "wire: plain Linux gets no Windows skill"
+
 install_world inst-wire-port
 run isbx PI_WEB_PORT=30142 "$INSTALL" wire
 eq "wire: records the port it installed on" "30142" "$(cat "$S/pa/pi-web-port" 2>/dev/null)"

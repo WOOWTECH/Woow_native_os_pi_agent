@@ -430,6 +430,14 @@ stage_wire() {
   done
   # The port the service is written for, for everything that later runs without PI_WEB_PORT in its environment.
   printf '%s\n' "$PIN_PI_WEB_PORT" > "$PI_AGENT_HOME/pi-web-port"
+  # WSL with Windows interop on: a shared skill tells Pi, Claude Code and Codex how to reach
+  # Windows. It only informs them; what they may do is unchanged.
+  if [ -r "$PI_AGENT_HOME/windows-interop.env" ]; then
+    mkdir -p "$PA_DATA_DIR/skills/windows-from-wsl"
+    install -m 0644 "$HERE/rootfs/skills/windows-from-wsl/SKILL.md" "$PA_DATA_DIR/skills/windows-from-wsl/SKILL.md"
+  else
+    rm -rf "$PA_DATA_DIR/skills/windows-from-wsl"
+  fi
   # Host name: the plugin patch (also applied by `fetch`; a no-op when already
   # there, which is what makes this cover an install fetched before it existed)
   # and a unique default name when the install has none. An existing name is

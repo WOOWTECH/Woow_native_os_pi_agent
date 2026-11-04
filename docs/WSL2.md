@@ -124,6 +124,13 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   [#8056](https://github.com/microsoft/WSL/issues/8056)、[#8846](https://github.com/microsoft/WSL/issues/8846)、
   [#10812](https://github.com/microsoft/WSL/issues/10812));`pi-agent-win` 會自己去 `/run/WSL` 找一條活著的通道。
   找不到時它會明說(結束碼 3),並建議跑 `pi-agent doctor`。
+- **Codex 的沙盒會擋住 Windows。** Codex 把每個指令放進自己的沙盒,沙盒不讓程式開互通要用的連線
+  (`UtilBindVsockAnyPort: socket failed 1`)。Claude Code 沒有這層,直接就能用。安裝時會放一份共用技能
+  `windows-from-wsl`(只有互通開著才放)告訴代理怎麼連 Windows,所以 Codex 被擋之後會自己申請到沙盒外執行,
+  **你按一次同意跑一條**。真機上實測過(`--sandbox workspace-write --ask-for-approval on-request`,也是 Omnigent
+  的預設)。在 `codex exec` 這種不能詢問的模式裡,它只會回報失敗。不想每條都按的話,核准畫面的「don't ask again」
+  或 Omnigent 開對話時選「Full access」都是 Codex/Omnigent 自己的選項,要不要開由你決定:PowerShell 什麼都做得到,
+  包括 `wsl.exe -u root`,所以放行之後,沙盒對 Windows 這邊等於沒有保護。
 - 想關掉:重新安裝並加上 `-NoWindowsInterop`(`/etc/wsl.conf` 會寫成 `[interop] enabled=false`,
   Windows 程式完全叫不起來)。
 - **別以為「VM 裡沒給 sudo」就擋得住代理**:互通開著時,代理也可以呼叫 `wsl.exe -u root`。互通與權限要一起看。
