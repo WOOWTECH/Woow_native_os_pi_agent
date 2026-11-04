@@ -63,6 +63,8 @@ BeforeEach {
         DistroExists     = $false
         HasMarker        = $true
         StartFail        = $false
+        ImportFail       = $false
+        ImportTimeouts   = 0
         SystemdState     = 'running'
         Uid              = 1001
         WslConf          = 'conf-v1'
@@ -168,6 +170,13 @@ BeforeEach {
             return [pscustomobject]@{ ExitCode = 1; Output = 'Wsl/Service/CreateInstance/CreateVm/HCS/HCS_E_HYPERV_NOT_INSTALLED' }
         }
         if ($line -match '^--export ') { return [pscustomobject]@{ ExitCode = $script:Scn.ExportExit; Output = '' } }
+        if ($line -match '^--import ' -and $script:Scn.ImportFail) {
+            return [pscustomobject]@{ ExitCode = 1; Output = 'the file is not a valid image' }
+        }
+        if ($line -match '^--import ' -and $script:Scn.ImportTimeouts -gt 0) {
+            $script:Scn.ImportTimeouts--
+            return [pscustomobject]@{ ExitCode = -1; Output = 'Wsl/Service/RegisterDistro/CreateVm/ERROR_TIMEOUT' }
+        }
         return [pscustomobject]@{ ExitCode = 0; Output = '' }
     }
 }
@@ -590,6 +599,27 @@ Describe 'failures on the way' {
         Invoke-PaMain -Options (New-TestOpts -Extra @{ RootfsPath = 'C:\dl\ubuntu-amd64.wsl' }) | Should -Be 0
         (Get-CallIndex -Pattern '^--import PiAgent C:\\Test\\PiAgent\\distro C:\\dl\\ubuntu-amd64\.wsl --version 2$') | Should -BeGreaterThan -1
         Should -Invoke Save-PaFile -Times 0 -Exactly
+    }
+
+    It 'imports again when WSL times out starting its virtual machine' {
+        $script:Scn.ImportTimeouts = 1
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+        @($script:Calls | Where-Object { $_ -match '^--import ' }).Count | Should -Be 2
+        Get-AllMessages | Should -Match 'trying again'
+        Should -Invoke Start-PaSleep -ParameterFilter { $Seconds -eq 60 } -Times 1 -Exactly
+    }
+
+    It 'says what to do when WSL times out twice' {
+        $script:Scn.ImportTimeouts = 2
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 40
+        @($script:Calls | Where-Object { $_ -match '^--import ' }).Count | Should -Be 2
+        Get-AllMessages | Should -Match 'timed out starting'
+    }
+
+    It 'does not try again after any other import failure' {
+        $script:Scn.ImportFail = $true
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 40
+        @($script:Calls | Where-Object { $_ -match '^--import ' }).Count | Should -Be 1
     }
 
     It 'explains a distro that cannot start and removes the half-made one' {

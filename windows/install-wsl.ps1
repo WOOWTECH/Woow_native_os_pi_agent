@@ -433,6 +433,9 @@ function ConvertTo-PaFriendlyWslError {
     if ($Text -match 'optional component is not enabled|WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED|0x8007019e') {
         return 'Windows 的 WSL 功能還沒啟用。請重新開機後再重跑安裝。(WSL optional component is not enabled)'
     }
+    if ($Text -match 'ERROR_TIMEOUT') {
+        return 'WSL 的 Linux 虛擬機沒有在時間內啟動,通常是電腦正忙(例如剛開機)。關掉用不到的程式,等幾分鐘,再重跑一次同樣的安裝就好,不用先移除。(WSL timed out starting its virtual machine)'
+    }
     return $null
 }
 
@@ -481,10 +484,10 @@ function New-PaResumeStub {
     [void]$L.Add('    $env:PI_AGENT_WSL_NOEXIT = ''1''')
     [void]$L.Add('    & $sb @splat')
     [void]$L.Add('} catch {')
-    [void]$L.Add('    Write-Host (''Pi Agent install could not continue: '' + $_.Exception.Message) -ForegroundColor Red')
+    [void]$L.Add('    Write-Host (''沒辦法繼續安裝 Pi Agent:'' + $_.Exception.Message + '' (Pi Agent install could not continue)'') -ForegroundColor Red')
     [void]$L.Add('}')
     [void]$L.Add('Write-Host ''''')
-    [void]$L.Add('[void](Read-Host ''Press Enter to close this window'')')
+    [void]$L.Add('[void](Read-Host ''按 Enter 關閉這個視窗(Press Enter to close this window)'')')
     return (($L.ToArray()) -join "`r`n")
 }
 
@@ -1336,7 +1339,16 @@ function Invoke-PaStepDistro {
             Write-PaMsg 'Info' '匯入 Linux 映像(約 1 分鐘)...'
             New-PaDirectory -Path $Paths.DistroDir
             # UNVERIFIED(E1): that wsl --import accepts the .wsl file and starts without any prompt.
-            $r = Invoke-Wsl -Arguments @('--import', $name, $Paths.DistroDir, $rootfs, '--version', '2')
+            $importArgs = @('--import', $name, $Paths.DistroDir, $rootfs, '--version', '2')
+            $r = Invoke-Wsl -Arguments $importArgs
+            if ($r.ExitCode -ne 0 -and ([string]$r.Output) -match 'ERROR_TIMEOUT') {
+                # WSL gives its virtual machine about a minute to start. A computer that has just been signed in to
+                # can miss that, and after the reboot that is when this runs. It removes the folder when it gives up.
+                Write-PaMsg 'Warn' 'WSL 的 Linux 虛擬機沒有及時啟動,電腦可能還在忙。等 1 分鐘再試一次。(WSL timed out, trying again)'
+                Start-PaSleep -Seconds 60
+                New-PaDirectory -Path $Paths.DistroDir
+                $r = Invoke-Wsl -Arguments $importArgs
+            }
             if ($r.ExitCode -ne 0) {
                 $friendly = ConvertTo-PaFriendlyWslError -Text ([string]$r.Output)
                 if ($friendly) { Write-PaMsg 'Error' $friendly } else { Write-PaMsg 'Error' ('匯入 Linux 映像失敗:{0}(wsl --import failed)' -f $r.Output) }
