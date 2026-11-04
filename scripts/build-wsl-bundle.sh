@@ -20,6 +20,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PS_SRC="windows/install-wsl.ps1"
+GUIDE="docs/WSL2.md"
 PREFIX="woow-pi-agent-installer"
 SLUG="${PA_REPO_SLUG:-WOOWTECH/Woow_native_os_pi_agent}"
 
@@ -59,6 +60,18 @@ sha="$(sha256 "$work/$name")"
 printf '%s  %s\n' "$sha" "$name" > "$work/$name.sha256"
 
 if [ "$ver" != dev ]; then
+  # The guide's command is what people paste. `releases/latest` never resolves to a pre-release, so a
+  # preview has to name itself; a release has to go back to latest, or it sends everybody to the old preview.
+  case "$ver" in
+    *-*) want="/releases/download/${tag:-v$ver}/install-wsl.ps1" ;;
+    *)   want="/releases/latest/download/install-wsl.ps1" ;;
+  esac
+  cmd_url="$(git show "HEAD:$GUIDE" 2>/dev/null | sed -n "s/^\\\$u = '\(.*\)'.*/\1/p" | head -1 || true)"
+  case "$cmd_url" in
+    *"$want") ;;
+    *) die "the install command in $GUIDE points at '${cmd_url:-nothing}', not ...$want" ;;
+  esac
+
   # The script as committed -- what the bundle carries -- not the working copy.
   git show "HEAD:$PS_SRC" > "$work/ps.in" 2>/dev/null || die "$PS_SRC is not committed"
   pv="$(sed -n 's/^PIN_PI_WEB_VERSION=\([^ #]*\).*/\1/p' lib/pins.sh | head -1)"

@@ -1,6 +1,11 @@
 # shellcheck shell=bash disable=SC2154  # rc and out are set by run() in lib.sh
 # Seam 6: scripts/build-wsl-bundle.sh -- the release bundle and the stamped installer.
 
+guide_points_at() {
+  printf '# guide\n\n```powershell\n$u = '"'"'%s'"'"'\n& ([ScriptBlock]::Create($u))\n```\n' "$1" > "$R/docs/WSL2.md"
+}
+commit_world() { ( cd "$R" && export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null && git add -A && git -c user.name=t -c user.email=t@t commit -q -m change ); }
+
 # bundle_world NAME -- a tiny git repository shaped like this one, so the script runs
 # against something whose contents the test controls.
 bundle_world() {
@@ -11,6 +16,8 @@ bundle_world() {
   printf '0.9.9\n' > "$R/VERSION"
   printf 'PIN_PI_WEB_VERSION=0.10.0\n' > "$R/lib/pins.sh"
   printf '#!/bin/bash\necho install\n' > "$R/install.sh"
+  mkdir -p "$R/docs"
+  guide_points_at "https://github.com/x/y/releases/latest/download/install-wsl.ps1"
   cat > "$R/windows/install-wsl.ps1" <<'PS'
 # fixture
 $script:Stamp = @{
@@ -85,6 +92,49 @@ printf '$x = "@@NEW_THING@@"\n' >> "$R/windows/install-wsl.ps1"
 run bb "$OUT" 0.9.9
 [ "$rc" != 0 ] && ok "bundle: refuses a script with a placeholder it does not know" || no "bundle: refuses a script with a placeholder it does not know"
 has "bundle: and names it" "NEW_THING" "$out"
+
+# The guide's command is what people paste. `releases/latest` never resolves to a pre-release, so a
+# preview has to name itself; and once a preview has been out, a release can inherit its fixed URL and
+# send everybody to the old preview without anything failing.
+bundle_world bundle-guide-names-preview
+guide_points_at "https://github.com/x/y/releases/download/v0.9.8-rc.1/install-wsl.ps1"
+commit_world
+run bb "$OUT" 0.9.9
+[ "$rc" != 0 ] && ok "bundle: refuses a release whose guide still names a preview" || no "bundle: refuses a release whose guide still names a preview"
+has "bundle: and says what the guide points at" "v0.9.8-rc.1" "$out"
+[ ! -e "$OUT/install-wsl.ps1" ] && ok "bundle: and that publishes nothing either" || no "bundle: and that publishes nothing either"
+
+bundle_world bundle-preview-on-latest
+printf '0.9.9-rc.1\n' > "$R/VERSION"
+commit_world
+run bb "$OUT" 0.9.9-rc.1
+[ "$rc" != 0 ] && ok "bundle: refuses a preview whose guide points at latest, which skips it" || no "bundle: refuses a preview whose guide points at latest, which skips it"
+
+bundle_world bundle-preview
+printf '0.9.9-rc.1\n' > "$R/VERSION"
+guide_points_at "https://github.com/x/y/releases/download/v0.9.9-rc.1/install-wsl.ps1"
+commit_world
+run bb "$OUT" 0.9.9-rc.1 --tag v0.9.9-rc.1
+eq "bundle: a preview whose guide names it builds" "0" "$rc"
+has "bundle: and its script stays on that preview after a reboot" "/releases/download/v0.9.9-rc.1/install-wsl.ps1" "$(cat "$OUT/install-wsl.ps1" 2>/dev/null)"
+
+# What counts is the guide that goes out with the release, not an edit nobody committed.
+bundle_world bundle-guide-uncommitted
+guide_points_at "https://github.com/x/y/releases/download/v0.9.8-rc.1/install-wsl.ps1"
+run bb "$OUT" 0.9.9
+eq "bundle: reads the committed guide, not the working copy" "0" "$rc"
+
+bundle_world bundle-no-command
+printf '# guide without a command\n' > "$R/docs/WSL2.md"
+commit_world
+run bb "$OUT" 0.9.9
+[ "$rc" != 0 ] && ok "bundle: refuses a release whose guide has no install command" || no "bundle: refuses a release whose guide has no install command"
+
+bundle_world bundle-dev-any-guide
+printf '# guide without a command\n' > "$R/docs/WSL2.md"
+commit_world
+run bb "$OUT" dev
+eq "bundle: a dev build does not care what the guide says" "0" "$rc"
 
 # A Windows git is usually set to core.autocrlf=true, and `git archive` honours it: the first run on a
 # hosted Windows runner produced a bundle whose scripts had CRLF, and bash inside the VM died at

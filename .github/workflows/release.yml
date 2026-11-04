@@ -92,12 +92,16 @@ jobs:
       - name: Attach to the release
         uses: softprops/action-gh-release@v2
         with:
+          # v1.2.3-rc.1 is a pre-release, which GitHub never makes the latest release: what
+          # `releases/latest` gives everybody else stays as it is.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             dist/*.tar.gz
             dist/*.sha256
             dist/install-wsl.ps1
           body: |
             Built by CI from ${{ github.ref_name }}.
+            ${{ contains(github.ref_name, '-') && '**Preview: not the latest release.** Read the status at the top of the guide linked below first.' || '' }}
 
             `piweb-*-<os>-<arch>.tar.gz` is a prebuilt pi-web tree. Point the
             installer at it to skip the ~15 minute source build:
@@ -106,7 +110,44 @@ jobs:
 
             Windows (WSL2): `install-wsl.ps1` sets up a dedicated WSL2 Linux and
             installs Pi Agent in it; `pi-agent-installer-*.tar.gz` is what it unpacks
-            there. The one-line command is in docs/WSL2.md.
+            there. In PowerShell:
+
+                $u = 'https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install-wsl.ps1'
+                & ([ScriptBlock]::Create(([Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing $u).RawContentStream.ToArray())).TrimStart([char]0xFEFF)))
+
+            Options, what it changes and how to remove it:
+            https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/docs/WSL2.md
 
             The macOS `.pkg` is not built here: it is signed and notarized on the
             maintainer's Mac and attached separately.
+
+  # The command in the guide, from where people get it: the script, the bundle and the pi-web tree all
+  # come from the release just published. This cannot unpublish anything: a failure here means telling
+  # nobody and fixing it in the next release candidate.
+  wsl-verify:
+    name: the guide's command on Windows (real WSL2)
+    needs: release
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run it
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $doc = [IO.File]::ReadAllText((Join-Path (Get-Location).Path 'docs\WSL2.md'))
+          $m = [regex]::Match($doc, '(?m)^\$u = ''.*/install-wsl\.ps1''\r?\n& \(\[ScriptBlock\]::Create\(.*$')
+          if (-not $m.Success) { Write-Output '::error::no install command in docs/WSL2.md'; exit 1 }
+          Write-Output $m.Value
+          & ([ScriptBlock]::Create($m.Value.TrimEnd() + ' -Yes -NoAutostart'))
+          $code = $LASTEXITCODE
+          $marker = (wsl.exe -d PiAgent --exec /bin/cat /etc/pi-agent-distro | Out-String)
+          $want = 'installer=' + ($env:GITHUB_REF_NAME -replace '^v', '')
+          $ok = ($code -eq 0) -and $marker.Contains($want)
+          # Annotations can be read through GitHub's API without signing in; the job log cannot.
+          $log = Join-Path $env:LOCALAPPDATA 'PiAgent\install.log'
+          $tail = if (Test-Path $log) { (Get-Content -LiteralPath $log -Tail 25 -Encoding UTF8) -join "`n" } else { '(no install.log)' }
+          $text = ('exit code {0}; marker has {1}: {2}' -f $code, $want, $marker.Contains($want)) + "`n" + $tail
+          $level = if ($ok) { 'notice' } else { 'error' }
+          Write-Output ('::' + $level + ' title=one-line install::' + $text.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A'))
+          if ($ok) { exit 0 } else { exit 1 }
