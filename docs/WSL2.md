@@ -18,7 +18,7 @@ Linux 主機,所以 Pi Agent、Claude Code、Codex 三個代理的行為跟 Linu
 
 | 項目 | 需求 |
 |---|---|
-| Windows | **Windows 11 22H2 以上**(build 22621)。Windows 10 不支援 |
+| Windows | 建議 **Windows 11 22H2 以上**(build 22621)。Windows 10 2004 以上(build 19041)也能裝,安裝時會先警告 |
 | CPU | x64。ARM64 是盡力支援,**尚未測試** |
 | 虛擬化 | BIOS/UEFI 要開啟。在虛擬機器裡要有「巢狀虛擬化」;**Apple 晶片上的 Parallels 不行**(Parallels 官方知識庫寫明 WSL2 不能用) |
 | 記憶體 | 建議 8 GB 以上(4 GB 是底線) |
@@ -176,6 +176,8 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 | 瀏覽器連不上 | `pi-agent doctor` 的 `localhost` 一項;`pi-agent status`。`wsl --shutdown` 之後,保活應該會把 Linux 叫回來(尚未驗證);沒有的話登出再登入一次 |
 | 電腦睡眠後 Omnigent 離線 | 睡眠期間 Linux 一起暫停;醒來後應該自動重新連線。若沒有,`pi-agent restart` |
 | 安裝到一半失敗 | 看 `%LOCALAPPDATA%\PiAgent\install.log`,重跑一次(會從失敗的地方繼續) |
+| `wsl --update` 回「災難性的失敗」 | Microsoft Store 那條路失敗,2026-11-04 在一台 Windows 10 22H2 碰到過。安裝程式會自動改用 `wsl --update --web-download`;自己手動跑時也用這個 |
+| 從 SSH 連進去跑 `wsl`,回「系統無法存取該檔案」 | Store 版 WSL 在 SSH 連線裡啟動不了,同一台在桌面開 PowerShell 就正常(2026-11-04,金鑰登入的 SSH)。請在桌面裝 |
 | 剛裝完馬上 `pi-omnigent connect`,回 `OPERATION_BUSY` | 外掛剛開機時在背景裝 Omnigent(約 30–40 秒),期間會拒絕別的操作。等一分鐘再試(外掛自己的建議也是「請稍後重試」)。Linux、macOS 版也一樣 |
 | Paseo 裡 Claude 顯示停用、`pi-paseo models claude` 失敗 | 全新安裝後 Paseo 的 Claude 提供者可能被標成停用(設定檔只在 daemon 啟動時寫一次)。`pi-paseo stop && pi-paseo start` 之後即恢復,實測 `acceptance` 的 Claude 與 Codex 都通過。還沒找出剛安裝完那次為什麼沒準備好 |
 
