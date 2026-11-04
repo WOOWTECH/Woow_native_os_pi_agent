@@ -37,6 +37,21 @@ eq    "run: exit 3 when no channel is live" "3" "$rc"
 has   "run: says what is wrong" "interop" "$out"
 lacks "run: does not start the program without a channel" "SHOULD-NOT-RUN" "$out"
 
+# Codex runs its commands in a sandbox that refuses the socket a Windows program needs
+# (seen on a real PC: "UtilBindVsockAnyPort:317: socket failed 1"). Interop is fine then,
+# so the message must not send anyone off to /etc/wsl.conf.
+sandbox win-codex-blocked
+: > "$S/run/WSL/100_interop"
+interop_env
+winexe cmd.exe   "echo '<3>WSL (2 - ) ERROR: UtilBindVsockAnyPort:317: socket failed 1' >&2; exit 1"
+winexe hello.exe "echo SHOULD-NOT-RUN"
+run sbx "$WIN" run hello.exe
+eq    "run: exit 3 inside a sandbox that blocks the channel" "3" "$rc"
+has   "run: names the sandbox as the cause" "sandbox" "$out"
+has   "run: says how to get out of it" "Full access" "$out"
+lacks "run: does not blame the interop setting" "wsl.conf" "$out"
+lacks "run: does not start the program" "SHOULD-NOT-RUN" "$out"
+
 sandbox win-no-such-exe
 : > "$S/run/WSL/100_interop"
 interop_env
@@ -139,6 +154,14 @@ has "doctor: reports the dead channel"        "[FAIL] interop" "$out"
 has "doctor: skips PowerShell, which needs it" "[SKIP] powershell" "$out"
 has "doctor: skips the localhost check"        "[SKIP] localhost" "$out"
 has "doctor: still reports the checks that do not need it" "[PASS] systemd" "$out"
+
+doctor_world win-doctor-codex-blocked
+winexe cmd.exe "echo '<3>WSL (2 - ) ERROR: UtilBindVsockAnyPort:317: socket failed 1' >&2; exit 1"
+run dsbx "$WIN" doctor
+eq    "doctor: exit 1 inside a sandbox" "1" "$rc"
+has   "doctor: says a sandbox is in the way" "[FAIL] interop" "$out"
+has   "doctor: names the sandbox" "sandbox" "$out"
+lacks "doctor: does not blame the interop setting" "wsl.conf" "$out"
 
 doctor_world win-doctor-localhost
 run dsbx PA_TEST_HTTP=0 PI_WEB_PORT=30199 "$WIN" doctor

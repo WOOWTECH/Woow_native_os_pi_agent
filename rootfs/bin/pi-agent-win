@@ -47,6 +47,21 @@ pick_channel() {
 
 fail() { echo "pi-agent-win: $2" >&2; exit "$1"; }
 
+# Why no channel works. Usually interop is off, but a sandbox around this process refuses
+# the socket every Windows program needs (Codex runs its commands in one; WSL then prints
+# "UtilBindVsockAnyPort: socket failed 1"), and then the interop settings are not the problem.
+channel_problem() {
+  local probe
+  if probe="$(find_exe cmd.exe)"; then
+    case "$("$probe" /c exit 0 2>&1 >/dev/null)" in
+      *UtilBindVsock*)
+        echo "a sandbox around this process blocks the connection to Windows. Codex runs its commands in one: start the session with the \"Full access\" preset, or run this outside Codex."
+        return 0 ;;
+    esac
+  fi
+  echo "no working Windows interop channel in $RUN_DIR. Is interop enabled ([interop] enabled=true in /etc/wsl.conf)? After changing that, run 'wsl --shutdown' in Windows PowerShell."
+}
+
 # Leave WSL_INTEROP pointing at a channel that works. A session that already has
 # one (an interactive shell) keeps it; a systemd service has none and has to look.
 ensure_channel() {
@@ -61,7 +76,7 @@ cmd_run() {
   local exe
   exe="$(find_exe "$1")" || fail 127 "Windows program not found: $1 (looked in $(win_sys32) and on PATH)"
   shift
-  ensure_channel || fail 3 "no working Windows interop channel in $RUN_DIR. Is interop enabled ([interop] enabled=true in /etc/wsl.conf)? 'pi-agent-win doctor' shows what is wrong."
+  ensure_channel || fail 3 "$(channel_problem)"
   exec "$exe" "$@"
 }
 
@@ -83,7 +98,7 @@ cmd_open() {
   [ $# -ge 1 ] || fail 64 "usage: pi-agent-win open <url-or-path>"
   local target="$1" q
   if command -v wslview >/dev/null 2>&1; then
-    ensure_channel || fail 3 "no working Windows interop channel in $RUN_DIR. 'pi-agent-win doctor' shows what is wrong."
+    ensure_channel || fail 3 "$(channel_problem)"
     exec wslview "$target"
   fi
   case "$target" in
@@ -128,7 +143,7 @@ cmd_doctor() {
     if [ "$got" = 2 ]; then pass_ powershell "answers"; ps_ok=1
     else fail_ powershell "did not answer (got: $got)"; fi
   else
-    fail_ interop "no working channel in $RUN_DIR -- is [interop] enabled=true in /etc/wsl.conf? then run 'wsl --shutdown' in Windows PowerShell"
+    fail_ interop "$(channel_problem)"
     skip_ powershell "needs interop"
   fi
 
