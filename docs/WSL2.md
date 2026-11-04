@@ -1,12 +1,13 @@
 # Pi Agent on Windows 11 (WSL2)
 
-> **狀態:預覽版。** Linux 那一半在沙盒裡測過(`tests/wsl.sh`,165 項),也在 GitHub 的 Ubuntu 與 macOS 上跑過。
+> **狀態:預覽版。** Linux 那一半在沙盒裡測過(`tests/wsl.sh`,186 項),也在 GitHub 的 Ubuntu 與 macOS 上跑過。
 > Windows 那一半(`windows/install-wsl.ps1`)已經在 **GitHub 的 Windows Server 2025 雲端機**上完整跑通:用
 > Windows PowerShell 5.1 裝完、自我檢查 24 項全過、Windows 這邊連得到 `http://localhost:30141`、保活有效、
 > 重跑與兩種解除安裝都試過。2026-11-03 還用**真的 Omnigent 伺服器**驗證過:那台雲端機登記成 Omnigent 主機,
 > Claude Code 與 Codex 在 Omnigent、Paseo 網頁版開對話並切換模型都成功,代理也能控制 Windows(PowerShell、Notepad、
-> 瀏覽器、檔案互通)。2026-11-04 也在**一台真的 Windows 10 22H2 電腦**上裝成功(一般權限的桌面環境,自我檢查 24 項全過)。
-> **還沒在 Windows 11 實機上跑過**,也還沒測到「第一次啟用 WSL 並重新開機」、實際的「登入時自動啟動」、睡眠喚醒;Pi 登入與切換模型都過了,但沒看到它回答(被 ChatGPT 帳號的用量上限擋下)。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
+> 瀏覽器、檔案互通)。2026-11-04 也在**一台真的 Windows 10 22H2 電腦**上裝成功(一般權限的桌面環境,自我檢查 24 項全過),
+> 連上 Omnigent 之後,Pi(走 LiteLLM)與 Claude Code 都開對話、切模型、操作了 Windows 的 PowerShell 與記事本;Codex 會被自己的沙盒擋住,要逐條核准。
+> **還沒在 Windows 11 實機上跑過**,也還沒測到「第一次啟用 WSL 並重新開機」、實際的「登入時自動啟動」、睡眠喚醒;Pi 用 ChatGPT 登入在那台實機上失敗(`invalid_grant`,原因未明),要改走 LiteLLM。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
 
 一行 PowerShell 指令,替你的 Windows 11 建一個**專用的 Linux 小系統**(WSL2 裡的 Ubuntu 24.04,
 名叫 `PiAgent`),把 Linux 版的 Pi Agent 裝進去,登入 Windows 時自動啟動。Omnigent 看到的就是一台
@@ -122,15 +123,15 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   Linux 這邊的。整個 Windows PATH 並沒有灌進來(`appendWindowsPath=false`)。
 - 背景服務(systemd)啟動的程式,在 WSL 裡拿不到互通所需的環境變數(microsoft/WSL
   [#8056](https://github.com/microsoft/WSL/issues/8056)、[#8846](https://github.com/microsoft/WSL/issues/8846)、
-  [#10812](https://github.com/microsoft/WSL/issues/10812));`pi-agent-win` 會自己去 `/run/WSL` 找一條活著的通道。
-  找不到時它會明說(結束碼 3),並建議跑 `pi-agent doctor`。
+  [#10812](https://github.com/microsoft/WSL/issues/10812));`pi-agent-win` 會自己去 `/run/WSL` 找一條活著的通道,找不到時
+  會多試兩次(很忙的電腦偶爾會漏接一次),再明說(結束碼 3)。實機上的 WSL 3.0.3,在 systemd 服務裡直接呼叫 `powershell.exe` 也通。
 - **Codex 的沙盒會擋住 Windows。** Codex 把每個指令放進自己的沙盒,沙盒不讓程式開互通要用的連線
   (`UtilBindVsockAnyPort: socket failed 1`)。Claude Code 沒有這層,直接就能用。安裝時會放一份共用技能
-  `windows-from-wsl`(只有互通開著才放)告訴代理怎麼連 Windows,所以 Codex 被擋之後會自己申請到沙盒外執行,
-  **你按一次同意跑一條**。真機上實測過(`--sandbox workspace-write --ask-for-approval on-request`,也是 Omnigent
-  的預設)。在 `codex exec` 這種不能詢問的模式裡,它只會回報失敗。不想每條都按的話,核准畫面的「don't ask again」
-  或 Omnigent 開對話時選「Full access」都是 Codex/Omnigent 自己的選項,要不要開由你決定:PowerShell 什麼都做得到,
-  包括 `wsl.exe -u root`,所以放行之後,沙盒對 Windows 這邊等於沒有保護。
+  `windows-from-wsl`(只有互通開著才放)告訴代理怎麼連 Windows。實機上在終端機跑 Codex
+  (`--sandbox workspace-write --ask-for-approval on-request`)時,它被擋之後會自己申請到沙盒外執行,**你按一次同意跑一條**。
+  在 `codex exec` 這種不能詢問的模式裡,它只會回報失敗。不想每條都按的話,核准畫面的「don't ask again」或 Omnigent 開對話時選
+  「Full access」都是 Codex/Omnigent 自己的選項,要不要開由你決定:PowerShell 什麼都做得到,包括 `wsl.exe -u root`,所以
+  放行之後,沙盒對 Windows 這邊等於沒有保護。
 - 想關掉:重新安裝並加上 `-NoWindowsInterop`(`/etc/wsl.conf` 會寫成 `[interop] enabled=false`,
   Windows 程式完全叫不起來)。
 - **別以為「VM 裡沒給 sudo」就擋得住代理**:互通開著時,代理也可以呼叫 `wsl.exe -u root`。互通與權限要一起看。
@@ -186,6 +187,11 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 | `wsl --update` 回「災難性的失敗」 | Microsoft Store 那條路失敗,2026-11-04 在一台 Windows 10 22H2 碰到過。安裝程式會自動改用 `wsl --update --web-download`;自己手動跑時也用這個 |
 | 從 SSH 連進去跑 `wsl`,回「系統無法存取該檔案」 | Store 版 WSL 在 SSH 連線裡啟動不了,同一台在桌面開 PowerShell 就正常(2026-11-04,金鑰登入的 SSH)。請在桌面裝 |
 | 剛裝完馬上 `pi-omnigent connect`,回 `OPERATION_BUSY` | 外掛剛開機時在背景裝 Omnigent(約 30–40 秒),期間會拒絕別的操作。等一分鐘再試(外掛自己的建議也是「請稍後重試」)。Linux、macOS 版也一樣 |
+| Windows 指令偶爾失敗,訊息有 `accept4 failed 110` | 互通逾時,電腦很忙時會碰到(實機只剩約 0.3 GB 記憶體時,Pi 和 Claude Code 各碰過一次)。先確認指令有沒有生效,再跑一次 |
+| Codex 回 `UtilBindVsockAnyPort: socket failed 1`,或 `pi-agent-win` 說沙盒擋住 | Windows 沒壞,是 Codex 自己的沙盒。見上面「Windows 互通」。不要跑 `wsl --shutdown`,沒有幫助 |
+| Pi 用 ChatGPT 登入,最後回 `invalid_grant` | 2026-11-04 在實機上用同一個帳號連續 3 次,換新連結、換裝置編號都一樣,時鐘也正確;原因未明。可以改走 LiteLLM(`pi-agent-litellm set`,再 `probe --apply` 留下真的能回答的模型) |
+| Pi 回 `Provider finish_reason: content_filter` | 上游模型把這段請求擋下,不是安裝的問題。實機上經 LiteLLM 的 Fable 5.1 碰到過,切到 Haiku 5.5 同一段話就過了 |
+| `pi-omnigent verify` 回 `SERVER_UNREACHABLE` | 這台連不到伺服器。實機上是 Wi-Fi 不穩造成的,再跑一次就過 |
 | Paseo 裡 Claude 顯示停用、`pi-paseo models claude` 失敗 | 全新安裝後 Paseo 的 Claude 提供者可能被標成停用(設定檔只在 daemon 啟動時寫一次)。`pi-paseo stop && pi-paseo start` 之後即恢復,實測 `acceptance` 的 Claude 與 Codex 都通過。還沒找出剛安裝完那次為什麼沒準備好 |
 
 ## 驗證到哪裡
@@ -231,6 +237,18 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 - 保活:Linux 從裝好起一路開著,途中 Wi-Fi 斷了 25 分鐘也沒停;Wi-Fi 回來後 Linux 的 DNS 和 HTTPS 都通。
 - 記憶體:Linux 這台虛擬機在 Windows 上約用 1.3–2.5 GB,裡面的 pi-web 服務約 660 MB。安裝時全系統承諾記憶體最高到 29.3 / 31.9 GB,
   沒有出事,但也沒有餘裕。
+- **Omnigent**:外掛從標準輸入拿密碼連上伺服器,這台以 `DESKTOP-5RSIP1C (pi-agent)` 上線。`pi-omnigent verify` 三個代理都在真的對話裡回答正確
+  (Codex 第一次回 `SERVER_UNREACHABLE`,重跑就過,但測試對話沒能自動停掉)。
+- **Pi 走 LiteLLM**:`pi-agent-litellm set` 接上閘道,`probe --apply` 從 85 個模型留下 40 個真的能回答的。Omnigent 對話裡 Fable 5.1 回
+  `content_filter`,切到 Haiku 5.5 → 完成下面的 Windows 操作,再切到 DeepSeek → 回答。這是第一次看到 Pi 回答。
+- **Claude Code**:Haiku 5.5 完成下面的 Windows 操作 → 切到 Sonnet 5.5 → 回答。
+- **代理操作 Windows**(Pi 與 Claude Code,都在 Omnigent 對話裡,提示沒有提到 `pi-agent-win`):用 PowerShell 查版本與電腦名稱;建測試檔;用記事本打開,
+  讀到視窗標題(`note-pi - 記事本`);**用自己拿到的 PID 只關那一個**;刪掉測試檔。Pi 那次另外從外面觀察:記事本 PID 29688 出現又消失,
+  測試檔出現又消失,其他有視窗的程式沒變動。兩次各碰到一次互通逾時,代理都自己查過再重試成功。
+- **Codex**:預設沙盒擋住 Windows(見上面「Windows 互通」),在終端機按一次同意就通,讀到 Windows 版本、電腦名稱與可用記憶體。
+- **Pi 用 ChatGPT 登入**:同一個帳號 3 次都在最後一步回 `invalid_grant`,見疑難排解。
+- **Wi-Fi**:測試期間這台的 USB Wi-Fi 有兩段不穩(掉封包 40–100%,延遲 500–900 毫秒),當時整台電腦的流量只有每秒 0.1 MB 以下,所以不是下載塞滿;
+  有沒有跟記憶體不足有關還不知道。那時連不到 Omnigent 伺服器。
 
 **還沒驗證**:
 
@@ -241,10 +259,10 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   Windows Terminal,`-WindowStyle Hidden` 可能不生效,登入後會多一個視窗在跑保活;關掉那個視窗,Linux 就會停。另外,
   公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活與自動續跑都不會執行。
 - 睡眠喚醒後 host 自動重連(E8)。
-- 真機上連 Omnigent 開對話、切換模型(雲端機上驗過)。
+- 真機上 Codex 在 Omnigent 對話裡切換模型與操作 Windows(雲端機上驗過切換模型;Windows 操作在實機終端機裡驗過)。
+- 真機上用 Omnigent 網頁的選單切換模型:實機上網頁只開過第一個對話,切換是走同一個 API(`PATCH /v1/sessions/{id}`);選單本身是在雲端機上點過的。
 - Windows ARM64(E12)。
-- **Pi 實際回答一句話**:登入與切換模型都過了,但回覆被 ChatGPT 帳號的用量上限擋下(見上)。LiteLLM 閘道那條路沒測到(使用者
-  給的值被閘道回 HTTP 401)。
+- **Pi 用 ChatGPT 帳號回答一句話**:雲端機上回覆被用量上限擋下,實機上登入就失敗。走 LiteLLM 的已經過了。
 - Paseo 在剛裝完的那次 `models claude` 失敗的原因(重啟 daemon 可解,見疑難排解)。
 
 ## 給工程師
