@@ -34,6 +34,30 @@
  * namespace tool that cannot exist on macOS, so the advice ("add it to the
  * container image") is noise on a laptop.
  *
+ * The fourth edit is for Intel Macs. The plugin installs its own omnigent with
+ * `uv tool install omnigent==<pin>`, resolving afresh, and at their newest
+ * releases two of omnigent's dependencies publish no x86_64 macOS wheel
+ * (cryptography >= 49, argon2-cffi-bindings 26). uv then builds them from
+ * sdists, and the cryptography build fails even with the Command Line Tools:
+ * there are no OpenSSL headers to find. The edit adds
+ * `--constraints $PI_OMNIGENT_UV_CONSTRAINTS` to that command when the variable
+ * is set. pi-agent-env.sh sets it on Intel Macs only, to the hash-locked
+ * requirements the omnigent stage installed from, which pin wheel-backed
+ * releases for that platform. Measured on an Intel Mac (macOS 13.7, uv 0.12.10)
+ * with source builds forbidden: the install succeeds with the constraints and
+ * resolves cryptography 48.0.1 and argon2-cffi-bindings 25.1.0. Everywhere
+ * else the variable is unset and the command is unchanged.
+ *
+ * The fifth edit is for Intel Macs too. Right after that install, discovery
+ * probes the new omnigent with `--version` and a 5 s limit, and on an Intel
+ * Mac the first run of a freshly installed omnigent takes 4-6 s (measured
+ * twice on each of an i3 and an i5 MacBook: 4.0 to 6.1 s, then about 0.5 s on
+ * every later run). Past the limit the install is reported as "uv finished, but the
+ * managed Omnigent executable is unavailable" and the tab stays in
+ * DEPENDENCIES_MISSING until something retries. The edit runs the new
+ * omnigent once with a generous limit before that probe, on x64 only, so the
+ * probe measures a warm start.
+ *
  * This belongs upstream in WOOWTECH/pi-omnigent-plugin, and is applied here
  * only until a release carries it. Same discipline as the omnigent patch in
  * Woow_k3s_pi_agent_package: version-gated, exact-anchor, idempotent, keeps a
@@ -51,6 +75,27 @@ const MSG_OLD = 'This plugin requires a Linux x64 or arm64 container';
 const MSG_NEW = 'This plugin requires Linux or macOS on x64 or arm64';
 const BWRAP_OLD = "if (!discovery.bwrap?.available) warnings.push(";
 const BWRAP_NEW = "if (platform !== 'darwin' && !discovery.bwrap?.available) warnings.push(";
+
+// src/installer.mjs: the plugin's own `uv tool install omnigent`.
+const UV_MARKER = 'uv-constraints (Woow native installer)';
+const UV_OLD = "if (action === 'update') args.push('--force');";
+const UV_NEW = `if (action === 'update') args.push('--force');
+      // ${UV_MARKER}: pi-agent-env.sh sets this on Intel Macs, where a fresh
+      // resolution picks dependency releases with no x86_64 macOS wheel.
+      if (env.PI_OMNIGENT_UV_CONSTRAINTS) args.push('--constraints', env.PI_OMNIGENT_UV_CONSTRAINTS);`;
+
+// src/installer.mjs: the re-discovery right after that install.
+const LAUNCH_MARKER = 'first-launch (Woow native installer)';
+const LAUNCH_OLD = `        discovery = { ...blankDiscovery(), ...await find(env, { fresh }) };
+        if (discovery.omnigent?.available) {`;
+const LAUNCH_NEW = `        // ${LAUNCH_MARKER}: on an Intel Mac the first run of a freshly
+        // installed omnigent takes 4-6 s, and discovery probes it with a 5 s
+        // limit. Run it once without that limit, so the probe sees a warm start.
+        if (arch === 'x64') {
+          try { await run(path.join(stateDir, 'bin', 'omnigent'), ['--version'], { env: installEnv, cwd: stateDir, timeoutMs: 120_000 }); } catch {}
+        }
+        discovery = { ...blankDiscovery(), ...await find(env, { fresh }) };
+        if (discovery.omnigent?.available) {`;
 
 // src/common.mjs: flock(1) lookup inside locked().
 const LOCK_MARKER = 'flock-path-fallback (Woow native installer)';
@@ -123,10 +168,20 @@ function main() {
     required: [['flock lookup', LOCK_OLD, LOCK_NEW]],
   });
 
-  return edit(root, 'installer.mjs', version, {
+  edit(root, 'installer.mjs', version, {
     marker: GATE_NEW,
     required: [['platform gate', GATE_OLD, GATE_NEW], ['refusal message', MSG_OLD, MSG_NEW]],
     optional: [['bubblewrap warning', BWRAP_OLD, BWRAP_NEW]],
+  });
+
+  // Their own markers: each idempotent by itself, whether or not the others ran.
+  edit(root, 'installer.mjs', version, {
+    marker: UV_MARKER,
+    required: [['uv tool install arguments', UV_OLD, UV_NEW]],
+  });
+  return edit(root, 'installer.mjs', version, {
+    marker: LAUNCH_MARKER,
+    required: [['re-discovery after the omnigent install', LAUNCH_OLD, LAUNCH_NEW]],
   });
 }
 
