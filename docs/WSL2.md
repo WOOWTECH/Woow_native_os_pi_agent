@@ -48,7 +48,7 @@ $u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/latest/downlo
 | `-NoWindowsInterop` | 關閉 Windows 互通(見下) |
 | `-NoAutostart` | 不登錄「登入時自動啟動」 |
 | `-SkipSmoke` | 最後不跑自我檢查 |
-| `-Port 30142` | 改用別的連接埠(預設 30141) |
+| `-Port 30142` | 改用別的連接埠(預設 30141;重跑時不加,就沿用這台原本的連接埠) |
 | `-DistroName`、`-LinuxUser` | 改 Linux 的名稱、使用者名稱(使用者不可以是 `root`,要小寫) |
 | `-InstallDir D:\Data` | 把 `PiAgent` 資料夾放在這裡(實際用 `D:\Data\PiAgent`;最後一層本來就叫 `PiAgent` 才照原樣用)。這樣解除安裝刪東西時,絕不會碰到你放在 `D:\Data` 的其他資料 |
 | `-RootfsPath`、`-BundlePath`、`-PiWebArtifact` | 離線或開發用:改用本機檔案(映像的雜湊值照樣會驗) |

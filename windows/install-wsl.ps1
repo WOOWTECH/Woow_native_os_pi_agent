@@ -358,6 +358,7 @@ function New-PaOptions {
         $o[$k] = [bool]$o[$k]
     }
     $o['Port'] = [int]$o['Port']
+    $o['PortGiven'] = ($null -ne $Bound -and $Bound.ContainsKey('Port'))
     if ([string]::IsNullOrEmpty([string]$o['InstallDir'])) {
         $o['InstallDir'] = [System.IO.Path]::Combine((Get-PaLocalAppData), 'PiAgent')
     } else {
@@ -975,6 +976,18 @@ function Get-PaDistroState {
     return [pscustomobject]@{ Exists = $exists; HasMarker = $marker }
 }
 
+# The port an earlier install of this Linux recorded (install.sh writes it), or 0 when there is none.
+function Get-PaRecordedPort {
+    param([string]$Distro, [string]$User)
+    $r = Invoke-PaVm -Distro $Distro -User $User -Exec @('/bin/sh', '-c', 'cat $HOME/.local/share/pi-agent/pi-web-port')
+    if ($r.ExitCode -ne 0) { return 0 }
+    $line = Get-PaLastLine -Text ([string]$r.Output)
+    if ($line -notmatch '^\d{4,5}$') { return 0 }
+    $p = [int]$line
+    if ($p -lt 1024 -or $p -gt 65535) { return 0 }
+    return $p
+}
+
 # UNVERIFIED(E2): "systemctl is-system-running --wait" answers running or degraded once boot is done.
 function Wait-PaSystemd {
     param([string]$Distro, [int]$Tries = 3)
@@ -1109,6 +1122,14 @@ function Test-PaPreflight {
     if ($state.Exists -and -not $state.HasMarker) {
         Write-PaMsg 'Error' ('已經有一個叫 {0} 的 WSL 發行版,而且不是這個安裝程式建立的。請用 -DistroName 換一個名字;如果它是上次安裝中途被中斷留下的,先執行 wsl --unregister {0} 再重跑。(distro name taken)' -f $Opts.DistroName)
         $bad = $true
+    }
+    if ($state.Exists -and $state.HasMarker -and -not $Opts.PortGiven) {
+        # A re-run must not move the service. The default port may well belong to something else by now.
+        $kept = Get-PaRecordedPort -Distro $Opts.DistroName -User $Opts.LinuxUser
+        if ($kept -gt 0 -and $kept -ne $Opts.Port) {
+            Write-PaMsg 'Info' ('這台已經裝好,沿用原本的連接埠 {0}。要換埠請加 -Port。(keeping port {0})' -f $kept)
+            $Opts.Port = $kept
+        }
     }
     if (-not ($state.Exists -and $state.HasMarker)) {
         # Our own distro already forwards its ports to Windows, so a listener there is expected.
@@ -1737,10 +1758,11 @@ if ($env:PI_AGENT_WSL_TEST -ne '1') {
         Yes = [bool]$Yes; DryRun = [bool]$DryRun; Resume = [bool]$Resume; Uninstall = [bool]$Uninstall
         PurgeData = [bool]$PurgeData; NoWindowsInterop = [bool]$NoWindowsInterop
         NoAutostart = [bool]$NoAutostart; SkipSmoke = [bool]$SkipSmoke
-        DistroName = $DistroName; LinuxUser = $LinuxUser; Port = $Port
+        DistroName = $DistroName; LinuxUser = $LinuxUser
         RootfsPath = $RootfsPath; BundlePath = $BundlePath; PiWebArtifact = $PiWebArtifact
         InstallDir = $InstallDir
     }
+    if ($PSBoundParameters.ContainsKey('Port')) { $paBound['Port'] = $Port }
     $paCode = 1
     try {
         $paCode = Invoke-PaMain -Options (New-PaOptions -Bound $paBound)

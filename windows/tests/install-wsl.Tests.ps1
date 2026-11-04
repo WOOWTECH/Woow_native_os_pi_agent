@@ -74,6 +74,7 @@ BeforeEach {
         SmokeExit        = 0
         HttpUp           = $true
         BusyPorts        = @()
+        RecordedPort     = ''
         HashOverride     = ''
         Answer           = ''
         Existing         = @('C:\b\bundle.tar.gz')
@@ -151,6 +152,10 @@ BeforeEach {
         if ($line -match '/usr/bin/test -f /etc/pi-agent-distro') {
             if ($script:Scn.HasMarker) { return [pscustomobject]@{ ExitCode = 0; Output = '' } }
             return [pscustomobject]@{ ExitCode = 1; Output = '' }
+        }
+        if ($line -match 'pi-agent/pi-web-port') {
+            if ($script:Scn.RecordedPort) { return [pscustomobject]@{ ExitCode = 0; Output = $script:Scn.RecordedPort } }
+            return [pscustomobject]@{ ExitCode = 1; Output = 'cat: No such file or directory' }
         }
         if ($line -match 'is-system-running') { return [pscustomobject]@{ ExitCode = 0; Output = $script:Scn.SystemdState } }
         if ($line -match 'wsl-root-setup\.sh configure') { return [pscustomobject]@{ ExitCode = 0; Output = ('some log' + "`n" + 'configured uid=' + $script:Scn.Uid) } }
@@ -335,6 +340,8 @@ Describe 'small pure helpers' {
         $o.DistroName | Should -Be 'PiAgent'
         $o.LinuxUser | Should -Be 'piagent'
         $o.Port | Should -Be 30141
+        $o.PortGiven | Should -BeFalse
+        (New-PaOptions -Bound @{ Port = 30142 }).PortGiven | Should -BeTrue
         $o.InstallDir | Should -Be 'C:\Users\tester\AppData\Local\PiAgent'
         (Get-PaPaths -Opts $o).Shim | Should -Be 'C:\Users\tester\AppData\Local\PiAgent\bin\pi-agent.cmd'
     }
@@ -374,6 +381,40 @@ Describe 'preflight' {
         $script:Scn.HasMarker = $true
         $script:Scn.BusyPorts = @(30141, 6769)
         Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+    }
+
+    It 'a re-run without -Port keeps the port the install recorded' {
+        $script:Scn.DistroExists = $true
+        $script:Scn.RecordedPort = '30142'
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+        ($script:Streams -join "`n") | Should -Match 'PI_WEB_PORT=30142'
+        ($script:Streams -join "`n") | Should -Not -Match 'PI_WEB_PORT=30141'
+        Get-AllMessages | Should -Match 'keeping port 30142'
+    }
+
+    It 'an explicit -Port wins over the recorded one' {
+        $script:Scn.DistroExists = $true
+        $script:Scn.RecordedPort = '30142'
+        Invoke-PaMain -Options (New-TestOpts -Extra @{ Port = 30150 }) | Should -Be 0
+        ($script:Streams -join "`n") | Should -Match 'PI_WEB_PORT=30150'
+        Get-AllMessages | Should -Not -Match 'keeping port'
+    }
+
+    It 'falls back to the default when the record is not a port: <Bad>' -ForEach @(
+        @{ Bad = 'not-a-number' }
+        @{ Bad = '80' }
+        @{ Bad = '99999' }
+        @{ Bad = '99999999999' }
+    ) {
+        $script:Scn.DistroExists = $true
+        $script:Scn.RecordedPort = $Bad
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+        ($script:Streams -join "`n") | Should -Match 'PI_WEB_PORT=30141'
+    }
+
+    It 'a first install does not ask the Linux for a port' {
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+        ($script:Calls -join "`n") | Should -Not -Match 'pi-web-port'
     }
 
     It 'warns, but goes on, on Windows 10 22H2' {
