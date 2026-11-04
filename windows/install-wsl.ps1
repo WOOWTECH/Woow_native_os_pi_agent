@@ -773,15 +773,28 @@ function Remove-PaRunOnce {
     Remove-ItemProperty -LiteralPath $path -Name $Name -ErrorAction SilentlyContinue
 }
 
+# How the keep-alive is started, by the installer, the logon task and the Run key alike.
+# A console program started from a logon task opens a Windows Terminal window when that is the default terminal (the
+# Windows 11 default), and -WindowStyle Hidden cannot hide it: the window stays open all session, and closing it stops the
+# keep-alive and, 15 seconds later, the Linux. conhost.exe --headless runs the same command with no window at all.
+# Measured on Windows 11 build 26300 through the scheduled task: no window and no Windows Terminal process, against a
+# Windows Terminal window that stayed with the old command line. -Plain is the old command line.
+function Get-PaKeepaliveCommand {
+    param([string]$ScriptPath, [bool]$Plain = $false)
+    if ($Plain) {
+        return [pscustomobject]@{ Exe = 'powershell.exe'; Args = ('-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $ScriptPath + '"') }
+    }
+    return [pscustomobject]@{ Exe = 'conhost.exe'; Args = ('--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $ScriptPath + '"') }
+}
+
 # Returns 'task' or 'runkey'.
 # UNVERIFIED(E4): that a standard user may register a logon task for itself; the Run key is the fallback.
-# UNVERIFIED(E4): the hidden powershell.exe may flash a window at sign-in; accepted for now.
 function Register-PaAutostart {
-    param([string]$ScriptPath, [string]$TaskName)
-    $psArgs = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $ScriptPath + '"'
+    param([string]$ScriptPath, [string]$TaskName, [bool]$Plain = $false)
+    $cmd = Get-PaKeepaliveCommand -ScriptPath $ScriptPath -Plain $Plain
     try {
         $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArgs
+        $action = New-ScheduledTaskAction -Execute $cmd.Exe -Argument $cmd.Args
         $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -Hidden
         $principal = New-ScheduledTaskPrincipal -UserId $identity -LogonType Interactive -RunLevel Limited
@@ -791,7 +804,7 @@ function Register-PaAutostart {
         Write-PaLogLine -Text ('scheduled task failed: ' + $_.Exception.Message)
         $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
         if (-not (Test-Path -LiteralPath $runKey)) { New-Item -Path $runKey -Force | Out-Null }
-        Set-ItemProperty -LiteralPath $runKey -Name $TaskName -Value ('powershell.exe ' + $psArgs) -Type String
+        Set-ItemProperty -LiteralPath $runKey -Name $TaskName -Value ($cmd.Exe + ' ' + $cmd.Args) -Type String
         return 'runkey'
     }
 }
@@ -803,9 +816,31 @@ function Unregister-PaAutostart {
 }
 
 function Start-PaKeepalive {
+    param([string]$ScriptPath, [bool]$Plain = $false)
+    $cmd = Get-PaKeepaliveCommand -ScriptPath $ScriptPath -Plain $Plain
+    Start-Process -FilePath $cmd.Exe -ArgumentList $cmd.Args -WindowStyle Hidden | Out-Null
+}
+
+# Whether a PowerShell is running this keep-alive script, and waiting a few seconds for it to appear.
+function Test-PaKeepaliveRunning {
     param([string]$ScriptPath)
-    $argString = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $ScriptPath + '"'
-    Start-Process -FilePath 'powershell.exe' -ArgumentList $argString -WindowStyle Hidden | Out-Null
+    try {
+        foreach ($p in @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'")) {
+            if (([string]$p.CommandLine).IndexOf($ScriptPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+        }
+    } catch {
+        $null = $_
+    }
+    return $false
+}
+
+function Wait-PaKeepalive {
+    param([string]$ScriptPath, [int]$Seconds = 15)
+    for ($i = 0; $i -lt $Seconds; $i++) {
+        if (Test-PaKeepaliveRunning -ScriptPath $ScriptPath) { return $true }
+        Start-PaSleep -Seconds 1
+    }
+    return (Test-PaKeepaliveRunning -ScriptPath $ScriptPath)
 }
 
 function Stop-PaKeepalive {
@@ -1513,12 +1548,19 @@ function Invoke-PaStepIntegration {
     try {
         New-PaDirectory -Path $Paths.BinDir
         Write-PaFile -Path $Paths.Keepalive -Text (New-PaKeepaliveScript -Distro $name) -Bom $true
+        $plain = $false
         Start-PaKeepalive -ScriptPath $Paths.Keepalive
+        if (-not (Wait-PaKeepalive -ScriptPath $Paths.Keepalive -Seconds 15)) {
+            # The logon task uses the same command line, so this is also what would fail at sign-in.
+            Write-PaMsg 'Warn' '沒有視窗的啟動方式在這台電腦上沒成功,改用一般的隱藏視窗。登入後可能會多一個終端機視窗,請不要關掉它。(headless start failed, using a plain hidden window)'
+            $plain = $true
+            Start-PaKeepalive -ScriptPath $Paths.Keepalive -Plain $true
+        }
         Write-PaMsg 'Ok' '已啟動保持 Linux 運作的背景程式。'
         if ($Opts.NoAutostart) {
             Write-PaMsg 'Info' '略過自動啟動的設定(-NoAutostart)。'
         } else {
-            $mode = Register-PaAutostart -ScriptPath $Paths.Keepalive -TaskName $script:PaTaskName
+            $mode = Register-PaAutostart -ScriptPath $Paths.Keepalive -TaskName $script:PaTaskName -Plain $plain
             if ($mode -eq 'task') {
                 Write-PaMsg 'Ok' '已設定:登入 Windows 時自動啟動。'
             } else {

@@ -131,6 +131,7 @@ BeforeEach {
     Mock Unregister-PaAutostart { }
     Mock Set-PaUserPath { $true }
     Mock Start-PaKeepalive { }
+    Mock Wait-PaKeepalive { $true }
     Mock Stop-PaKeepalive { }
     Mock Test-PaHttp { $script:Scn.HttpUp }
     Mock Invoke-WslStream {
@@ -321,6 +322,14 @@ Describe 'small pure helpers' {
         ConvertTo-PaFriendlyWslError -Text 'Error: 0x80370102' | Should -Match 'virtualization'
         ConvertTo-PaFriendlyWslError -Text 'something else' | Should -BeNullOrEmpty
     }
+    It 'starts the keep-alive with no window at all, or the plain hidden way on request' {
+        $c = Get-PaKeepaliveCommand -ScriptPath 'C:\P\keepalive.ps1'
+        $c.Exe | Should -Be 'conhost.exe'
+        $c.Args | Should -Be '--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\P\keepalive.ps1"'
+        $p = Get-PaKeepaliveCommand -ScriptPath 'C:\P\keepalive.ps1' -Plain $true
+        $p.Exe | Should -Be 'powershell.exe'
+        $p.Args | Should -Be '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\P\keepalive.ps1"'
+    }
     It 'generates the keep-alive script' {
         $s = New-PaKeepaliveScript -Distro 'PiAgent'
         $s | Should -Match "\`$distro = 'PiAgent'"
@@ -495,6 +504,22 @@ Describe 'a fresh install' {
         Should -Invoke Start-PaKeepalive -Times 1 -Exactly
         Should -Invoke Register-PaAutostart -Times 1 -Exactly
         Should -Invoke Set-PaUserPath -Times 1 -Exactly -ParameterFilter { $Entry -eq 'C:\Test\PiAgent\bin' }
+    }
+
+    It 'starts the keep-alive without a window, and registers the logon task the same way' {
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+        Should -Invoke Start-PaKeepalive -Times 1 -Exactly -ParameterFilter { -not $Plain }
+        Should -Invoke Register-PaAutostart -Times 1 -Exactly -ParameterFilter { -not $Plain }
+        Get-AllMessages | Should -Not -Match 'headless start failed'
+    }
+
+    It 'falls back to the plain hidden window when the no-window start does not come up' {
+        Mock Wait-PaKeepalive { $false }
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+        Should -Invoke Start-PaKeepalive -Times 1 -Exactly -ParameterFilter { -not $Plain }
+        Should -Invoke Start-PaKeepalive -Times 1 -Exactly -ParameterFilter { $Plain -eq $true }
+        Should -Invoke Register-PaAutostart -Times 1 -Exactly -ParameterFilter { $Plain -eq $true }
+        Get-AllMessages | Should -Match 'headless start failed'
     }
 
     It 'uses the arm64 image and the arm64 pi-web build on an ARM64 PC' {
