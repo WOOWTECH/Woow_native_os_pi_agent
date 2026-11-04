@@ -6,9 +6,10 @@
 > 重跑與兩種解除安裝都試過。2026-11-03 還用**真的 Omnigent 伺服器**驗證過:那台雲端機登記成 Omnigent 主機,
 > Claude Code 與 Codex 在 Omnigent、Paseo 網頁版開對話並切換模型都成功,代理也能控制 Windows(PowerShell、Notepad、
 > 瀏覽器、檔案互通)。2026-11-04 也在**一台真的 Windows 10 22H2 電腦**上裝成功(一般權限的桌面環境,自我檢查 24 項全過),
-> 連上 Omnigent 之後,Pi(走 LiteLLM)與 Claude Code 都開對話、切模型、操作了 Windows 的 PowerShell 與記事本;Codex 會被自己的沙盒擋住,要逐條核准。
+> 連上 Omnigent 之後,Pi(走 LiteLLM)、Claude Code、Codex 都開對話、切模型、操作了 Windows 的 PowerShell 與記事本(Codex 自己的沙盒會擋,由它的自動審核放行),
+> 重開機後一登入就自己回來。
 > **那台實機在測試途中藍屏當機一次,原因未明,不能排除和這次測試有關(見「驗證到哪裡」)。**
-> **還沒在 Windows 11 實機上跑過**,也還沒測到「第一次啟用 WSL 並重新開機」、實際的「登入時自動啟動」、睡眠喚醒;Pi 用 ChatGPT 登入在那台實機上失敗(`invalid_grant`,原因未明),要改走 LiteLLM。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
+> **還沒在 Windows 11 實機上跑過**,也還沒測到「第一次啟用 WSL 並重新開機」、睡眠喚醒;Pi 用 ChatGPT 登入在那台實機上失敗(`invalid_grant`,原因未明),要改走 LiteLLM。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
 
 一行 PowerShell 指令,替你的 Windows 11 建一個**專用的 Linux 小系統**(WSL2 裡的 Ubuntu 24.04,
 名叫 `PiAgent`),把 Linux 版的 Pi Agent 裝進去,登入 Windows 時自動啟動。Omnigent 看到的就是一台
@@ -128,11 +129,14 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   會多試兩次(很忙的電腦偶爾會漏接一次),再明說(結束碼 3)。實機上的 WSL 3.0.3,在 systemd 服務裡直接呼叫 `powershell.exe` 也通。
 - **Codex 的沙盒會擋住 Windows。** Codex 把每個指令放進自己的沙盒,沙盒不讓程式開互通要用的連線
   (`UtilBindVsockAnyPort: socket failed 1`)。Claude Code 沒有這層,直接就能用。安裝時會放一份共用技能
-  `windows-from-wsl`(只有互通開著才放)告訴代理怎麼連 Windows。實機上在終端機跑 Codex
-  (`--sandbox workspace-write --ask-for-approval on-request`)時,它被擋之後會自己申請到沙盒外執行,**你按一次同意跑一條**。
-  在 `codex exec` 這種不能詢問的模式裡,它只會回報失敗。不想每條都按的話,核准畫面的「don't ask again」或 Omnigent 開對話時選
-  「Full access」都是 Codex/Omnigent 自己的選項,要不要開由你決定:PowerShell 什麼都做得到,包括 `wsl.exe -u root`,所以
-  放行之後,沙盒對 Windows 這邊等於沒有保護。
+  `windows-from-wsl`(只有互通開著才放)告訴代理怎麼連 Windows,Codex 被擋之後會申請到沙盒外執行。申請之後由誰決定,看你怎麼用它:
+  - **在 Omnigent 裡:預設不會問你。** Omnigent 預設讓 Codex 的自動審核決定(`approvals_reviewer="auto_review"`)。實機上 Windows 指令都幾秒內放行,
+    沒有出現核准卡片,連改電源設定的指令也放行了(那條是對話裡明確要求的;沒人要求時審核會怎麼判,沒測)。要改成由你把關,得在開對話時換權限選項(這次沒測)。
+  - **在終端機裡跑 Codex**(`--sandbox workspace-write --ask-for-approval on-request`):**你按一次同意跑一條**。不想每條都按,可以選核准畫面的「don't ask again」。
+  - **`codex exec` 這種不能詢問的模式**:只會回報失敗。
+
+  出了沙盒的指令就有這個 Windows 使用者的全部權限:PowerShell 什麼都做得到,包括 `wsl.exe -u root`。互通跑在一般權限,所以要系統管理員的事 Windows 會擋
+  (實機上 `powercfg` 改電源設定回「您沒有執行此動作所需的權限」)。
 - 想關掉:重新安裝並加上 `-NoWindowsInterop`(`/etc/wsl.conf` 會寫成 `[interop] enabled=false`,
   Windows 程式完全叫不起來)。
 - **別以為「VM 裡沒給 sudo」就擋得住代理**:互通開著時,代理也可以呼叫 `wsl.exe -u root`。互通與權限要一起看。
@@ -193,6 +197,7 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 | Pi 用 ChatGPT 登入,最後回 `invalid_grant` | 2026-11-04 在實機上用同一個帳號連續 3 次,換新連結、換裝置編號都一樣,時鐘也正確;原因未明。可以改走 LiteLLM(`pi-agent-litellm set`,再 `probe --apply` 留下真的能回答的模型) |
 | Pi 回 `Provider finish_reason: content_filter` | 上游模型把這段請求擋下,不是安裝的問題。實機上經 LiteLLM 的 Fable 5.1 碰到過,切到 Haiku 5.5 同一段話就過了 |
 | `pi-omnigent verify` 回 `SERVER_UNREACHABLE` | 這台連不到伺服器。實機上是 Wi-Fi 不穩造成的,再跑一次就過 |
+| 重開機後連不上,Omnigent 顯示主機離線 | Linux 要等有人登入 Windows 才會啟動(2026-11-04 藍屏重開後就停在登入畫面)。登入後不到 30 秒回來,不用做別的。要不用人登入,得讓 Windows 自動登入:這會讓碰得到這台電腦的人直接進你的帳號,要不要開由你決定,而且要系統管理員權限,代理做不了 |
 | Paseo 裡 Claude 顯示停用、`pi-paseo models claude` 失敗 | 全新安裝後 Paseo 的 Claude 提供者可能被標成停用(設定檔只在 daemon 啟動時寫一次)。`pi-paseo stop && pi-paseo start` 之後即恢復,實測 `acceptance` 的 Claude 與 Codex 都通過。還沒找出剛安裝完那次為什麼沒準備好 |
 
 ## 驗證到哪裡
@@ -246,7 +251,14 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 - **代理操作 Windows**(Pi 與 Claude Code,都在 Omnigent 對話裡,提示沒有提到 `pi-agent-win`):用 PowerShell 查版本與電腦名稱;建測試檔;用記事本打開,
   讀到視窗標題(`note-pi - 記事本`);**用自己拿到的 PID 只關那一個**;刪掉測試檔。Pi 那次另外從外面觀察:記事本 PID 29688 出現又消失,
   測試檔出現又消失,其他有視窗的程式沒變動。兩次各碰到一次互通逾時,代理都自己查過再重試成功。
-- **Codex**:預設沙盒擋住 Windows(見上面「Windows 互通」),在終端機按一次同意就通,讀到 Windows 版本、電腦名稱與可用記憶體。
+- **Codex**:在 Omnigent 對話裡(GPT-6-Luna,提示同樣沒提到 `pi-agent-win`)完成同樣的 Windows 操作,PID 2924 的記事本由它自己關掉,結束後從外面看,記事本與測試檔都沒留下。
+  第一條指令被自己的沙盒擋住,它照共用技能與工具的訊息申請到沙盒外(`sandbox_permissions=require_escalated`),自動審核放行,沒有人按同意(見「Windows 互通」)。
+  切到 GPT-5.6-Luna → 回答。在終端機裡跑則要按一次同意才通,讀到 Windows 版本、電腦名稱與可用記憶體。
+- **權限的界線**:有人接著在那個 Codex 對話裡,要它關掉喚醒時的登入要求、設定重開機自動登入。審核放行了 `powercfg`,Windows 回「您沒有執行此動作所需的權限」。
+  事後查登錄檔,兩個設定都沒變(沒有 `AutoAdminLogon`、沒有 `DefaultPassword`、這個電源配置沒有喚醒密碼的紀錄)。
+- **登入時自動啟動**:藍屏重開後(見下)這台停在登入畫面,Linux 沒有起來。13:56 有人登入,排程 13:56:29 啟動,13:56:51 前 Windows 這邊已連到 pi-web(回 200),不到 30 秒,
+  不用做任何事。Omnigent 主機也自己連回來(13:58 查到上線,同一個主機編號)。之後 Linux 一路開著,2.5 小時後 `doctor` 7 項全過。這是「重開機後第一次登入」,登出再登入沒試。
+- **重跑不搬連接埠**:用新版安裝程式不加 `-Port` 試跑(`-DryRun`),回「這台已經裝好,沿用原本的連接埠 30142」,後面的檢查也是 30142。
 - **Pi 用 ChatGPT 登入**:同一個帳號 3 次都在最後一步回 `invalid_grant`,見疑難排解。
 - **Wi-Fi**:測試期間這台的 USB Wi-Fi(TP-Link,驅動程式 5001.19.113.2)有幾段不穩(掉封包 40–100%,延遲 500–900 毫秒),當時整台電腦的流量只有每秒 0.1 MB
   以下,所以不是下載塞滿。那時連不到 Omnigent 伺服器。
@@ -259,13 +271,11 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 - Windows 11 實機。上面那台是 Windows 10。
 - 乾淨機器的「自動提權 → 裝 WSL → 重開機 → 自動續跑」(E13):那台的 WSL 功能本來就開著,不用重開機,也沒跳過 UAC。安裝程式內建的
   `--web-download` 退路也沒實跑,因為 WSL 已先手動升好。被擋的情況(虛擬化關閉、WSL 被政策停用、磁碟或記憶體不足)的訊息(E14)也還沒看過。
-- 實際的「登入時」自動啟動:排程登錄好了,但還沒登出再登入過;有沒有閃視窗也還沒看(E4)。**已知風險**:如果預設終端機是
+- 登入時自動啟動的其餘部分:重開機後第一次登入過了(見上),登出再登入還沒試;有沒有閃視窗也還沒人確認(E4)。**已知風險**:如果預設終端機是
   Windows Terminal,`-WindowStyle Hidden` 可能不生效,登入後會多一個視窗在跑保活;關掉那個視窗,Linux 就會停。另外,
   公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活與自動續跑都不會執行。
 - 睡眠喚醒後 host 自動重連(E8)。
-- 真機上 Codex 在 Omnigent 對話裡切換模型與操作 Windows(雲端機上驗過切換模型;Windows 操作在實機終端機裡驗過)。換上新的錯誤訊息後,它知道要申請到沙盒外執行,
-  但結果還沒看到,那台就當機了。
-- 那次藍屏的原因(傾印檔還沒分析)。
+- 真機上的 Paseo 網頁版(雲端機上驗過)。
 - 真機上用 Omnigent 網頁的選單切換模型:實機上網頁只開過第一個對話,切換是走同一個 API(`PATCH /v1/sessions/{id}`);選單本身是在雲端機上點過的。
 - Windows ARM64(E12)。
 - **Pi 用 ChatGPT 帳號回答一句話**:雲端機上回覆被用量上限擋下,實機上登入就失敗。走 LiteLLM 的已經過了。

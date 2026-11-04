@@ -284,17 +284,17 @@ Measured on real Macs rather than in a sandbox (the commands are in OPERATIONS-G
 See [`WSL2.md`](WSL2.md) for the feature and [`WSL2-PLAN.md`](WSL2-PLAN.md) for the design and the
 experiments (E1-E14) a real machine still has to settle.
 
-**Linux side: 165 checks in a sandbox** (`bash tests/wsl.sh`; macOS 26.4, bash 3.2). Every check runs against
+**Linux side: 186 checks in a sandbox** (`bash tests/wsl.sh`; macOS 26.4, bash 3.2). Every check runs against
 a throw-away directory and stubs -- Windows programs, `useradd`, `apt-get`, `loginctl`, `systemctl`, `/proc/version`,
 `/run/WSL`, `/run/user`, `/etc` -- so it never touches a real WSL, a real install or the real `/etc`. The same suite
-runs on Ubuntu and macOS in CI (`wsl2-linux.yml`; **not yet run there**).
+runs on Ubuntu and macOS in CI (`wsl2-linux.yml`).
 
 | section | checks | what it proves |
 |---|---|---|
-| `win` | 44 | `pi-agent-win`: finds a live interop channel when a systemd service has none, keeps the session's own, exit 3 and a clear message when none is live, exit 127 for a missing program; `ps` never loads the profile, never waits for input, forces UTF-8, passes the exit status through; `open` uses wslview or `Start-Process`, doubles quotes (no PowerShell injection through a URL), converts Linux paths; `doctor` lists every problem, skips what depends on a failed check |
+| `win` | 59 | `pi-agent-win`: finds a live interop channel when a systemd service has none, keeps the session's own, exit 3 and a clear message when none is live, exit 127 for a missing program; `ps` never loads the profile, never waits for input, forces UTF-8, passes the exit status through; `open` uses wslview or `Start-Process`, doubles quotes (no PowerShell injection through a URL), converts Linux paths; `doctor` lists every problem, skips what depends on a failed check |
 | `ctl` | 19 | `pi-agent`: `open` goes to the Windows browser on WSL and is unchanged elsewhere, `doctor` routes to `pi-agent-win`, `XDG_RUNTIME_DIR` is derived when a `wsl.exe -u USER --exec` session has none, and left alone when it has one or on macOS |
 | `env` | 12 | `pi-agent-env.sh`: System32 and PowerShell are appended LAST (a Windows node/npm/git cannot shadow ours), once, only when the installer recorded them and they exist; an existing `BROWSER` is kept |
-| `install` | 20 | `install.sh`: refuses a home on a Windows drive, warns without systemd, derives the user bus, survives a missing `$USER` under `set -u`, says where Windows finds pi-web, `wire` installs `pi-agent-win`; plain Linux is unchanged |
+| `install` | 26 | `install.sh`: refuses a home on a Windows drive, warns without systemd, derives the user bus, survives a missing `$USER` under `set -u`, says where Windows finds pi-web, `wire` installs `pi-agent-win`; plain Linux is unchanged |
 | `rootsetup` | 39 | `scripts/wsl-root-setup.sh`: creates the user once, writes `wsl.conf` (interop on/off), switches off the first-run prompt and cloud-init, hands over the installer, records the Windows directory, refuses bad input and a non-root caller; `packages`; `linger` waits for the bus and times out |
 | `bundle` | 28 | `scripts/build-wsl-bundle.sh`: one-directory tarball, same commit gives the same bytes, published sha256 is the tarball's, stamped installer has a UTF-8 BOM and no placeholder left, refuses a VERSION mismatch, a bad version and an unknown placeholder |
 | `smoke` | 3 | `tests/smoke.sh` under a real pty: what it runs has no terminal on stdin. The harness proves it really gives a terminal, and every program the self-check touches is a stand-in |
@@ -366,10 +366,47 @@ only a real PC showed:
    with stdin from /dev/null; `tests/wsl/smoke.sh` reproduces it under a real pty.
 5. `pi-agent url`, `open` and `doctor` looked at 30141 on an install made with another port, because `wsl.exe --exec` starts with an
    empty environment. On this PC that is a different pi-web. `wire` now records the port in `$PI_AGENT_HOME/pi-web-port`.
+6. A re-run without `-Port` would have moved the service to 30141, where the other pi-web is. It now keeps the recorded port; a
+   `-DryRun` of the new installer on this PC says so and goes on to check 30142.
+7. Codex's command sandbox refuses the socket WSL interop needs (`UtilBindVsockAnyPort:317: socket failed 1`). Told nothing, Codex
+   reported that Windows could not be reached; misled by `pi-agent-win`'s "no working channel" and `doctor`'s "pi-web is not active",
+   it then suggested `wsl --shutdown`. A shared `windows-from-wsl` skill (installed only with interop on) and the tool's message now say
+   that a sandbox is in the way, that Windows is fine, and to ask to run the command outside it. Inside a sandbox `doctor` skips the
+   service check, which the sandbox hides too.
+8. With about 0.3 GB free, a Windows call sometimes timed out (`accept4 failed 110`). Pi and Claude Code each met one and recovered by
+   checking and retrying. Finding a channel now looks up to three times; a command the agent asked for is never run twice by that.
 
-Still open: this PC's Wi-Fi dropped at 11:01:56, eight minutes after the first install, and came back at 11:27:12. The log says "the
-driver disconnected the network", the same reason it gives for three drops on 10/07 and 10/25, before any of this. No reboot, no sleep,
-no crash, and the distro kept running. It cannot be pinned on the install or cleared of it from these logs.
+**Through the real Omnigent server on that PC.** `pi-omnigent connect` with the password over stdin; `pi-omnigent verify` answered for all
+three engines. Then one request in plain words, not mentioning `pi-agent-win`: read the Windows version and computer name, create a test
+file, open it in Notepad, read the window title, close that Notepad by the PID it got, delete the file. Pi and Codex were also watched from
+outside: the Notepad and the file appeared and went, and no other program was touched.
+
+| agent | did the request on | switched to, and answered |
+|---|---|---|
+| Pi, on a LiteLLM gateway (`probe --apply` kept 40 of 85 models) | Haiku 5.5, after Fable 5.1 came back `content_filter` | DeepSeek v4 flash |
+| Claude Code | Haiku 5.5 | Sonnet 5.5 |
+| Codex | GPT-6-Luna | GPT-5.6-Luna |
+
+The first Pi conversation was opened in the web UI; the rest, and every model switch, went through the same API (`PATCH /v1/sessions/{id}`),
+so the web menu itself was not clicked on this PC. Codex's first Windows command hit its sandbox; it then asked with
+`sandbox_permissions=require_escalated`, and Omnigent's default `approvals_reviewer="auto_review"` let it through with no card and no person.
+Someone later asked that conversation to turn off the wake password and set up automatic logon: the reviewer let `powercfg` through as well,
+Windows refused it for lack of rights, and the registry shows neither setting changed. Pi's own ChatGPT login failed three times with
+`invalid_grant` at the token exchange, on fresh links, with the clock right and a new device ID; the cause was not found.
+
+**Start at logon.** The blue screen below left the PC at the sign-in screen with the distro down. On sign-in the logon task started at
+13:56:29; Windows reached pi-web by 13:56:51; the Omnigent host was back online under the same id by 13:58:27, and `doctor` still passed 7/7
+two and a half hours later. Nobody has yet said whether a window flashed, and signing out and in again is untried.
+
+Still open:
+
+- This PC's Wi-Fi dropped at 11:01:56, eight minutes after the first install, and came back at 11:27:12. The log says "the driver
+  disconnected the network", the same reason it gives for three drops on 10/07 and 10/25, before any of this. No reboot, no sleep, no crash,
+  and the distro kept running. It cannot be pinned on the install or cleared of it from these logs. It was unstable again from about 12:52
+  (40-100% packet loss, 500-900 ms) while the whole PC moved under 0.12 MB/s, so not a download filling the link.
+- **It blue-screened at 13:42**: `0x133 DPC_WATCHDOG_VIOLATION`, after half an hour of poor network and with about 0.3 GB free. The one
+  before was in May 2023. That day had seen this distro, WSL 3.0.3 and several agents, so a link cannot be ruled out; the dump has not been
+  analysed.
 
 **Not covered at all:** a real Windows 11 PC; the first-time enablement with a UAC prompt and a reboot; start at logon actually
 happening (the task registers from a non-elevated desktop session, on an account in Administrators; nobody has signed out and back
