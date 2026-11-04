@@ -8,7 +8,7 @@
 > 瀏覽器、檔案互通)。2026-11-04 也在**一台真的 Windows 10 22H2 電腦**上裝成功(一般權限的桌面環境,自我檢查 24 項全過),
 > 連上 Omnigent 之後,Pi(走 LiteLLM)、Claude Code、Codex 都開對話、切模型、操作了 Windows 的 PowerShell 與記事本(Codex 自己的沙盒會擋,由它的自動審核放行),
 > 重開機後一登入就自己回來。
-> **那台實機在測試途中藍屏當機一次,原因未明,不能排除和這次測試有關(見「驗證到哪裡」)。**
+> **那台實機在測試途中藍屏當機一次。傾印檔指向它的 USB Wi-Fi 驅動,不是 WSL 的元件,但不能完全排除測試有間接影響(見「驗證到哪裡」)。**
 > **還沒在 Windows 11 實機上跑過**,也還沒測到「第一次啟用 WSL 並重新開機」、睡眠喚醒;Pi 用 ChatGPT 登入在那台實機上失敗(`invalid_grant`,原因未明),要改走 LiteLLM。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
 
 一行 PowerShell 指令,替你的 Windows 11 建一個**專用的 Linux 小系統**(WSL2 裡的 Ubuntu 24.04,
@@ -41,6 +41,9 @@ $u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3
 
 這樣寫(而不是 `irm … | iex`)是因為 Windows PowerShell 5.1 會依回應標頭猜編碼,可能把中文訊息讀成亂碼;
 這裡明確用 UTF-8 解碼。
+
+**不想貼指令的話,也可以雙擊:** 到發佈頁下載 `Install-Pi-Agent.cmd`,雙擊它。它做的事和上面那兩行一樣,跑完視窗會停著讓你看結果,按任意鍵才關。
+這個檔案沒有程式碼簽章,所以瀏覽器可能問你要不要保留,Windows 也會跳「Windows 已保護您的電腦」:按「其他資訊」→「仍要執行」。它是純文字,可以先用記事本打開看。
 
 現在是預覽版,所以網址寫明版本:GitHub 的 `releases/latest` 不會指到預覽版。發佈頁在 [v0.3.0-rc.2](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/tag/v0.3.0-rc.2)。
 
@@ -200,6 +203,8 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 | Pi 回 `Provider finish_reason: content_filter` | 上游模型把這段請求擋下,不是安裝的問題。實機上經 LiteLLM 的 Fable 5.1 碰到過,切到 Haiku 5.5 同一段話就過了 |
 | `pi-omnigent verify` 回 `SERVER_UNREACHABLE` | 這台連不到伺服器。實機上是 Wi-Fi 不穩造成的,再跑一次就過 |
 | 重開機後連不上,Omnigent 顯示主機離線 | Linux 要等有人登入 Windows 才會啟動(2026-11-04 藍屏重開後就停在登入畫面)。登入後不到 30 秒回來,不用做別的。要不用人登入,得讓 Windows 自動登入:這會讓碰得到這台電腦的人直接進你的帳號,要不要開由你決定,而且要系統管理員權限,代理做不了 |
+| 藍屏 `DPC_WATCHDOG_VIOLATION` | 2026-11-04 在一台用 USB Wi-Fi 的電腦上碰到一次,傾印檔指向網卡驅動(`rtwlanu6.sys`),見「驗證到哪裡」。先更新網卡驅動,或改接網路線 |
+| 登入時閃一下黑框 | 正常。保活程式啟動時會有一個主控台視窗出現約 30–50 毫秒,然後隱藏 |
 | Paseo 裡 Claude 顯示停用、`pi-paseo models claude` 失敗 | 全新安裝後 Paseo 的 Claude 提供者可能被標成停用(設定檔只在 daemon 啟動時寫一次)。`pi-paseo stop && pi-paseo start` 之後即恢復,實測 `acceptance` 的 Claude 與 Codex 都通過。還沒找出剛安裝完那次為什麼沒準備好 |
 
 ## 驗證到哪裡
@@ -262,13 +267,18 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   事後查登錄檔,兩個設定都沒變(沒有 `AutoAdminLogon`、沒有 `DefaultPassword`、這個電源配置沒有喚醒密碼的紀錄)。
 - **登入時自動啟動**:藍屏重開後(見下)這台停在登入畫面,Linux 沒有起來。13:56 有人登入,排程 13:56:29 啟動,13:56:51 前 Windows 這邊已連到 pi-web(回 200),不到 30 秒,
   不用做任何事。Omnigent 主機也自己連回來(13:58 查到上線,同一個主機編號)。之後 Linux 一路開著,2.5 小時後 `doctor` 7 項全過。這是「重開機後第一次登入」,登出再登入沒試。
+- **視窗**:登入後沒有視窗一直開著(保活的 `powershell.exe`、`wsl.exe` 都沒有可見視窗)。啟動那一下會閃一個主控台視窗:用和登入排程相同的形式實測,看得到約 30–50 毫秒(每約 20 毫秒查一次),
+  這台的使用者登入時沒注意到。那台沒有 Windows Terminal,所以下面列的 Windows Terminal 風險沒測到。
 - **重跑不搬連接埠**:用新版安裝程式不加 `-Port` 試跑(`-DryRun`),回「這台已經裝好,沿用原本的連接埠 30142」,後面的檢查也是 30142。
 - **Pi 用 ChatGPT 登入**:同一個帳號 3 次都在最後一步回 `invalid_grant`,見疑難排解。
 - **Wi-Fi**:測試期間這台的 USB Wi-Fi(TP-Link,驅動程式 5001.19.113.2)有幾段不穩(掉封包 40–100%,延遲 500–900 毫秒),當時整台電腦的流量只有每秒 0.1 MB
   以下,所以不是下載塞滿。那時連不到 Omnigent 伺服器。
-- **這台當機了一次**:13:42 藍屏重開,`0x133 DPC_WATCHDOG_VIOLATION`(某個驅動程式佔住處理器太久),開著的程式全部關閉。之前約半小時已經時好時壞,
-  可用記憶體約 0.3 GB。這台上一次藍屏是 2023 年 5 月;當天裝了這個 Linux、把 WSL 升到 3.0.3、跑了好幾個代理,所以**不能排除有關**。傾印檔還沒分析,
-  是哪個驅動程式、跟 WSL2 有沒有關都還不知道。**在平常工作用的電腦上試之前,請先存好檔案**,記憶體只有 8 GB 的尤其要小心。
+- **這台當機了一次,傾印檔指向它的 USB Wi-Fi 驅動**:13:40 藍屏重開,`0x133 DPC_WATCHDOG_VIOLATION`,開著的程式全部關閉。用微軟公開符號看小傾印檔:處理器閒置時跑了 Wi-Fi 驅動
+  `rtwlanu6.sys`(TP-Link USB 網卡,`USB\VID_3625&PID_010F`,驅動 5001.19.113.2,2024-05-21)的計時器工作,它往 USB 送請求,集線器那層立刻把請求結束掉,ACPI 那層走的是
+  「裝置已被意外移除」的路徑;處理器在高優先權撐滿 20 秒,看門狗就讓系統當機。堆疊上沒有 WSL 的元件(`lxcore`、`vmswitch`、`vmbus`)。這顆驅動今天之前就有
+  「驅動程式已經中斷網路的連線」的紀錄(10/07、10/25)。上一次藍屏(2023 年 5 月)是 NVIDIA 顯示卡驅動,和這次無關。
+  **但不能說和測試完全無關**:開機 28 天都沒事,偏偏在裝了 Linux、跑代理的這天當機;藍屏前半小時網路已經時好時壞,記憶體只剩約 0.3 GB。傾印只有當下一個瞬間,也不能證明那 20 秒做的都是同一件事。
+  **在平常工作用的電腦上試之前,請先存好檔案**;用 USB Wi-Fi 的話先更新網卡驅動,或改接網路線。
 
 **還沒驗證**:
 
@@ -276,18 +286,21 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 - 在真的電腦上從發佈網址裝:那台實機用的是開發版安裝包,這條指令從真網址只在雲端機上跑過。
 - 乾淨機器的「自動提權 → 裝 WSL → 重開機 → 自動續跑」(E13):那台的 WSL 功能本來就開著,不用重開機,也沒跳過 UAC。安裝程式內建的
   `--web-download` 退路也沒實跑,因為 WSL 已先手動升好。被擋的情況(虛擬化關閉、WSL 被政策停用、磁碟或記憶體不足)的訊息(E14)也還沒看過。
-- 登入時自動啟動的其餘部分:重開機後第一次登入過了(見上),登出再登入還沒試;有沒有閃視窗也還沒人確認(E4)。**已知風險**:如果預設終端機是
+- 登入時自動啟動的其餘部分:重開機後第一次登入過了(見上),登出再登入還沒試(E4)。**已知風險**:如果預設終端機是
   Windows Terminal,`-WindowStyle Hidden` 可能不生效,登入後會多一個視窗在跑保活;關掉那個視窗,Linux 就會停。另外,
   公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活與自動續跑都不會執行。
 - 睡眠喚醒後 host 自動重連(E8)。
 - 真機上的 Paseo 網頁版(雲端機上驗過)。
 - 真機上用 Omnigent 網頁的選單切換模型:實機上網頁只開過第一個對話,切換是走同一個 API(`PATCH /v1/sessions/{id}`);選單本身是在雲端機上點過的。
 - Windows ARM64(E12)。
+- 更新 Wi-Fi 驅動或改接網路線之後,那台還會不會藍屏。
+- 在真的電腦上雙擊 `Install-Pi-Agent.cmd`:同一個檔案只在雲端機上用命令列跑過,Windows 跳的警告和瀏覽器的提示都是依一般行為寫的,沒有實際看過。
 - **Pi 用 ChatGPT 帳號回答一句話**:雲端機上回覆被用量上限擋下,實機上登入就失敗。走 LiteLLM 的已經過了。
 - Paseo 在剛裝完的那次 `models claude` 失敗的原因(重啟 daemon 可解,見疑難排解)。
 
 ## 給工程師
 
+- 雙擊檔的範本是 `windows/install-pi-agent.cmd.in`,發佈時蓋上網址、轉成 CRLF,變成 `Install-Pi-Agent.cmd`。參數會傳給安裝程式,但值不能有空白。
 - 發佈:先改好 `VERSION` 和上面安裝指令的網址再打標籤。正式版(`v1.2.3`)的指令要用 `releases/latest/download/install-wsl.ps1`;預覽版(`v1.2.3-rc.1`)要寫明版本,因為 `latest` 不會指到預覽版。
   不一致的話 `scripts/build-wsl-bundle.sh` 會拒絕發佈。`release.yml` 會把有 `-` 的標籤標成預覽版,發佈後再用 GitHub 的 Windows 機從真網址跑一次這條指令(`wsl-verify`)。
 - 從原始碼試:`bash scripts/build-wsl-bundle.sh dist dev`,再 `pwsh windows/install-wsl.ps1 -BundlePath dist/pi-agent-installer-dev.tar.gz -PiWebArtifact <網址>`。

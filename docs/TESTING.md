@@ -284,7 +284,7 @@ Measured on real Macs rather than in a sandbox (the commands are in OPERATIONS-G
 See [`WSL2.md`](WSL2.md) for the feature and [`WSL2-PLAN.md`](WSL2-PLAN.md) for the design and the
 experiments (E1-E14) a real machine still has to settle.
 
-**Linux side: 195 checks in a sandbox** (`bash tests/wsl.sh`; macOS 26.4, bash 3.2). Every check runs against
+**Linux side: 204 checks in a sandbox** (`bash tests/wsl.sh`; macOS 26.4, bash 3.2). Every check runs against
 a throw-away directory and stubs -- Windows programs, `useradd`, `apt-get`, `loginctl`, `systemctl`, `/proc/version`,
 `/run/WSL`, `/run/user`, `/etc` -- so it never touches a real WSL, a real install or the real `/etc`. The same suite
 runs on Ubuntu and macOS in CI (`wsl2-linux.yml`).
@@ -296,7 +296,7 @@ runs on Ubuntu and macOS in CI (`wsl2-linux.yml`).
 | `env` | 12 | `pi-agent-env.sh`: System32 and PowerShell are appended LAST (a Windows node/npm/git cannot shadow ours), once, only when the installer recorded them and they exist; an existing `BROWSER` is kept |
 | `install` | 26 | `install.sh`: refuses a home on a Windows drive, warns without systemd, derives the user bus, survives a missing `$USER` under `set -u`, says where Windows finds pi-web, `wire` installs `pi-agent-win`; plain Linux is unchanged |
 | `rootsetup` | 39 | `scripts/wsl-root-setup.sh`: creates the user once, writes `wsl.conf` (interop on/off), switches off the first-run prompt and cloud-init, hands over the installer, records the Windows directory, refuses bad input and a non-root caller; `packages`; `linger` waits for the bus and times out |
-| `bundle` | 37 | `scripts/build-wsl-bundle.sh`: one-directory tarball, same commit gives the same bytes, published sha256 is the tarball's, stamped installer has a UTF-8 BOM and no placeholder left, refuses a VERSION mismatch, a bad version and an unknown placeholder |
+| `bundle` | 46 | `scripts/build-wsl-bundle.sh`: one-directory tarball, same commit gives the same bytes, published sha256 is the tarball's, stamped installer has a UTF-8 BOM and no placeholder left, refuses a VERSION mismatch, a bad version and an unknown placeholder |
 | `smoke` | 3 | `tests/smoke.sh` under a real pty: what it runs has no terminal on stdin. The harness proves it really gives a terminal, and every program the self-check touches is a stand-in |
 
 Test strength was checked by hand with **32 deliberate regressions** (probe skipped, session channel ignored, profile
@@ -404,7 +404,9 @@ Windows refused it for lack of rights, and the registry shows neither setting ch
 
 **Start at logon.** The blue screen below left the PC at the sign-in screen with the distro down. On sign-in the logon task started at
 13:56:29; Windows reached pi-web by 13:56:51; the Omnigent host was back online under the same id by 13:58:27, and `doctor` still passed 7/7
-two and a half hours later. Nobody has yet said whether a window flashed, and signing out and in again is untried.
+two and a half hours later. Signing out and in again is untried. As for windows: afterwards none of the keep-alive's processes has a visible one.
+A task of the same shape, watched with `EnumWindows` every 20 ms or so, showed a console window for about 30-50 ms as PowerShell started and then
+hid it. The person signing in did not notice it. This PC has no Windows Terminal, so that risk is still open.
 
 Still open:
 
@@ -412,9 +414,28 @@ Still open:
   disconnected the network", the same reason it gives for three drops on 10/07 and 10/25, before any of this. No reboot, no sleep, no crash,
   and the distro kept running. It cannot be pinned on the install or cleared of it from these logs. It was unstable again from about 12:52
   (40-100% packet loss, 500-900 ms) while the whole PC moved under 0.12 MB/s, so not a download filling the link.
-- **It blue-screened at 13:42**: `0x133 DPC_WATCHDOG_VIOLATION`, after half an hour of poor network and with about 0.3 GB free. The one
-  before was in May 2023. That day had seen this distro, WSL 3.0.3 and several agents, so a link cannot be ruled out; the dump has not been
-  analysed.
+- **It blue-screened at 13:40**: `0x133 DPC_WATCHDOG_VIOLATION`, arg1 0: one DPC over its limit, 0x501 of 0x500 ticks, 20 s. After 28 days of
+  uptime, half an hour of poor network and with about 0.3 GB free. The minidump, read with a small standard-library parser and Microsoft's
+  public symbols (values found scanning the stack, not an unwind; oldest last):
+
+      nt!KeAcquireSpinLockRaiseToDpc+0x1a       the clock interrupt landed here: IRQL just raised to 2, the lock not touched yet
+      Wdf01000!FxNonPagedObject::Lock
+      Wdf01000!FxIoTarget::_RequestCompletionRoutine
+      nt!IopfCompleteRequest
+      UsbHub3!HUBPDO_EvtDeviceWdmIrpPreprocess  the hub completes the request at once
+      ACPI!ACPIDispatchForwardIrp
+      ACPI!AcpiSurpriseRemovedFilterIrpDispatch
+      ACPI!ACPIDispatchIrp
+      Wdf01000!FxIoTarget::Send
+      Wdf01000!imp_WdfRequestSend
+      rtwlanu6+0x9143, +0x13d912, +0x13db10, +0x13e256, +0x13de74
+      ndis (its timer routine)
+      nt!KiProcessExpiredTimerList, KiRetireDpcList, KiDpcInterrupt, KiIdleLoop
+
+  So a timer of the TP-Link adapter's Wi-Fi driver, sending USB requests down a stack where ACPI treats the device as surprise-removed, at
+  DISPATCH_LEVEL for 20 s. No `lxcore`, `vmswitch` or `vmbus` on the stack, and this driver logged "the driver disconnected the network" on
+  10/07 and 10/25 as well. The blue screen before it, in May 2023, was `0x116` in `nvlddmkm.sys`, unrelated. What this does not show: that the
+  20 s were all this one path (it is a single moment), or that the day's new load had no part in it.
 
 **Not covered at all:** a real Windows 11 PC; the first-time enablement with a UAC prompt and a reboot; start at logon actually
 happening (the task registers from a non-elevated desktop session, on an account in Administrators; nobody has signed out and back
