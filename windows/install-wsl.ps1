@@ -70,8 +70,10 @@ $script:PaTaskName = 'PiAgentWsl'
 $script:PaRunOnceName = 'PiAgentWslResume'
 $script:PaStagingDir = '/opt/pi-agent-installer'
 $script:PaRootSetup = '/opt/pi-agent-installer/scripts/wsl-root-setup.sh'
-# Runs elevated and nowhere else. The exit code is the one of "wsl --install".
-$script:PaElevatedWslCommand = '& { wsl.exe --install --no-distribution; $c = $LASTEXITCODE; wsl.exe --update; exit $c }'
+# Runs elevated and nowhere else. Windows 10's built-in wsl.exe does not know --no-distribution (it prints its usage
+# and fails, harmlessly), so the exit code is the one of the update. On a real Windows 10 22H2 PC plain --update went
+# through the Store and ended in "catastrophic failure" after two minutes; --web-download then worked.
+$script:PaElevatedWslCommand = '& { wsl.exe --install --no-distribution; wsl.exe --update; if ($LASTEXITCODE -ne 0) { wsl.exe --update --web-download }; exit $LASTEXITCODE }'
 $script:PaSelfPath = ''
 $script:PaMessages = New-Object System.Collections.ArrayList
 $script:PaLastStream = New-Object System.Collections.ArrayList
@@ -1204,7 +1206,7 @@ function Invoke-PaStepWsl {
             return 30
         }
         if (-not $pending -and $rc -ne 0) {
-            Write-PaMsg 'Error' ('WSL 安裝失敗(代碼 {0})。請確認網路正常,再重跑一次。(wsl --install failed)' -f $rc)
+            Write-PaMsg 'Error' ('WSL 安裝失敗(代碼 {0})。請確認網路正常,再重跑一次。如果你是用 SSH 連進來裝,請改在這台電腦的桌面開 PowerShell 跑:Store 版 WSL 在 SSH 連線裡可能啟動不了。(wsl --install failed)' -f $rc)
             return 30
         }
         return (Invoke-PaStepReboot -Opts $Opts -Paths $Paths)
