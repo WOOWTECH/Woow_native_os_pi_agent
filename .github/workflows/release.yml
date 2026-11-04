@@ -12,12 +12,18 @@
 #
 # NOT DONE HERE: the macOS .pkg. It is built, signed and notarized on the
 # maintainer's Mac, where the Developer ID certificates live -- CI holds no
-# signing material -- and it pins the macos-arm64 tree this workflow publishes
+# signing material -- and it pins the macos-<arch> tree this workflow publishes
 # by URL and sha256 rather than embedding it. See docs/MACOS.md:
 #
 #     scripts/build-macos-tmux.sh
-#     scripts/build-macos-pkg.sh --artifact-url <this release's macos-arm64 asset> \
+#     scripts/build-macos-pkg.sh --artifact-url <this release's macos-<arch> asset> \
 #         --artifact-sha256 <its .sha256> --sign-app ... --sign ... --notary-key ...
+#
+# The Intel pkg needs an x86_64 tmux, and build-macos-tmux.sh builds only for
+# the Mac it runs on. So the Intel job also builds and publishes
+# tools-macos-x64.tar.gz: unpacked, it is the --tools directory for an Intel pkg
+# built on any Mac (packaging only copies the binary, and the pkg build's own
+# --sign-app signs it).
 name: release
 
 on:
@@ -38,8 +44,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14,      label: macos-arm64  }
-          - { os: ubuntu-latest, label: linux-x64    }
+          - { os: macos-14,       label: macos-arm64  }
+          - { os: macos-15-intel, label: macos-x64    }
+          - { os: ubuntu-latest,  label: linux-x64    }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +59,14 @@ jobs:
 
       - name: Package artifact
         run: scripts/build-piweb-artifact.sh dist
+
+      # The x86_64 tmux the Intel pkg bundles (see the header).
+      - name: Build the bundled tmux
+        if: matrix.label == 'macos-x64'
+        run: |
+          scripts/build-macos-tmux.sh dist/tools-macos-x64
+          tar czf dist/tools-macos-x64.tar.gz -C dist tools-macos-x64
+          ( cd dist && printf '%s  %s\n' "$(shasum -a 256 tools-macos-x64.tar.gz | awk '{print $1}')" tools-macos-x64.tar.gz > tools-macos-x64.tar.gz.sha256 )
 
       - uses: actions/upload-artifact@v4
         with:
@@ -80,6 +95,9 @@ jobs:
             installer at it to skip the ~15 minute source build:
 
                 PI_AGENT_PIWEB_ARTIFACT=<url> ./install.sh
+
+            `tools-macos-x64.tar.gz` is the x86_64 tmux the Intel Mac `.pkg`
+            bundles (`scripts/build-macos-pkg.sh --tools`).
 
             The macOS `.pkg` is not built here: it is signed and notarized on the
             maintainer's Mac and attached separately.

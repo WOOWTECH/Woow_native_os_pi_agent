@@ -19,7 +19,10 @@
 # WHAT THIS BUILDS
 #
 # tmux with libevent (core only), utf8proc and jemalloc linked statically, the
-# system ncurses from /usr/lib, for arm64, minimum macOS 13.0.
+# system ncurses from /usr/lib, minimum macOS 13.0, for the architecture of the
+# Mac it runs on: arm64 on Apple silicon, x86_64 on an Intel Mac. Only the
+# -arch flag and jemalloc's page size differ between the two (see the jemalloc
+# step); every check below applies to both.
 #
 # utf8proc is not optional: without it tmux takes character widths from the
 # system wcwidth(), which gets East Asian widths wrong, and the people using
@@ -60,7 +63,7 @@
 # process's allocations through the default zone, and a private tmux server
 # that round-trips Traditional Chinese with the right display widths.
 #
-#   scripts/build-macos-tmux.sh [outdir]      default: dist/tools-macos-arm64
+#   scripts/build-macos-tmux.sh [outdir]      default: dist/tools-macos-<arm64|x64>
 #
 # Output: <outdir>/bin/tmux, <outdir>/licenses/{tmux-COPYING,libevent-LICENSE,
 # utf8proc-LICENSE.md,jemalloc-COPYING}, <outdir>/BUILDINFO
@@ -72,11 +75,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../lib/pins.sh
 . "$HERE/lib/pins.sh"
 
-OUT="${1:-$HERE/dist/tools-macos-arm64}"
-MIN="$PIN_TMUX_MACOS_MIN"
-
 [ "$(uname -s)" = Darwin ] || die "build-macos-tmux.sh runs on macOS"
-[ "$(uname -m)" = arm64 ]  || die "this builds the arm64 tmux; run it on an Apple-silicon Mac"
+# The host's own architecture, never a cross build: the checks below run the
+# binary. ARCH names the output the way build-macos-pkg.sh and the pi-web
+# artifacts do (tools-macos-arm64, tools-macos-x64).
+case "$(uname -m)" in
+  arm64)  ARCH=arm64; CLANG_ARCH=arm64  ;;
+  x86_64) ARCH=x64;   CLANG_ARCH=x86_64 ;;
+  *)      die "no tmux build for $(uname -m)" ;;
+esac
+OUT="${1:-$HERE/dist/tools-macos-$ARCH}"
+MIN="$PIN_TMUX_MACOS_MIN"
 xcode-select -p >/dev/null 2>&1 || die "needs the Xcode Command Line Tools (clang, make, ar): xcode-select --install"
 
 # A build that can see Homebrew links Homebrew: its pkg-config would hand tmux's
@@ -86,7 +95,7 @@ unset CPATH C_INCLUDE_PATH LIBRARY_PATH CPPFLAGS LDFLAGS CFLAGS \
       PKG_CONFIG PKG_CONFIG_PATH PKG_CONFIG_LIBDIR 2>/dev/null || true
 export MACOSX_DEPLOYMENT_TARGET="$MIN"
 export CC=clang
-CFLAGS_ALL="-arch arm64 -mmacosx-version-min=$MIN -O2"
+CFLAGS_ALL="-arch $CLANG_ARCH -mmacosx-version-min=$MIN -O2"
 JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/pa-tmux-build.XXXXXX")"
@@ -123,20 +132,22 @@ JEM_SRC="$WORK/src/jemalloc-$PIN_JEMALLOC_VERSION"
 
 # The je_ prefix and the zone allocator are jemalloc's own macOS defaults;
 # they are spelled out because the whole design depends on them (see header).
-# --with-lg-page=14: every arm64 Mac uses 16 KiB pages, and pinning it keeps the
-# build from depending on what the build host's configure probe happens to see.
+# --with-lg-page: every arm64 Mac uses 16 KiB pages (14) and every Intel Mac
+# 4 KiB (12); pinning it keeps the build from depending on what the build
+# host's configure probe happens to see.
 # --disable-cxx: no operator new/delete, which -force_load would otherwise pull
 # in together with a libc++ dependency tmux has no use for.
-log "jemalloc $PIN_JEMALLOC_VERSION (static, je_ prefix, macOS zone allocator)"
+case "$ARCH" in arm64) LG_PAGE=14; PAGE_KIB=16 ;; x64) LG_PAGE=12; PAGE_KIB=4 ;; esac
+log "jemalloc $PIN_JEMALLOC_VERSION (static, je_ prefix, macOS zone allocator, $PAGE_KIB KiB pages)"
 ( cd "$JEM_SRC"
   step jemalloc-configure ./configure --prefix="$DEPS" --with-jemalloc-prefix=je_ \
-       --with-lg-page=14 --disable-cxx CFLAGS="$CFLAGS_ALL"
+       --with-lg-page="$LG_PAGE" --disable-cxx CFLAGS="$CFLAGS_ALL"
   step jemalloc-make make -j"$JOBS" build_lib_static
   step jemalloc-install make install_include install_lib_static )
 JEM_DEFS="$JEM_SRC/include/jemalloc/internal/jemalloc_internal_defs.h"
 grep -q '^#define JEMALLOC_ZONE' "$JEM_DEFS" \
   || die "jemalloc was configured without the macOS zone allocator"
-grep -q '^#define LG_PAGE 14' "$JEM_DEFS" || die "jemalloc was not configured for 16 KiB pages"
+grep -q "^#define LG_PAGE $LG_PAGE" "$JEM_DEFS" || die "jemalloc was not configured for $PAGE_KIB KiB pages"
 [ -f "$DEPS/lib/libjemalloc.a" ] && [ -f "$DEPS/include/jemalloc/jemalloc.h" ] \
   || die "jemalloc's static library or header was not installed"
 
@@ -195,6 +206,8 @@ bad="$(printf '%s\n' "$deps" | grep -v '^/usr/lib/' || true)"
 [ -z "$bad" ] || die "tmux links outside /usr/lib: $bad"
 minos="$(otool -l "$BIN" | awk '/LC_BUILD_VERSION/{f=1} f && $1=="minos"{print $2; exit}')"
 [ "$minos" = "$MIN" ] || die "tmux minos is '$minos', expected $MIN"
+file -b "$BIN" | grep -q "Mach-O 64-bit executable $CLANG_ARCH" \
+  || die "tmux is not a $CLANG_ARCH executable: $(file -b "$BIN")"
 "$BIN" -V | grep -qx "tmux $PIN_TMUX_VERSION" || die "tmux -V does not report $PIN_TMUX_VERSION"
 
 # jemalloc must be the DEFAULT malloc zone, not merely linked in. `tmux -V`
@@ -237,7 +250,7 @@ install -m 0644 "$JEM_SRC/COPYING"      "$OUT/licenses/jemalloc-COPYING"
   echo "utf8proc  $PIN_UTF8PROC_VERSION  $PIN_UTF8PROC_SHA256  (static)"
   echo "jemalloc  $PIN_JEMALLOC_VERSION  $PIN_JEMALLOC_SHA256  (static, je_ prefix, default malloc zone)"
   echo "ncurses   system (/usr/lib)"
-  echo "arch      arm64"
+  echo "arch      $CLANG_ARCH"
   echo "minos     $minos"
   echo "binary    sha256 $(sha256_of "$OUT/bin/tmux")"
 } > "$OUT/BUILDINFO"

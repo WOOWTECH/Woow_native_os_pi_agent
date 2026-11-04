@@ -278,3 +278,34 @@ Measured on real Macs rather than in a sandbox (the commands are in OPERATIONS-G
   same; the host process kept running (same pid); the server still showed the same host row and all
   16 conversations bound; Claude and Pi verified afterwards; memory never below 33% free, the two
   Apple review demos running throughout.
+
+## Intel Macs — validated 2026-11-04 (13" MacBook Pro 2017, i5-7360U, macOS 13.7.8; MacBook Air 2020, i3-1000NG4, macOS 15.4.1; 8 GB each)
+
+| suite | what it pins | result | watched to fail before the fix |
+|---|---|---|---|
+| `tests/intel-mac.sh` (new) | **A** the lock pins cryptography and argon2-cffi-bindings twice under complementary Intel / non-Intel markers, marks nothing else, hashes every pin · **B** the darwin patch adds `--constraints "$PI_OMNIGENT_UV_CONSTRAINTS"` to the plugin's own `uv tool install`, and on x64 only one run of the new omnigent with a 120 s limit before the 5 s probe (the real `installDependencies()`, a stand-in uv; idempotent) · **C** `pi-agent-env.sh` sets the variable on an Intel Mac that has the kept lock, and not before the omnigent stage, on Apple silicon or on Linux · **D** (pinned uv) a dry run on this machine picks the right pins, 94 packages; the Intel blocks equal uv's own answer to the command in the lock's header; a fresh Intel resolution still picks the wheel-less releases · **E** (Intel Mac) the venv, a constrained `uv tool install` and the patched plugin's own `installDependencies()` all succeed with source builds forbidden | 28 passed, 0 failed on each Intel Mac; on Linux x86_64 24 passed, 0 failed, E skipped | yes, each piece taken back to main in turn (on Linux): the lock 5 failures, the patch without the constraints edit 4, without the first-launch edit 3, `pi-agent-env.sh` 1 |
+| `tests/installer-rerun.sh` (one new check) | the omnigent stage keeps the requirements it installed from, at `$PI_AGENT_HOME/omnigent/requirements.lock` | 8 passed, 0 failed (Linux and both Macs) | yes: `install.sh` as on main, 1 failure |
+
+Measured on the two Macs:
+
+- `scripts/build-macos-tmux.sh` on x86_64: tmux 3.8, 2.4 MB, `Mach-O 64-bit executable x86_64`, minos
+  13.0, linking only `/usr/lib/libncurses.5.4.dylib`, `libSystem.B.dylib` and `libresolv.9.dylib`;
+  台灣報告 round-trips with the cursor at column 8; jemalloc is the default zone (614,176 and 646,944
+  bytes served during `tmux -V`). sha256 `477f49fc…` on the MacBook Pro, `ef81e38d…` on the MacBook Air:
+  each Mac built with its own Command Line Tools, and the binaries differ.
+- `tests/tmux-stress.sh` on those x86_64 builds, 300 s each: **0 aborts**, no crash reports -- 590 iterations
+  on the MacBook Pro (533 copy-mode entries, 537 full captures), 449 on the MacBook Air (413, 407);
+  footprint at the end 123 MB and 139 MB.
+- an end-to-end install in the pkg's layout -- `tools/bin/tmux`, the macos-x64 pi-web tree as a local
+  `PI_AGENT_PIWEB_ARTIFACT`, `UV_NO_BUILD=1`, its own `PI_AGENT_HOME`, every stage but `service`: exit 0
+  on both. Then the plugin's own `pi-omnigent install-dependencies`, from an empty state directory, three
+  times on each Mac: `ok: true`, `issues: []`, omnigent 0.16.0 every time (6.0 to 9.5 s).
+- the same end-to-end before the first-launch edit ended in "uv finished, but the managed Omnigent
+  executable is unavailable" on both Macs, although uv had installed everything. The first
+  `omnigent --version` after a fresh install took 4.1 and 6.1 s on the i3, 4.0 and 4.3 s on the i5
+  (0.5 to 0.65 s on every later run), and the plugin's probe allows 5 s. With `--compile-bytecode` it
+  was 2.6 to 3.1 s: under the limit, but not by enough while pi-web is still starting.
+- no native node module is compiled on an Intel Mac: the installed MacBook Pro has none under
+  `build/Release`, and 16 prebuilt `.node` files in pi-web, 10 in the Paseo runtime.
+- not tried: a Mac that has never had the Command Line Tools (both had them by then), and the
+  `macos-15-intel` release job itself, which first runs on the next tag.

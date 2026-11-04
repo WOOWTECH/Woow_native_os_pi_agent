@@ -80,10 +80,12 @@ without the link the same discovery calls the stub 3 times.
 
 ## Bundled tmux
 
-`scripts/build-macos-tmux.sh` builds the tmux that ships in the `.pkg`, into
-`dist/tools-macos-arm64/` (`bin/tmux`, `licenses/`, `BUILDINFO`). The pkg
+`scripts/build-macos-tmux.sh` builds the tmux that ships in the `.pkg`, for the
+architecture of the Mac it runs on, into `dist/tools-macos-arm64/` or
+`dist/tools-macos-x64/` (`bin/tmux`, `licenses/`, `BUILDINFO`). The pkg
 builder takes that directory as `tools/`, and the wire stage installs
-`tools/bin/tmux` to `$PI_AGENT_HOME/bin/tmux`.
+`tools/bin/tmux` to `$PI_AGENT_HOME/bin/tmux`. For Intel Macs see
+[below](#intel-macs-x86_64).
 
 **Why not Homebrew's.** It cannot be redistributed: its binary is built for the
 host it was poured on (minos 26.0 on the release host, so it will not start on
@@ -93,7 +95,7 @@ user's Mac.
 
 **What is built.** tmux 3.8 with libevent 2.1.13-stable (core only, no OpenSSL),
 utf8proc 2.12.0 and jemalloc 5.4.0 linked **statically**, the system ncurses
-from `/usr/lib`, for arm64, `MACOSX_DEPLOYMENT_TARGET=13.0`. Every source
+from `/usr/lib`, for the build Mac's architecture, `MACOSX_DEPLOYMENT_TARGET=13.0`. Every source
 tarball is pinned in `lib/pins.sh` by the sha256 Homebrew records for the same
 formula. The build runs with `PATH=/usr/bin:/bin`, so Homebrew's pkg-config
 cannot hand configure its ncursesw.
@@ -175,6 +177,40 @@ only `/usr/lib/libncurses.5.4.dylib`, `/usr/lib/libSystem.B.dylib` and
 the ad-hoc signature with Developer ID + hardened runtime + a secure timestamp.
 And the pkg build refuses any payload where `tools/bin/tmux` is not the only
 Mach-O.
+
+## Intel Macs (x86_64)
+
+Verified 2026-11-04 on a 2017 13" MacBook Pro (i5-7360U, macOS 13.7.8) and a
+2020 MacBook Air (i3-1000NG4, macOS 15.4.1), 8 GB each.
+
+Most of the stack needs nothing: Node, Claude Code, Codex, uv and uv's CPython
+all ship darwin-x64 builds, and every native module in pi-web and the Paseo
+runtime comes from a prebuild (on the installed MacBook Pro, none under
+`build/Release`). The gaps were all Intel-only:
+
+| Gap | On an Intel Mac | Fix |
+|---|---|---|
+| No `macos-x64` pi-web artifact | pi-web could only be built from source: the Command Line Tools and ~15 minutes | the release workflow builds one on `macos-15-intel` |
+| No x86_64 tmux | `build-macos-tmux.sh` refused to run, so no Intel pkg could bundle one, and without tmux the Omnigent dependency check stays `DEPENDENCIES_MISSING` | the script builds for the Mac it runs on (`-arch x86_64`, jemalloc with 4 KiB pages), and the Intel release job publishes `tools-macos-x64.tar.gz` |
+| Python dependencies with no x86_64 wheel | cryptography ≥ 49 and argon2-cffi-bindings 26 publish none, so uv builds their sdists: argon2's C build needs the Command Line Tools, and cryptography's Rust build fails even with them (it finds no OpenSSL headers). Both the omnigent stage's venv and the plugin's own `uv tool install omnigent` failed this way | Intel-only pins in the lock at the newest releases with x86_64 wheels (cryptography 48.0.1, argon2-cffi-bindings 25.1.0; see its header), and on Intel the plugin's install resolves against that lock: `pi-agent-env.sh` sets `PI_OMNIGENT_UV_CONSTRAINTS`, and the darwin patch passes it as `--constraints` |
+| The plugin's 5 s probe | right after its install the plugin runs the new omnigent's `--version` with a 5 s limit, and that first run takes 4–6 s on these Macs (about 0.5 s afterwards). Past the limit: "uv finished, but the managed Omnigent executable is unavailable", and DEPENDENCIES_MISSING until something retries | on x64 the darwin patch runs the new omnigent once, with a 120 s limit, before the probe. `--compile-bytecode` would only bring the first run to 2.6–3.1 s: too little margin while pi-web is still starting |
+
+With those, an Intel install compiles nothing. Both venvs install with
+`UV_NO_BUILD=1` (`tests/intel-mac.sh`, section E), and so does an end-to-end
+install in the pkg's layout followed by the plugin's dependency install. Not yet
+tried: a Mac that has never had the Command Line Tools -- both test Macs had
+them by then.
+
+**Building the Intel pkg** works on any Mac, Apple silicon included: the pkg
+build only copies and signs `tools/bin/tmux`, it never runs it. Unpack the
+release's `tools-macos-x64.tar.gz` into `dist/` (it holds `tools-macos-x64/`,
+the default `--tools` for an x64 artifact), then:
+
+    scripts/build-macos-pkg.sh --artifact-url <the release's piweb-…-macos-x64.tar.gz> \
+        --artifact-sha256 <its .sha256> --sign-app ... --sign ... --notary-key ...
+
+The builder already handled x64 artifacts: it restricts the pkg to
+`hostArchitectures="x86_64"` and names it `WoowPiAgent-<ver>-macos-x64.pkg`.
 
 ## Portability bugs this found
 

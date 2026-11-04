@@ -415,6 +415,10 @@ stage_omnigent() {
     "$uv" venv --clear --python "$PIN_PYTHON_VERSION" "$PA_OMNIGENT_DIR/venv"
   UV_CACHE_DIR="$uv_cache" "$uv" pip sync --python "$PA_OMNIGENT_DIR/venv/bin/python" --require-hashes "$reqs"
   "$PA_OMNIGENT_DIR/venv/bin/python" -c 'import importlib.metadata,sys; assert importlib.metadata.version("omnigent")==sys.argv[1]' "$PIN_OMNIGENT_VERSION"
+  # Keep the requirements this venv was just proven against. On an Intel Mac the plugin's own
+  # `uv tool install omnigent` resolves against them (pi-agent-env.sh points PI_OMNIGENT_UV_CONSTRAINTS
+  # here): resolved afresh, it picks releases that publish no x86_64 macOS wheel -- see the lock's header.
+  install -m 0644 "$reqs" "$PA_OMNIGENT_DIR/requirements.lock"
   log "omnigent OK"
 }
 

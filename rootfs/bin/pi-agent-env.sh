@@ -39,6 +39,16 @@ if [ "$(uname -s)" = "Darwin" ]; then
     done
     unset _pa_brew_bin
     export PATH
+    # Intel Macs: the Omnigent plugin installs its own omnigent with
+    # `uv tool install`, resolving afresh, and that resolution picks releases of
+    # cryptography and argon2-cffi-bindings that publish no x86_64 macOS wheel --
+    # so uv tries source builds a Mac cannot finish. Resolve against the
+    # hash-locked requirements the omnigent stage installed from instead, which
+    # carry Intel-only pins for those two. Read only by the darwin patch's edit
+    # to the plugin's installer, so no other uv on this PATH is affected.
+    if [ "$(uname -m)" = "x86_64" ] && [ -r "${PI_AGENT_HOME}/omnigent/requirements.lock" ]; then
+        export PI_OMNIGENT_UV_CONSTRAINTS="${PI_AGENT_HOME}/omnigent/requirements.lock"
+    fi
 fi
 
 # Plugin + runtime roots (match the k3s image ENV so the seeds/routes resolve).

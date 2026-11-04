@@ -70,6 +70,9 @@ run_stage() {   # run_stage LABEL  -> exit status of `install.sh omnigent` over 
 echo "== the omnigent stage, over a fresh install root, then over the install it just made"
 if run_stage first; then ok "first run (nothing installed yet): exit 0"; else no "first run (nothing installed yet): exit 0" "$(tail -3 "$W/first.log")"; fi
 [ -x "$PA/omnigent/venv/bin/python" ] && ok "...and it left a working venv" || no "...and it left a working venv" "no $PA/omnigent/venv/bin/python"
+cmp -s "$HERE/vendor/omnigent-requirements.lock" "$PA/omnigent/requirements.lock" \
+  && ok "...and kept the requirements it installed from (an Intel Mac's plugin install resolves against them)" \
+  || no "...and kept the requirements it installed from (an Intel Mac's plugin install resolves against them)" "no identical $PA/omnigent/requirements.lock"
 if run_stage second; then ok "second run, over the existing install: exit 0 (it converges instead of stopping)"; else no "second run, over the existing install: exit 0 (it converges instead of stopping)" "$(grep -i -m1 'error' "$W/second.log" | cut -c1-200)"; fi
 [ -x "$PA/omnigent/venv/bin/python" ] && ok "...and the venv is still there and working" || no "...and the venv is still there and working" "no $PA/omnigent/venv/bin/python"
 
