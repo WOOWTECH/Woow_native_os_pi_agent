@@ -342,7 +342,7 @@ Describe 'small pure helpers' {
 
 Describe 'preflight' {
     It 'exits 10 and says why: <Name>' -ForEach @(
-        @{ Name = 'Windows build is too old'; Keyword = 'unsupported Windows build'; Apply = { $script:Scn.Info.Build = 19045 } }
+        @{ Name = 'Windows build is too old'; Keyword = 'unsupported Windows build'; Apply = { $script:Scn.Info.Build = 18363 } }
         @{ Name = 'the architecture is unsupported'; Keyword = 'unsupported architecture'; Apply = { $script:Scn.Info.Arch = 'x86' } }
         @{ Name = 'this is a 32-bit PowerShell'; Keyword = '32-bit PowerShell'; Apply = { $script:Scn.Info.Is64BitProcess = $false } }
         @{ Name = 'there is too little RAM'; Keyword = 'not enough RAM'; Apply = { $script:Scn.Info.RamGB = 3 } }
@@ -374,6 +374,12 @@ Describe 'preflight' {
         $script:Scn.HasMarker = $true
         $script:Scn.BusyPorts = @(30141, 6769)
         Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+    }
+
+    It 'warns, but goes on, on Windows 10 22H2' {
+        $script:Scn.Info.Build = 19045
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+        Get-AllMessages | Should -Match 'Windows 10 is not the main target'
     }
 
     It 'warns, but goes on, with little RAM' {
@@ -703,7 +709,7 @@ Describe 'dry run' {
     }
 
     It 'still stops at a failed check' {
-        $script:Scn.Info.Build = 19045
+        $script:Scn.Info.Build = 18363
         Invoke-PaMain -Options (New-TestOpts -Extra @{ DryRun = $true }) | Should -Be 10
     }
 

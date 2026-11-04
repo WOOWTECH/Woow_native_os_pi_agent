@@ -61,7 +61,10 @@ $script:PaRootfs = @{
 }
 
 $script:PaMinWslVersion = '2.4.4'
-$script:PaMinBuild = 22621
+# 19041 (Windows 10 2004) is what WSL2 itself needs. Windows 11 22H2 is what this installer was written for; older
+# builds go on with a warning (first run on a real Windows 10 22H2 PC: 2026-11-04).
+$script:PaMinBuild = 19041
+$script:PaRecommendedBuild = 22621
 $script:PaPaseoPort = 6769
 $script:PaTaskName = 'PiAgentWsl'
 $script:PaRunOnceName = 'PiAgentWslResume'
@@ -1055,8 +1058,10 @@ function Test-PaPreflight {
         $bad = $true
     }
     if ($null -ne $info.Build -and $info.Build -lt $script:PaMinBuild) {
-        Write-PaMsg 'Error' ('這台電腦的 Windows 版本太舊(build {0})。需要 Windows 11 22H2(build {1})或更新,請先更新 Windows 再重試。(unsupported Windows build)' -f $info.Build, $script:PaMinBuild)
+        Write-PaMsg 'Error' ('這台電腦的 Windows 版本太舊(build {0})。需要 Windows 10 2004(build {1})或更新,請先更新 Windows 再重試。(unsupported Windows build)' -f $info.Build, $script:PaMinBuild)
         $bad = $true
+    } elseif ($null -ne $info.Build -and $info.Build -lt $script:PaRecommendedBuild) {
+        Write-PaMsg 'Warn' ('這台是 Windows 10(build {0})。可以安裝,但主要支援的是 Windows 11 22H2 以上。(Windows 10 is not the main target)' -f $info.Build)
     }
     if ($info.Arch -eq 'x64' -or $info.Arch -eq 'arm64') {
         $arch = $info.Arch
