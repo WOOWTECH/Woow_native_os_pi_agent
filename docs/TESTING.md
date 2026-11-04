@@ -279,24 +279,25 @@ Measured on real Macs rather than in a sandbox (the commands are in OPERATIONS-G
   16 conversations bound; Claude and Pi verified afterwards; memory never below 33% free, the two
   Apple review demos running throughout.
 
-## Windows 11 (WSL2) — 2026-11-03: preview; run on a hosted Windows runner and against a real Omnigent, not yet on a real Windows 11 PC
+## Windows 11 (WSL2) — 2026-11-04: preview; run on a hosted Windows runner, against a real Omnigent and on one real Windows 10 PC, not yet on Windows 11
 
 See [`WSL2.md`](WSL2.md) for the feature and [`WSL2-PLAN.md`](WSL2-PLAN.md) for the design and the
 experiments (E1-E14) a real machine still has to settle.
 
-**Linux side: 150 checks in a sandbox** (`bash tests/wsl.sh`; macOS 26.4, bash 3.2). Every check runs against
+**Linux side: 165 checks in a sandbox** (`bash tests/wsl.sh`; macOS 26.4, bash 3.2). Every check runs against
 a throw-away directory and stubs -- Windows programs, `useradd`, `apt-get`, `loginctl`, `systemctl`, `/proc/version`,
 `/run/WSL`, `/run/user`, `/etc` -- so it never touches a real WSL, a real install or the real `/etc`. The same suite
 runs on Ubuntu and macOS in CI (`wsl2-linux.yml`; **not yet run there**).
 
 | section | checks | what it proves |
 |---|---|---|
-| `win` | 43 | `pi-agent-win`: finds a live interop channel when a systemd service has none, keeps the session's own, exit 3 and a clear message when none is live, exit 127 for a missing program; `ps` never loads the profile, never waits for input, forces UTF-8, passes the exit status through; `open` uses wslview or `Start-Process`, doubles quotes (no PowerShell injection through a URL), converts Linux paths; `doctor` lists every problem, skips what depends on a failed check |
-| `ctl` | 14 | `pi-agent`: `open` goes to the Windows browser on WSL and is unchanged elsewhere, `doctor` routes to `pi-agent-win`, `XDG_RUNTIME_DIR` is derived when a `wsl.exe -u USER --exec` session has none, and left alone when it has one or on macOS |
-| `env` | 9 | `pi-agent-env.sh`: System32 and PowerShell are appended LAST (a Windows node/npm/git cannot shadow ours), once, only when the installer recorded them and they exist; an existing `BROWSER` is kept |
-| `install` | 19 | `install.sh`: refuses a home on a Windows drive, warns without systemd, derives the user bus, survives a missing `$USER` under `set -u`, says where Windows finds pi-web, `wire` installs `pi-agent-win`; plain Linux is unchanged |
+| `win` | 44 | `pi-agent-win`: finds a live interop channel when a systemd service has none, keeps the session's own, exit 3 and a clear message when none is live, exit 127 for a missing program; `ps` never loads the profile, never waits for input, forces UTF-8, passes the exit status through; `open` uses wslview or `Start-Process`, doubles quotes (no PowerShell injection through a URL), converts Linux paths; `doctor` lists every problem, skips what depends on a failed check |
+| `ctl` | 19 | `pi-agent`: `open` goes to the Windows browser on WSL and is unchanged elsewhere, `doctor` routes to `pi-agent-win`, `XDG_RUNTIME_DIR` is derived when a `wsl.exe -u USER --exec` session has none, and left alone when it has one or on macOS |
+| `env` | 12 | `pi-agent-env.sh`: System32 and PowerShell are appended LAST (a Windows node/npm/git cannot shadow ours), once, only when the installer recorded them and they exist; an existing `BROWSER` is kept |
+| `install` | 20 | `install.sh`: refuses a home on a Windows drive, warns without systemd, derives the user bus, survives a missing `$USER` under `set -u`, says where Windows finds pi-web, `wire` installs `pi-agent-win`; plain Linux is unchanged |
 | `rootsetup` | 39 | `scripts/wsl-root-setup.sh`: creates the user once, writes `wsl.conf` (interop on/off), switches off the first-run prompt and cloud-init, hands over the installer, records the Windows directory, refuses bad input and a non-root caller; `packages`; `linger` waits for the bus and times out |
-| `bundle` | 26 | `scripts/build-wsl-bundle.sh`: one-directory tarball, same commit gives the same bytes, published sha256 is the tarball's, stamped installer has a UTF-8 BOM and no placeholder left, refuses a VERSION mismatch, a bad version and an unknown placeholder |
+| `bundle` | 28 | `scripts/build-wsl-bundle.sh`: one-directory tarball, same commit gives the same bytes, published sha256 is the tarball's, stamped installer has a UTF-8 BOM and no placeholder left, refuses a VERSION mismatch, a bad version and an unknown placeholder |
+| `smoke` | 3 | `tests/smoke.sh` under a real pty: what it runs has no terminal on stdin. The harness proves it really gives a terminal, and every program the self-check touches is a stand-in |
 
 Test strength was checked by hand with **32 deliberate regressions** (probe skipped, session channel ignored, profile
 loaded, output not UTF-8, quotes not doubled, `$USER` unguarded under `set -u`, user bus not prepared, Windows-drive
@@ -347,7 +348,31 @@ Omnigent in the background for about 40 seconds while holding its `flock -n` loc
   were accepted and then refused with "The ChatGPT user has reached their Subscription Sharing usage limit" -- the
   account's quota, so no Pi reply was ever seen. A session opened before the login kept its "no usable models" list.
 
-**Not covered at all:** a real Windows 11 PC; the first-time enablement with a reboot; start at logon (as a standard
-user) and the keep-alive window; sleep and wake; ARM64; and **a Pi reply** (the ChatGPT account's usage limit; the
+**First real PC, 2026-11-04** (Windows 10 Home 22H2 build 19045, Ryzen 5 4500, 7.9 GB, USB Wi-Fi; a PC in daily use with 0.4 GB
+free when the test began; desktop session, not elevated; `-Port 30142` because a Windows-native pi-web holds 30141). Result: exit 0,
+smoke 24/24, `pi-agent url`/`doctor`/`status` right from a new PowerShell, interop from a session and from a systemd service. What
+only a real PC showed:
+
+1. The Windows-version gate refused it. The 22621 came from a line in the `wsl.conf` docs, not from anything tried. Now 19041 is the
+   floor (what WSL2 itself needs) and anything below 22621 gets a warning.
+2. The in-box `wsl.exe` does not know `--install --no-distribution`, and `wsl --update` through the Store ended in "catastrophic
+   failure" after two minutes. `wsl --update --web-download` installed WSL 3.0.3.0, so the installer now falls back to it. That
+   fallback has not run inside the installer yet: WSL had been updated by hand by then.
+3. Store WSL does not start in a key-authenticated SSH session ("the file cannot be accessed by the system"); the same command works on
+   the desktop. So the test drove WSL through one-shot scheduled tasks in the desktop session, and the failure message now says so.
+4. Smoke was 23/24 from a terminal. `timeout` runs its command in a background process group, so the kernel stopped `claude mcp get`
+   for touching the terminal (state T, `do_signal_stop`, stdin a pts) and the check failed after its 25 s limit. A hosted runner has no
+   terminal, so CI never saw what every user running the installer from a PowerShell window would have hit. The self-check now runs
+   with stdin from /dev/null; `tests/wsl/smoke.sh` reproduces it under a real pty.
+5. `pi-agent url`, `open` and `doctor` looked at 30141 on an install made with another port, because `wsl.exe --exec` starts with an
+   empty environment. On this PC that is a different pi-web. `wire` now records the port in `$PI_AGENT_HOME/pi-web-port`.
+
+Still open: this PC's Wi-Fi dropped at 11:01:56, eight minutes after the first install, and came back at 11:27:12. The log says "the
+driver disconnected the network", the same reason it gives for three drops on 10/07 and 10/25, before any of this. No reboot, no sleep,
+no crash, and the distro kept running. It cannot be pinned on the install or cleared of it from these logs.
+
+**Not covered at all:** a real Windows 11 PC; the first-time enablement with a UAC prompt and a reboot; start at logon actually
+happening (the task registers from a non-elevated desktop session, on an account in Administrators; nobody has signed out and back
+in, and a standard user is untried); the keep-alive window; sleep and wake; ARM64; Omnigent end to end on a real PC; and **a Pi reply** (the ChatGPT account's usage limit; the
 user's LiteLLM gateway answered 401).
 Parallels on Apple silicon cannot host WSL2 (Parallels KB 129497), so this Mac is not a test machine for it.

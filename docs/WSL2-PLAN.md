@@ -321,4 +321,5 @@ PA_WIN_SYSTEM32=/mnt/c/Windows/System32
 | 安裝器遇到已存在且有標記的 `PiAgent` | 沿用;重新放入安裝包並重跑 `configure`,`wsl.conf` 有變才重啟 |
 | 解除安裝 | **只**刪有 `/etc/pi-agent-distro` 標記的 Linux(同名的別人的不動);`-PurgeData` 先備份、備份失敗就不刪、要輸入名稱確認;`InstallDir` **不遞迴刪除**:只刪自己放的東西,資料夾空了才刪(`-InstallDir` 可以指到任何地方) |
 | 登入 Claude Code / Codex | 安裝完成的訊息印出完整指令(`~/.local/share/pi-agent/bin/claude auth login`、`.../codex login`):VM 裡的 PATH 沒有我們的包裝程式 |
+| Windows 版本門檻:Windows 11 22H2 | Windows 10 2004(build 19041)起可裝,22621 以下警告。第一台真機就是 Windows 10 22H2 |
 | 發佈 | `release.yml` 多一個 `wsl-bundle` 工作(安裝包 + 蓋章的 `install-wsl.ps1`)和一個實驗性的 `linux-arm64` pi-web 預建包;`wsl2-linux.yml` 跑 Linux 端測試與 shellcheck;`wsl2-windows.yml` 跑 Pester 與端對端 spike |

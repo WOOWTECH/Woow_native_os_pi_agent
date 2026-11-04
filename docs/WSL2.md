@@ -1,12 +1,12 @@
 # Pi Agent on Windows 11 (WSL2)
 
-> **狀態:預覽版。** Linux 那一半在沙盒裡測過(`tests/wsl.sh`,152 項),也在 GitHub 的 Ubuntu 與 macOS 上跑過。
+> **狀態:預覽版。** Linux 那一半在沙盒裡測過(`tests/wsl.sh`,165 項),也在 GitHub 的 Ubuntu 與 macOS 上跑過。
 > Windows 那一半(`windows/install-wsl.ps1`)已經在 **GitHub 的 Windows Server 2025 雲端機**上完整跑通:用
 > Windows PowerShell 5.1 裝完、自我檢查 24 項全過、Windows 這邊連得到 `http://localhost:30141`、保活有效、
 > 重跑與兩種解除安裝都試過。2026-11-03 還用**真的 Omnigent 伺服器**驗證過:那台雲端機登記成 Omnigent 主機,
 > Claude Code 與 Codex 在 Omnigent、Paseo 網頁版開對話並切換模型都成功,代理也能控制 Windows(PowerShell、Notepad、
-> 瀏覽器、檔案互通)。但那是雲端機,**不是一般人的 Windows 11 電腦**:沒有測到「第一次啟用 WSL 並重新開機」、
-> 「登入時自動啟動」、睡眠喚醒;Pi 登入與切換模型都過了,但沒看到它回答(被 ChatGPT 帳號的用量上限擋下)。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
+> 瀏覽器、檔案互通)。2026-11-04 也在**一台真的 Windows 10 22H2 電腦**上裝成功(一般權限的桌面環境,自我檢查 24 項全過)。
+> **還沒在 Windows 11 實機上跑過**,也還沒測到「第一次啟用 WSL 並重新開機」、實際的「登入時自動啟動」、睡眠喚醒;Pi 登入與切換模型都過了,但沒看到它回答(被 ChatGPT 帳號的用量上限擋下)。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
 
 一行 PowerShell 指令,替你的 Windows 11 建一個**專用的 Linux 小系統**(WSL2 裡的 Ubuntu 24.04,
 名叫 `PiAgent`),把 Linux 版的 Pi Agent 裝進去,登入 Windows 時自動啟動。Omnigent 看到的就是一台
@@ -21,7 +21,7 @@ Linux 主機,所以 Pi Agent、Claude Code、Codex 三個代理的行為跟 Linu
 | Windows | 建議 **Windows 11 22H2 以上**(build 22621)。Windows 10 2004 以上(build 19041)也能裝,安裝時會先警告 |
 | CPU | x64。ARM64 是盡力支援,**尚未測試** |
 | 虛擬化 | BIOS/UEFI 要開啟。在虛擬機器裡要有「巢狀虛擬化」;**Apple 晶片上的 Parallels 不行**(Parallels 官方知識庫寫明 WSL2 不能用) |
-| 記憶體 | 建議 8 GB 以上(4 GB 是底線) |
+| 記憶體 | 建議 8 GB 以上(4 GB 是底線)。裝好後約多用 2 GB;已經開很多程式的 8 GB 電腦裝得起來,但沒有餘裕 |
 | 磁碟 | 可用空間至少 10 GB,建議 15 GB(裝好後 Linux 約佔 7 GB) |
 | 網路 | 安裝時要連網:Ubuntu 映像約 371 MB、pi-web 約 180 MB |
 | 權限 | 一般帳號就行。只有「這台電腦還沒有 WSL」時才會跳出系統管理員授權(UAC),而且要重新開機一次 |
@@ -213,14 +213,28 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   兩個要注意:這個帳號的後端只收 GPT-6 / GPT-5.6 系列(Pi 登入時自選的 `gpt-5.5` 回 `model_not_found`);登入之後要開
   **新的** Omnigent 對話才看得到模型(舊對話仍顯示「沒有可用模型」)。
 
-**還沒驗證**(這些在雲端機上測不到或沒測):
+**已在一台真的 Windows 電腦上驗證**(2026-11-04,Windows 10 家用版 22H2 build 19045、Ryzen 5 4500、7.9 GB 記憶體、USB Wi-Fi;
+是一台平常在用的電腦,開工前只剩 0.4 GB 記憶體;從桌面環境以一般權限執行):
 
-- 一般 Windows 11 電腦:乾淨機器的「自動提權 → 裝 WSL → 重開機 → 自動續跑」(E13)、被擋的情況(虛擬化關閉、WSL 被政策停用、
-  磁碟或記憶體不足)的訊息(E14)。
-- 真的「登入時」自動啟動:一般(非系統管理員)使用者能不能登錄排程、有沒有閃視窗(E4)。**已知風險**:如果預設終端機是
+- 完整安裝回 0,自我檢查 24 項全過。第一次約 7 分鐘(下載映像、匯入、裝套件、裝 Pi Agent),重跑約 2 分鐘。
+- 用 `-Port 30142` 避開這台原本占 30141 的 pi-web,兩個互不影響。Windows 連 `localhost:30142` 回 200。
+- 開新的 PowerShell 直接打 `pi-agent url`、`doctor`、`status` 都正確,`doctor` 7 項全過。
+- `pi-agent-win` 在一般 session 和 systemd 服務裡都能執行 PowerShell。權限是一般使用者,不是系統管理員(雲端機才是)。
+- 登入時的工作排程從非提權的桌面環境登錄成功(這個帳號屬於系統管理員群組;純標準使用者沒試過)。
+- 保活:Linux 從裝好起一路開著,途中 Wi-Fi 斷了 25 分鐘也沒停;Wi-Fi 回來後 Linux 的 DNS 和 HTTPS 都通。
+- 記憶體:Linux 這台虛擬機在 Windows 上約用 1.3–2.5 GB,裡面的 pi-web 服務約 660 MB。安裝時全系統承諾記憶體最高到 29.3 / 31.9 GB,
+  沒有出事,但也沒有餘裕。
+
+**還沒驗證**:
+
+- Windows 11 實機。上面那台是 Windows 10。
+- 乾淨機器的「自動提權 → 裝 WSL → 重開機 → 自動續跑」(E13):那台的 WSL 功能本來就開著,不用重開機,也沒跳過 UAC。安裝程式內建的
+  `--web-download` 退路也沒實跑,因為 WSL 已先手動升好。被擋的情況(虛擬化關閉、WSL 被政策停用、磁碟或記憶體不足)的訊息(E14)也還沒看過。
+- 實際的「登入時」自動啟動:排程登錄好了,但還沒登出再登入過;有沒有閃視窗也還沒看(E4)。**已知風險**:如果預設終端機是
   Windows Terminal,`-WindowStyle Hidden` 可能不生效,登入後會多一個視窗在跑保活;關掉那個視窗,Linux 就會停。另外,
   公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活與自動續跑都不會執行。
 - 睡眠喚醒後 host 自動重連(E8)。
+- 真機上連 Omnigent 開對話、切換模型(雲端機上驗過)。
 - Windows ARM64(E12)。
 - **Pi 實際回答一句話**:登入與切換模型都過了,但回覆被 ChatGPT 帳號的用量上限擋下(見上)。LiteLLM 閘道那條路沒測到(使用者
   給的值被閘道回 HTTP 401)。

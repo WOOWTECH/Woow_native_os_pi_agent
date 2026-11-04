@@ -15,7 +15,7 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 |---|---|
 | **Linux** (Ubuntu/Debian; dnf-based best-effort) | ✅ installed + running + browser-verified · 24/24 smoke |
 | **macOS** (arm64, 26.4 verified) | ✅ installed + running under launchd · 24/24 smoke · see [`docs/MACOS.md`](docs/MACOS.md) |
-| **Windows 11** (WSL2) | 🧪 preview: installs and runs on a GitHub-hosted Windows Server 2025 runner, connects to a real Omnigent, Claude Code and Codex chat and switch models there and in Paseo, agents drive PowerShell and apps; **not yet run on a real Windows 11 PC** (first-time WSL enablement, start at logon, sleep) and no Pi reply was seen (login and model switching work, the ChatGPT account's usage limit blocked the answer) · see [`docs/WSL2.md`](docs/WSL2.md) |
+| **Windows 11** (WSL2) | 🧪 preview: installs and runs on a GitHub-hosted Windows Server 2025 runner, connects to a real Omnigent, Claude Code and Codex chat and switch models there and in Paseo, agents drive PowerShell and apps. Also installed on one real Windows 10 22H2 PC (exit 0, 24/24 smoke). **Not yet on Windows 11**; first-time WSL enablement, start at logon and sleep are untried, and no Pi reply was seen (login and model switching work, the ChatGPT account's usage limit blocked the answer) · see [`docs/WSL2.md`](docs/WSL2.md) |
 
 ## Install
 
@@ -30,8 +30,8 @@ warning. It fetches the rest of the stack while it installs.
 One PowerShell command creates a dedicated Ubuntu in WSL2, installs the Linux version in it,
 and starts it when you log in. Pi Agent, Claude Code and Codex then run as they do on Linux,
 and agents can reach Windows programs through `pi-agent-win`. Requirements, the command, what
-it changes and how to remove it: [`docs/WSL2.md`](docs/WSL2.md). Not yet validated on a real
-Windows machine: expect rough edges and read the status section there first.
+it changes and how to remove it: [`docs/WSL2.md`](docs/WSL2.md). So far installed on one real
+Windows 10 PC, not yet on Windows 11: expect rough edges and read the status section there first.
 
 ### Linux — prebuilt pi-web (recommended)
 
