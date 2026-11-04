@@ -216,10 +216,14 @@ jobs:
           New-Item -ItemType Directory -Force ci-out | Out-Null
           $log = 'ci-out/15-oneliner.txt'
           $srv = Start-Process -FilePath python -ArgumentList '-m', 'http.server', '8765', '--bind', '127.0.0.1', '--directory', 'dist' -PassThru -WindowStyle Hidden
-          Start-Sleep -Seconds 3
           $u = 'http://127.0.0.1:8765/install-wsl.ps1'
+          # Wait for it: a server slow to start must not look like a download that failed.
+          foreach ($i in 1..30) { try { $null = Invoke-WebRequest -UseBasicParsing -Method Head -TimeoutSec 2 $u; break } catch { Start-Sleep -Seconds 1 } }
           $bundle = Join-Path (Get-Location).Path 'dist\pi-agent-installer-dev.tar.gz'
           $before = (wsl -l -q | Out-String)
+          # If the command below never reaches the installer, this stays: not the 0 that wsl just left.
+          $global:LASTEXITCODE = 999
+          $Error.Clear()
           $out = & ([ScriptBlock]::Create(([Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing $u).RawContentStream.ToArray())).TrimStart([char]0xFEFF))) -DryRun -BundlePath $bundle *>&1
           $code = $LASTEXITCODE
           $text = ($out | Out-String)
@@ -242,6 +246,7 @@ jobs:
           ('the list of distros is unchanged: ' + ($before -eq (wsl -l -q | Out-String))) | Tee-Object -FilePath $log -Append
           ('double-click file, dry run: exit code ' + $cmdCode + ', dry-run lines: ' + ([regex]::Matches($cmdOut, 'dry-run')).Count) | Tee-Object -FilePath $log -Append
           ('double-click file, nothing to download: exit code ' + $deadCode + ' (must not be 0)') | Tee-Object -FilePath $log -Append
+          if (-not $text.Trim()) { ('the command printed nothing. Errors: ' + ($Error | Select-Object -First 3 | Out-String)) | Tee-Object -FilePath $log -Append }
           ($text.Trim() -split "`r?`n" | Select-Object -First 14) | Tee-Object -FilePath $log -Append
 
       - name: Probes
