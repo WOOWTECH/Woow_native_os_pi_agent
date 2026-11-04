@@ -11,6 +11,7 @@
 #   install    install.sh                     the WSL preflight and service stage
 #   rootsetup  scripts/wsl-root-setup.sh      what runs as root inside the new distro
 #   bundle     scripts/build-wsl-bundle.sh    the release bundle and the stamped installer
+#   smoke      tests/smoke.sh                 the self-check, run from a real terminal
 # The Windows-side installer (windows/install-wsl.ps1) has its own Pester suite.
 # shellcheck disable=SC2034,SC2154  # REPO, pass and fail are used by the sourced sections
 set -u
@@ -19,7 +20,7 @@ REPO="$(cd "$HERE/.." && pwd)"
 # shellcheck source=wsl/lib.sh
 . "$HERE/wsl/lib.sh"
 
-[ $# -gt 0 ] || set -- win ctl env install rootsetup bundle
+[ $# -gt 0 ] || set -- win ctl env install rootsetup bundle smoke
 for s in "$@"; do
   [ -f "$HERE/wsl/$s.sh" ] || { echo "no such section: $s" >&2; exit 2; }
   echo "## $s"

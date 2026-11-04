@@ -41,6 +41,14 @@ if [ "$(uname -s)" = "Darwin" ]; then
     export PATH
 fi
 
+# The port this install serves on, recorded by install.sh, for whatever starts with an empty environment (`wsl.exe --exec ...`).
+# An explicit PI_WEB_PORT wins.
+if [ -z "${PI_WEB_PORT:-}" ] && [ -r "${PI_AGENT_HOME}/pi-web-port" ]; then
+    _pa_port="$(sed -n '1s/^\([0-9][0-9]*\)$/\1/p' "${PI_AGENT_HOME}/pi-web-port")"
+    if [ -n "$_pa_port" ]; then export PI_WEB_PORT="$_pa_port"; fi
+    unset _pa_port
+fi
+
 # WSL only: let the agents reach Windows. windows-interop.env is written by the
 # Windows-side installer, and only when Windows interop is on; without it, or when the
 # directory it names is not there, nothing changes. The two Windows directories go

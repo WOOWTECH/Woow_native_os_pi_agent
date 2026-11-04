@@ -6,7 +6,10 @@ set -euo pipefail
 SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
 : "${PI_AGENT_HOME:=$(dirname "$SELF")}"
 export PI_AGENT_HOME
-PORT="${PI_WEB_PORT:-30141}"
+# An explicit PI_WEB_PORT, else the port the install recorded, else the default. A session started by
+# `wsl.exe --exec pi-agent ...` has no PI_WEB_PORT in its environment.
+_pa_port="$(sed -n '1s/^\([0-9][0-9]*\)$/\1/p' "$PI_AGENT_HOME/pi-web-port" 2>/dev/null || true)"
+PORT="${PI_WEB_PORT:-${_pa_port:-30141}}"
 UNIT="pi-web"
 PLIST="io.woowtech.pi-agent"
 

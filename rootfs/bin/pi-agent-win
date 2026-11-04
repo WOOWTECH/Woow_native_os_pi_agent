@@ -101,7 +101,9 @@ user_runtime_dir() { echo "${XDG_RUNTIME_DIR:-${PA_RUN_USER_DIR:-/run/user}/$(id
 # One line per check, never stopping at the first problem. A check whose prerequisite
 # failed is skipped rather than failed a second time.
 cmd_doctor() {
-  local bad=0 port="${PI_WEB_PORT:-30141}" mnt="${PA_WSL_MNT_ROOT:-/mnt}" got ps_ok=0
+  local bad=0 port mnt="${PA_WSL_MNT_ROOT:-/mnt}" got ps_ok=0
+  port="${PI_WEB_PORT:-$(sed -n '1s/^\([0-9][0-9]*\)$/\1/p' "$PI_AGENT_HOME/pi-web-port" 2>/dev/null)}"
+  port="${port:-30141}"
   pass_() { echo "[PASS] $1: $2"; }
   fail_() { echo "[FAIL] $1: $2"; bad=1; }
   skip_() { echo "[SKIP] $1: $2"; }

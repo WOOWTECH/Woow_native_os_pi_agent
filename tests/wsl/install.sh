@@ -66,3 +66,7 @@ run isbx "$INSTALL" wire
 eq "wire: completes in a bare install" "0" "$rc"
 [ -x "$S/pa/bin/pi-agent" ] && ok "wire: installs pi-agent" || no "wire: installs pi-agent" "$out"
 [ -x "$S/pa/bin/pi-agent-win" ] && ok "wire: installs pi-agent-win next to it" || no "wire: installs pi-agent-win next to it"
+
+install_world inst-wire-port
+run isbx PI_WEB_PORT=30142 "$INSTALL" wire
+eq "wire: records the port it installed on" "30142" "$(cat "$S/pa/pi-web-port" 2>/dev/null)"

@@ -166,3 +166,8 @@ run dsbx "$WIN" doctor
 eq    "doctor: exit 1 outside WSL" "1" "$rc"
 has   "doctor: says this is not WSL" "[FAIL] wsl" "$out"
 lacks "doctor: runs no other check outside WSL" "[PASS]" "$out"
+
+doctor_world win-doctor-port-file
+printf '30177\n' > "$S/pa/pi-web-port"
+run dsbx PA_TEST_HTTP=0 "$WIN" doctor
+has "doctor: checks the port the install recorded" "30177" "$out"

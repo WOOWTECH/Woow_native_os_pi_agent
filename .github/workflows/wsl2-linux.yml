@@ -14,6 +14,7 @@ on:
       - 'scripts/wsl-*'
       - 'scripts/build-wsl-bundle.sh'
       - 'tests/wsl*'
+      - 'tests/smoke.sh'
       - '.github/workflows/wsl2-linux.yml'
   pull_request:
     paths: *paths

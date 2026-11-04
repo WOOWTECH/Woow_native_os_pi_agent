@@ -4,6 +4,10 @@
 # Omnigent/Paseo plugin state, and a full skill/MCP sharing round-trip.
 # Exits non-zero if any assertion fails. Self-cleans its test artifacts.
 set -u
+# Nothing here reads input, and a terminal on stdin does harm: `timeout` runs its command in a background process group, so
+# the kernel stops a program that touches the terminal from there. `claude mcp get` does, which failed its check after 25 s
+# on the first real Windows PC. CI never showed it: a hosted runner has no terminal.
+exec </dev/null
 : "${PI_AGENT_HOME:=${XDG_DATA_HOME:-$HOME/.local/share}/pi-agent}"
 export PI_AGENT_HOME
 # shellcheck source=/dev/null

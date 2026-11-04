@@ -428,6 +428,8 @@ stage_wire() {
   for f in pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-win pi-agent-adopt-logins pi-agent-session-home pi-agent-session-home-macos pi-agent-host-name pi-agent-host-name.mjs pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs omnigent-plugin-session-home-patch.mjs omnigent-plugin-host-name-guard-patch.mjs; do
     [ -f "$HERE/rootfs/bin/$f" ] && install -m 0755 "$HERE/rootfs/bin/$f" "$PA_BIN_DIR/$f"
   done
+  # The port the service is written for, for everything that later runs without PI_WEB_PORT in its environment.
+  printf '%s\n' "$PIN_PI_WEB_PORT" > "$PI_AGENT_HOME/pi-web-port"
   # Host name: the plugin patch (also applied by `fetch`; a no-op when already
   # there, which is what makes this cover an install fetched before it existed)
   # and a unique default name when the install has none. An existing name is

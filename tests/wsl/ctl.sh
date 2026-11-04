@@ -68,3 +68,23 @@ ctl_world ctl-xdg-none
 stub systemctl 'echo "XDG=${XDG_RUNTIME_DIR:-unset}"'
 run sbx PA_RUN_USER_DIR="$S/no-such-dir" "$S/pa/bin/pi-agent" status
 has "status: invents nothing where there is no /run/user (macOS)" "XDG=unset" "$out"
+
+# A machine where 30141 is taken installs on another port, and the install remembers it: `wsl.exe --exec pi-agent ...` starts
+# with an empty environment. Found on a real PC: `pi-agent url` said 30141, where a different pi-web was listening.
+ctl_world ctl-port-file
+printf '30142\n' > "$S/pa/pi-web-port"
+run csbx "$S/pa/bin/pi-agent" url
+eq "url: follows the port the install recorded" "http://127.0.0.1:30142" "$out"
+run csbx "$S/pa/bin/pi-agent" open
+eq "open: follows the port the install recorded" "open http://localhost:30142" "$(cat "$S/win-calls" 2>/dev/null)"
+run csbx PI_WEB_PORT=30199 "$S/pa/bin/pi-agent" url
+eq "url: an explicit PI_WEB_PORT still wins" "http://127.0.0.1:30199" "$out"
+
+ctl_world ctl-port-none
+run csbx "$S/pa/bin/pi-agent" url
+eq "url: without a record, the default" "http://127.0.0.1:30141" "$out"
+
+ctl_world ctl-port-garbage
+printf 'not a port\n' > "$S/pa/pi-web-port"
+run csbx "$S/pa/bin/pi-agent" url
+eq "url: a record that is not a number is ignored" "http://127.0.0.1:30141" "$out"

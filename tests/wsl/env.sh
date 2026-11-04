@@ -42,3 +42,11 @@ printf 'PA_WIN_SYSTEM32=%s\n' "$S/no-such-drive/Windows/System32" > "$S/pa/windo
 GONE="$(penv)"
 eq "env: a recorded directory that does not exist is ignored" "0" "$(pathof "$GONE" | grep -c no-such-drive)"
 eq "env: and BROWSER is left alone then" "" "$(browserof "$GONE")"
+
+# The port the install recorded reaches everything that sources this file (tests/smoke.sh does).
+sandbox env-port
+printf '30142\n' > "$S/pa/pi-web-port"
+eq "env: PI_WEB_PORT comes from the install's record" "30142" "$(sbx bash -c '. "$1"; printf "%s" "${PI_WEB_PORT:-unset}"' _ "$ENV_SH")"
+eq "env: an explicit PI_WEB_PORT wins over the record" "30199" "$(sbx PI_WEB_PORT=30199 bash -c '. "$1"; printf "%s" "${PI_WEB_PORT:-unset}"' _ "$ENV_SH")"
+sandbox env-port-none
+eq "env: no record, nothing is set" "unset" "$(sbx bash -c '. "$1"; printf "%s" "${PI_WEB_PORT:-unset}"' _ "$ENV_SH")"

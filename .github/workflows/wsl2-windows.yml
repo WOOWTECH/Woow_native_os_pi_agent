@@ -19,6 +19,9 @@ on:
       - 'lib/wsl.sh'
       - 'rootfs/bin/pi-agent*'
       - 'tests/wsl-*'
+      - 'tests/smoke.sh'
+      - 'install.sh'
+      - 'lib/**'
       - '.github/workflows/wsl2-windows.yml'
   pull_request:
     paths:
@@ -28,6 +31,9 @@ on:
       - 'lib/wsl.sh'
       - 'rootfs/bin/pi-agent*'
       - 'tests/wsl-*'
+      - 'tests/smoke.sh'
+      - 'install.sh'
+      - 'lib/**'
       - '.github/workflows/wsl2-windows.yml'
 
 permissions:
