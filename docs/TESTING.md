@@ -307,5 +307,8 @@ Measured on the two Macs:
   was 2.6 to 3.1 s: under the limit, but not by enough while pi-web is still starting.
 - no native node module is compiled on an Intel Mac: the installed MacBook Pro has none under
   `build/Release`, and 16 prebuilt `.node` files in pi-web, 10 in the Paseo runtime.
-- not tried: a Mac that has never had the Command Line Tools (both had them by then), and the
-  `macos-15-intel` release job itself, which first runs on the next tag.
+- the release workflow, dispatched on the branch before the v0.2.5 tag (run 41826891068): all three
+  legs green. On the `macos-15-intel` runner pi-web built and packed (146 MB artifact) and the tmux
+  build passed every self-check (CJK at two columns a character, jemalloc the default zone, links
+  only `/usr/lib`).
+- not tried: a Mac that has never had the Command Line Tools (both had them by then).

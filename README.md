@@ -15,18 +15,19 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 |---|---|
 | **Linux** (Ubuntu/Debian; dnf-based best-effort) | ✅ installed + running + browser-verified · 24/24 smoke |
 | **macOS** (arm64, 26.4 verified) | ✅ installed + running under launchd · 24/24 smoke · see [`docs/MACOS.md`](docs/MACOS.md) |
-| **macOS** (Intel x86_64, 13.7 + 15.4 verified) | ✅ installs end to end with no compiler, Omnigent dependencies complete · needs a release with the `macos-x64` assets · see [`docs/MACOS.md`](docs/MACOS.md#intel-macs-x86_64) |
+| **macOS** (Intel x86_64, 13.7 + 15.4 verified) | ✅ installs end to end with no compiler, Omnigent dependencies complete · since v0.2.5 · see [`docs/MACOS.md`](docs/MACOS.md#intel-macs-x86_64) |
 | **Windows (WSL2)** | ⏳ reuses the Linux path |
 
 ## Install
 
 ### macOS — download and double-click
 
-[WoowPiAgent-0.2.4-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.4/WoowPiAgent-0.2.4-macos-arm64.pkg)
-is signed with a Developer ID and notarized, so Gatekeeper opens it without a
-warning. It fetches the rest of the stack while it installs. On an Intel Mac use
-the release's `-macos-x64.pkg` instead, once a release publishes the `macos-x64`
-assets it is built from ([docs/MACOS.md](docs/MACOS.md#intel-macs-x86_64)).
+- Apple silicon: [WoowPiAgent-0.2.5-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.5/WoowPiAgent-0.2.5-macos-arm64.pkg)
+- Intel: [WoowPiAgent-0.2.5-macos-x64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.5/WoowPiAgent-0.2.5-macos-x64.pkg)
+
+Each is signed with a Developer ID and notarized, so Gatekeeper opens it without
+a warning, and each installs only on its own kind of Mac. It fetches the rest of
+the stack while it installs.
 
 ### Linux — prebuilt pi-web (recommended)
 
@@ -37,7 +38,7 @@ needed and the build disappears entirely.
 ```bash
 git clone https://github.com/WOOWTECH/Woow_native_os_pi_agent
 cd Woow_native_os_pi_agent
-PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.4/piweb-0.10.0-linux-x64.tar.gz \
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.5/piweb-0.10.0-linux-x64.tar.gz \
   ./install.sh
 ```
 
@@ -129,9 +130,9 @@ are derived from WOOWTECH's `Woow_ha_pi_agent_add_on` / `Woow_k3s_pi_agent_packa
 
 ```bash
 scripts/build-piweb-artifact.sh dist          # prebuilt pi-web for THIS platform (CI does this)
-scripts/build-macos-tmux.sh                   # bundled tmux -> dist/tools-macos-arm64/
+scripts/build-macos-tmux.sh                   # bundled tmux for THIS Mac -> dist/tools-macos-<arm64|x64>/
 scripts/build-macos-pkg.sh \
-    --artifact-url    https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/<tag>/piweb-<ver>-macos-arm64.tar.gz \
+    --artifact-url    https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/<tag>/piweb-<ver>-macos-<arm64|x64>.tar.gz \
     --artifact-sha256 <that asset's .sha256> \
     [--sign-app "Developer ID Application: …"] [--sign "Developer ID Installer: …"] \
     [--notary-key AuthKey_….p8 --notary-key-id … --notary-issuer …]
