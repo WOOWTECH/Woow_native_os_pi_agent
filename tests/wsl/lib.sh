@@ -42,7 +42,7 @@ interop_env() { printf 'PA_WIN_SYSTEM32=%s\n' "$S/sys32" > "$S/pa/windows-intero
 sbx() {
   env -i PATH="$S/bin:$SYS_PATH" HOME="$S/home" TMPDIR="$TMP" \
     PI_AGENT_HOME="$S/pa" PA_WSL_PROC_VERSION="$S/proc-version" \
-    PA_WSL_RUN_DIR="$S/run/WSL" "$@"
+    PA_WSL_RUN_DIR="$S/run/WSL" PA_WIN_PROBE_WAIT=0 "$@"
 }
 
 # run CMD... -- stdout+stderr into $out, exit status into $rc.

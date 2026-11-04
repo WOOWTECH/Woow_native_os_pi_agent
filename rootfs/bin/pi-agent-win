@@ -36,13 +36,21 @@ candidates() {
 }
 
 # A channel is live when a Windows program can start through it.
+# A busy PC can miss a probe (WSL: "accept4 failed 110", seen on a real PC with little free
+# memory, gone a moment later), so look again before saying there is none. A sandbox will not
+# change its mind: no point waiting for it.
 pick_channel() {
-  local probe c
+  local probe c err round=1
   probe="$(find_exe cmd.exe)" || return 1
-  for c in $(candidates); do
-    if WSL_INTEROP="$c" "$probe" /c exit 0 >/dev/null 2>&1; then echo "$c"; return 0; fi
+  while :; do
+    for c in $(candidates); do
+      if err="$(WSL_INTEROP="$c" "$probe" /c exit 0 2>&1 >/dev/null)"; then echo "$c"; return 0; fi
+      case "$err" in *UtilBindVsock*) return 1 ;; esac
+    done
+    [ "$round" -ge "${PA_WIN_PROBE_ROUNDS:-3}" ] && return 1
+    round=$((round + 1))
+    sleep "${PA_WIN_PROBE_WAIT:-2}"
   done
-  return 1
 }
 
 fail() { echo "pi-agent-win: $2" >&2; exit "$1"; }
@@ -55,7 +63,7 @@ channel_problem() {
   if probe="$(find_exe cmd.exe)"; then
     case "$("$probe" /c exit 0 2>&1 >/dev/null)" in
       *UtilBindVsock*)
-        echo "a sandbox around this process blocks the connection to Windows. Codex runs its commands in one: start the session with the \"Full access\" preset, or run this outside Codex."
+        echo "a sandbox around this process blocks the connection to Windows; Windows itself is fine. Ask to run this same command outside the sandbox. Codex runs its commands in such a sandbox; its \"Full access\" preset turns it off."
         return 0 ;;
     esac
   fi
@@ -116,7 +124,7 @@ user_runtime_dir() { echo "${XDG_RUNTIME_DIR:-${PA_RUN_USER_DIR:-/run/user}/$(id
 # One line per check, never stopping at the first problem. A check whose prerequisite
 # failed is skipped rather than failed a second time.
 cmd_doctor() {
-  local bad=0 port mnt="${PA_WSL_MNT_ROOT:-/mnt}" got ps_ok=0
+  local bad=0 port mnt="${PA_WSL_MNT_ROOT:-/mnt}" got ps_ok=0 why sandboxed=0
   port="${PI_WEB_PORT:-$(sed -n '1s/^\([0-9][0-9]*\)$/\1/p' "$PI_AGENT_HOME/pi-web-port" 2>/dev/null)}"
   port="${port:-30141}"
   pass_() { echo "[PASS] $1: $2"; }
@@ -143,7 +151,9 @@ cmd_doctor() {
     if [ "$got" = 2 ]; then pass_ powershell "answers"; ps_ok=1
     else fail_ powershell "did not answer (got: $got)"; fi
   else
-    fail_ interop "$(channel_problem)"
+    why="$(channel_problem)"
+    case "$why" in *sandbox*) sandboxed=1 ;; esac
+    fail_ interop "$why"
     skip_ powershell "needs interop"
   fi
 
@@ -155,7 +165,10 @@ cmd_doctor() {
     skip_ localhost "needs PowerShell"
   fi
 
-  if [ "$(XDG_RUNTIME_DIR="$(user_runtime_dir)" systemctl --user is-active pi-web 2>/dev/null)" = active ]; then
+  if [ "$sandboxed" = 1 ]; then
+    # The sandbox hides the service manager too; "not active" would only mislead.
+    skip_ service "a sandbox hides it"
+  elif [ "$(XDG_RUNTIME_DIR="$(user_runtime_dir)" systemctl --user is-active pi-web 2>/dev/null)" = active ]; then
     pass_ service "pi-web is active"
   else
     fail_ service "pi-web is not active -- 'pi-agent status' and 'pi-agent logs' show why"

@@ -48,9 +48,26 @@ winexe hello.exe "echo SHOULD-NOT-RUN"
 run sbx "$WIN" run hello.exe
 eq    "run: exit 3 inside a sandbox that blocks the channel" "3" "$rc"
 has   "run: names the sandbox as the cause" "sandbox" "$out"
-has   "run: says how to get out of it" "Full access" "$out"
+has   "run: says what to do about it" "outside the sandbox" "$out"
+has   "run: says Windows itself is fine" "Windows itself is fine" "$out"
+has   "run: names the setting that turns it off" "Full access" "$out"
 lacks "run: does not blame the interop setting" "wsl.conf" "$out"
 lacks "run: does not start the program" "SHOULD-NOT-RUN" "$out"
+
+# A busy PC can miss one probe. Look again rather than report a channel that is there
+# as missing -- but a command the agent asked for is never run twice by this.
+sandbox win-busy
+: > "$S/run/WSL/100_interop"
+interop_env
+printf '%s\n' '#!/bin/bash' \
+  "n=\$(cat \"$S/probes\" 2>/dev/null || echo 0); n=\$((n+1)); echo \$n > \"$S/probes\"" \
+  '[ "$n" -ge 2 ] && exit 0' \
+  "echo '<3>WSL (2 - ) ERROR: UtilAcceptVsock:271: accept4 failed 110' >&2; exit 1" > "$S/sys32/cmd.exe"
+chmod +x "$S/sys32/cmd.exe"
+winexe hello.exe "echo \"ran\" >> \"$S/ran\"; echo hello"
+run sbx "$WIN" run hello.exe
+eq "run: a missed probe is tried again" "0|hello" "$rc|$out"
+eq "run: the program itself runs once" "1" "$(wc -l < "$S/ran" | tr -d ' ')"
 
 sandbox win-no-such-exe
 : > "$S/run/WSL/100_interop"
@@ -162,6 +179,8 @@ eq    "doctor: exit 1 inside a sandbox" "1" "$rc"
 has   "doctor: says a sandbox is in the way" "[FAIL] interop" "$out"
 has   "doctor: names the sandbox" "sandbox" "$out"
 lacks "doctor: does not blame the interop setting" "wsl.conf" "$out"
+has   "doctor: does not call the service down" "[SKIP] service" "$out"
+lacks "doctor: says nothing false about the service" "[FAIL] service" "$out"
 
 doctor_world win-doctor-localhost
 run dsbx PA_TEST_HTTP=0 PI_WEB_PORT=30199 "$WIN" doctor

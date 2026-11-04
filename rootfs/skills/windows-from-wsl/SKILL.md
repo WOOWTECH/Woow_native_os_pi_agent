@@ -25,7 +25,13 @@ Codex runs its commands in a sandbox that blocks the connection to Windows. It s
 `UtilBindVsockAnyPort: socket failed 1`, or as `pi-agent-win` saying a sandbox blocks it or that no
 interop channel works. **That does not mean Windows cannot be reached.** Ask to run the same command
 outside the sandbox, with a one-line reason, so the person can approve it. If the session does not
-allow asking, tell the person that a Codex sandbox setting is what stopped it.
+allow asking, tell the person that a Codex sandbox setting is what stopped it. Do not suggest
+`wsl --shutdown`: it stops everything in this Linux and does not help.
+
+## When a call fails once
+
+On a busy PC a Windows call can fail with `accept4 failed 110`, or a short "no working channel". It is
+a timeout, not a broken setup. Check whether the command took effect, then run it again.
 
 ## This is someone's computer
 
