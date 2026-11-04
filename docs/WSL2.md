@@ -7,6 +7,7 @@
 > Claude Code 與 Codex 在 Omnigent、Paseo 網頁版開對話並切換模型都成功,代理也能控制 Windows(PowerShell、Notepad、
 > 瀏覽器、檔案互通)。2026-11-04 也在**一台真的 Windows 10 22H2 電腦**上裝成功(一般權限的桌面環境,自我檢查 24 項全過),
 > 連上 Omnigent 之後,Pi(走 LiteLLM)與 Claude Code 都開對話、切模型、操作了 Windows 的 PowerShell 與記事本;Codex 會被自己的沙盒擋住,要逐條核准。
+> **那台實機在測試途中藍屏當機一次,原因未明,不能排除和這次測試有關(見「驗證到哪裡」)。**
 > **還沒在 Windows 11 實機上跑過**,也還沒測到「第一次啟用 WSL 並重新開機」、實際的「登入時自動啟動」、睡眠喚醒;Pi 用 ChatGPT 登入在那台實機上失敗(`invalid_grant`,原因未明),要改走 LiteLLM。細節在最後的「驗證到哪裡」。請先拿一台可以隨時重來的電腦試。
 
 一行 PowerShell 指令,替你的 Windows 11 建一個**專用的 Linux 小系統**(WSL2 裡的 Ubuntu 24.04,
@@ -236,7 +237,7 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 - 登入時的工作排程從非提權的桌面環境登錄成功(這個帳號屬於系統管理員群組;純標準使用者沒試過)。
 - 保活:Linux 從裝好起一路開著,途中 Wi-Fi 斷了 25 分鐘也沒停;Wi-Fi 回來後 Linux 的 DNS 和 HTTPS 都通。
 - 記憶體:Linux 這台虛擬機在 Windows 上約用 1.3–2.5 GB,裡面的 pi-web 服務約 660 MB。安裝時全系統承諾記憶體最高到 29.3 / 31.9 GB,
-  沒有出事,但也沒有餘裕。
+  安裝當下沒有出事,但沒有餘裕(後來當機一次,見下)。
 - **Omnigent**:外掛從標準輸入拿密碼連上伺服器,這台以 `DESKTOP-5RSIP1C (pi-agent)` 上線。`pi-omnigent verify` 三個代理都在真的對話裡回答正確
   (Codex 第一次回 `SERVER_UNREACHABLE`,重跑就過,但測試對話沒能自動停掉)。
 - **Pi 走 LiteLLM**:`pi-agent-litellm set` 接上閘道,`probe --apply` 從 85 個模型留下 40 個真的能回答的。Omnigent 對話裡 Fable 5.1 回
@@ -247,8 +248,11 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   測試檔出現又消失,其他有視窗的程式沒變動。兩次各碰到一次互通逾時,代理都自己查過再重試成功。
 - **Codex**:預設沙盒擋住 Windows(見上面「Windows 互通」),在終端機按一次同意就通,讀到 Windows 版本、電腦名稱與可用記憶體。
 - **Pi 用 ChatGPT 登入**:同一個帳號 3 次都在最後一步回 `invalid_grant`,見疑難排解。
-- **Wi-Fi**:測試期間這台的 USB Wi-Fi 有兩段不穩(掉封包 40–100%,延遲 500–900 毫秒),當時整台電腦的流量只有每秒 0.1 MB 以下,所以不是下載塞滿;
-  有沒有跟記憶體不足有關還不知道。那時連不到 Omnigent 伺服器。
+- **Wi-Fi**:測試期間這台的 USB Wi-Fi(TP-Link,驅動程式 5001.19.113.2)有幾段不穩(掉封包 40–100%,延遲 500–900 毫秒),當時整台電腦的流量只有每秒 0.1 MB
+  以下,所以不是下載塞滿。那時連不到 Omnigent 伺服器。
+- **這台當機了一次**:13:42 藍屏重開,`0x133 DPC_WATCHDOG_VIOLATION`(某個驅動程式佔住處理器太久),開著的程式全部關閉。之前約半小時已經時好時壞,
+  可用記憶體約 0.3 GB。這台上一次藍屏是 2023 年 5 月;當天裝了這個 Linux、把 WSL 升到 3.0.3、跑了好幾個代理,所以**不能排除有關**。傾印檔還沒分析,
+  是哪個驅動程式、跟 WSL2 有沒有關都還不知道。**在平常工作用的電腦上試之前,請先存好檔案**,記憶體只有 8 GB 的尤其要小心。
 
 **還沒驗證**:
 
@@ -259,7 +263,9 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   Windows Terminal,`-WindowStyle Hidden` 可能不生效,登入後會多一個視窗在跑保活;關掉那個視窗,Linux 就會停。另外,
   公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活與自動續跑都不會執行。
 - 睡眠喚醒後 host 自動重連(E8)。
-- 真機上 Codex 在 Omnigent 對話裡切換模型與操作 Windows(雲端機上驗過切換模型;Windows 操作在實機終端機裡驗過)。
+- 真機上 Codex 在 Omnigent 對話裡切換模型與操作 Windows(雲端機上驗過切換模型;Windows 操作在實機終端機裡驗過)。換上新的錯誤訊息後,它知道要申請到沙盒外執行,
+  但結果還沒看到,那台就當機了。
+- 那次藍屏的原因(傾印檔還沒分析)。
 - 真機上用 Omnigent 網頁的選單切換模型:實機上網頁只開過第一個對話,切換是走同一個 API(`PATCH /v1/sessions/{id}`);選單本身是在雲端機上點過的。
 - Windows ARM64(E12)。
 - **Pi 用 ChatGPT 帳號回答一句話**:雲端機上回覆被用量上限擋下,實機上登入就失敗。走 LiteLLM 的已經過了。
