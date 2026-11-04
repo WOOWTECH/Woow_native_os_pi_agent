@@ -378,8 +378,10 @@ only a real PC showed:
 
 **Through the real Omnigent server on that PC.** `pi-omnigent connect` with the password over stdin; `pi-omnigent verify` answered for all
 three engines. Then one request in plain words, not mentioning `pi-agent-win`: read the Windows version and computer name, create a test
-file, open it in Notepad, read the window title, close that Notepad by the PID it got, delete the file. Pi and Codex were also watched from
-outside: the Notepad and the file appeared and went, and no other program was touched.
+file, open it in Notepad, read the window title, close that Notepad by the PID it got, delete the file. Pi was also watched from outside
+while it worked: the Notepad and the file appeared and went, and no other program with a window changed. For Codex there is a before-and-after
+comparison: no Notepad and no file left. Three built-in apps had appeared meanwhile (Settings, Calculator, Media Player, all suspended, all
+started three minutes after sign-in); they are not in Codex's commands, and what started them was not looked into. Claude Code's result is its own report.
 
 | agent | did the request on | switched to, and answered |
 |---|---|---|
