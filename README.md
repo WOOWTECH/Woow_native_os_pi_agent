@@ -15,6 +15,7 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 |---|---|
 | **Linux** (Ubuntu/Debian; dnf-based best-effort) | ✅ installed + running + browser-verified · 24/24 smoke |
 | **macOS** (arm64, 26.4 verified) | ✅ installed + running under launchd · 24/24 smoke · see [`docs/MACOS.md`](docs/MACOS.md) |
+| **macOS** (Intel x86_64, 13.7 + 15.4 verified) | ✅ installs end to end with no compiler, Omnigent dependencies complete · needs a release with the `macos-x64` assets · see [`docs/MACOS.md`](docs/MACOS.md#intel-macs-x86_64) |
 | **Windows (WSL2)** | ⏳ reuses the Linux path |
 
 ## Install
@@ -23,7 +24,9 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 
 [WoowPiAgent-0.2.4-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.4/WoowPiAgent-0.2.4-macos-arm64.pkg)
 is signed with a Developer ID and notarized, so Gatekeeper opens it without a
-warning. It fetches the rest of the stack while it installs.
+warning. It fetches the rest of the stack while it installs. On an Intel Mac use
+the release's `-macos-x64.pkg` instead, once a release publishes the `macos-x64`
+assets it is built from ([docs/MACOS.md](docs/MACOS.md#intel-macs-x86_64)).
 
 ### Linux — prebuilt pi-web (recommended)
 
@@ -39,7 +42,8 @@ PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/rele
 ```
 
 The installer verifies the asset's published `.sha256` and refuses one built for
-another platform (a Mac without the pkg uses `piweb-0.10.0-macos-arm64.tar.gz`).
+another platform (a Mac without the pkg uses `piweb-0.10.0-macos-arm64.tar.gz`,
+or `piweb-0.10.0-macos-x64.tar.gz` on an Intel Mac).
 Unpacking takes **4s on Linux / 6s on macOS** (measured after deleting the built
 tree); from a URL you also pay the download, 180 MB (Linux) / 136 MB (macOS). A
 local file path works too.
