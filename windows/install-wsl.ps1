@@ -1738,6 +1738,9 @@ function Invoke-PaMain {
     $script:PaLogFile = ''
     Reset-PaMessages
     $oldEap = $ErrorActionPreference
+    # Invoke-Wsl sets this for its own calls. From the documented command the script shares the
+    # user's console, where it would stay on for every later `wsl` they type in that window.
+    $oldWslUtf8 = $env:WSL_UTF8
     $ErrorActionPreference = 'Stop'
     try {
         $rc = @(Invoke-PaMainCore -Opts $Options)
@@ -1747,6 +1750,7 @@ function Invoke-PaMain {
         return 1
     } finally {
         $ErrorActionPreference = $oldEap
+        $env:WSL_UTF8 = $oldWslUtf8
         $script:PaDry = $false
     }
 }

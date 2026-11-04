@@ -725,6 +725,33 @@ Describe 'WSL itself' {
     }
 }
 
+Describe 'the console it ran in' {
+    # Found by the e2e job: `wsl -l -q` read differently before and after a dry run, because
+    # WSL_UTF8 stayed set in the process the documented command shares with the user.
+    AfterEach { Remove-Item Env:WSL_UTF8 -ErrorAction SilentlyContinue }
+
+    It 'does not leave WSL_UTF8 set' {
+        Remove-Item Env:WSL_UTF8 -ErrorAction SilentlyContinue
+        Mock Invoke-PaMainCore { $env:WSL_UTF8 = '1'; return 0 }
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+        $env:WSL_UTF8 | Should -BeNullOrEmpty
+    }
+
+    It 'keeps the value the user had' {
+        $env:WSL_UTF8 = 'mine'
+        Mock Invoke-PaMainCore { $env:WSL_UTF8 = '1'; return 0 }
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+        $env:WSL_UTF8 | Should -Be 'mine'
+    }
+
+    It 'restores it after a failure too' {
+        Remove-Item Env:WSL_UTF8 -ErrorAction SilentlyContinue
+        Mock Invoke-PaMainCore { $env:WSL_UTF8 = '1'; throw 'boom' }
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 1
+        $env:WSL_UTF8 | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'dry run' {
     It 'checks for real and changes nothing on a fresh machine' {
         $script:Scn.WslReady = $false
