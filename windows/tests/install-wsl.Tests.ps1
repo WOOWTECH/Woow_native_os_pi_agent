@@ -64,6 +64,7 @@ BeforeEach {
         HasMarker        = $true
         StartFail        = $false
         ImportFail       = $false
+        CannotStart      = $false
         ImportTimeouts   = 0
         SystemdState     = 'running'
         Uid              = 1001
@@ -154,6 +155,9 @@ BeforeEach {
             return [pscustomobject]@{ ExitCode = 1; Output = 'no installed distributions' }
         }
         if ($line -match '/usr/bin/test -f /etc/pi-agent-distro') {
+            if ($script:Scn.CannotStart) {
+                return [pscustomobject]@{ ExitCode = -1; Output = ('WSL2 cannot start because virtualization is not enabled.' + "`n" + 'Error code: Wsl/Service/CreateInstance/CreateVm/HCS/HCS_E_HYPERV_NOT_INSTALLED') }
+            }
             if ($script:Scn.HasMarker) { return [pscustomobject]@{ ExitCode = 0; Output = '' } }
             return [pscustomobject]@{ ExitCode = 1; Output = '' }
         }
@@ -616,6 +620,18 @@ Describe 'failures on the way' {
         Get-AllMessages | Should -Match 'timed out starting'
     }
 
+    It 'says the existing Linux cannot be started, and never suggests deleting it' {
+        $script:Scn.DistroExists = $true
+        $script:Scn.CannotStart = $true
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 10
+        $m = Get-AllMessages
+        $m | Should -Match 'cannot start the existing distro'
+        $m | Should -Match 'virtualization'
+        $m | Should -Not -Match 'distro name taken'
+        $m | Should -Not -Match 'wsl --unregister'
+        (Get-MutatingCalls).Count | Should -Be 0
+    }
+
     It 'does not try again after any other import failure' {
         $script:Scn.ImportFail = $true
         Invoke-PaMain -Options (New-TestOpts) | Should -Be 40
@@ -897,6 +913,15 @@ Describe 'uninstall' {
         (Get-CallIndex -Pattern '^--unregister ') | Should -Be -1
         (Get-CallIndex -Pattern '^--terminate ') | Should -Be -1
         Get-AllMessages | Should -Match 'not created by this installer'
+    }
+
+    It 'does not delete a Linux it cannot start, and says so' {
+        $script:Scn.CannotStart = $true
+        Invoke-PaMain -Options (New-TestOpts -Extra @{ Uninstall = $true; PurgeData = $true }) | Should -Be 3
+        (Get-CallIndex -Pattern '^--export ') | Should -Be -1
+        (Get-CallIndex -Pattern '^--unregister ') | Should -Be -1
+        (Get-CallIndex -Pattern '^--terminate ') | Should -Be -1
+        Get-AllMessages | Should -Match 'cannot start the distro'
     }
 
     It 'does not delete anything when the backup fails' {

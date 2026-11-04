@@ -977,11 +977,19 @@ function Get-PaDistroState {
         if ($n -ieq $Name) { $exists = $true }
     }
     $marker = $false
+    $cannotStart = $false
+    $why = ''
     if ($exists) {
         $r = Invoke-PaVm -Distro $Name -User 'root' -Exec @('/usr/bin/test', '-f', '/etc/pi-agent-distro')
         $marker = ($r.ExitCode -eq 0)
+        # test -f answers 1 and prints nothing when the file is not there. Anything else means WSL could not start the
+        # Linux at all (virtualization off, a timeout: exit -1 and an error text), and then nobody knows whose it is.
+        if (-not $marker -and ($r.ExitCode -ne 1 -or -not [string]::IsNullOrWhiteSpace([string]$r.Output))) {
+            $cannotStart = $true
+            $why = [string]$r.Output
+        }
     }
-    return [pscustomobject]@{ Exists = $exists; HasMarker = $marker }
+    return [pscustomobject]@{ Exists = $exists; HasMarker = $marker; CannotStart = $cannotStart; Why = $why }
 }
 
 # The port an earlier install of this Linux recorded (install.sh writes it), or 0 when there is none.
@@ -1127,7 +1135,13 @@ function Test-PaPreflight {
     }
 
     $state = Get-PaDistroState -Name $Opts.DistroName
-    if ($state.Exists -and -not $state.HasMarker) {
+    if ($state.Exists -and $state.CannotStart) {
+        # Not "someone else's": it may be the user's own, with their data in it, that WSL cannot start right now. Never suggest deleting it.
+        $reason = ConvertTo-PaFriendlyWslError -Text $state.Why
+        if (-not $reason) { $reason = ('WSL 回報:' + (@(([string]$state.Why -split "`n") | Where-Object { $_.Trim().Length -gt 0 })[0])) }
+        Write-PaMsg 'Error' ('Linux「{0}」已經存在,但 WSL 現在啟動不了它,所以這次不會動它。{1} 處理好之後重跑同樣的安裝就好。請不要刪除這個 Linux,裡面可能有你的資料。(cannot start the existing distro)' -f $Opts.DistroName, $reason)
+        $bad = $true
+    } elseif ($state.Exists -and -not $state.HasMarker) {
         Write-PaMsg 'Error' ('已經有一個叫 {0} 的 WSL 發行版,而且不是這個安裝程式建立的。請用 -DistroName 換一個名字;如果它是上次安裝中途被中斷留下的,先執行 wsl --unregister {0} 再重跑。(distro name taken)' -f $Opts.DistroName)
         $bad = $true
     }
@@ -1651,6 +1665,8 @@ function Invoke-PaUninstall {
         Stop-PaPiAgentInVm -Distro $name -User $user
         [void](Invoke-Wsl -Arguments @('--terminate', $name))
         Write-PaMsg 'Ok' ('已停止 Linux「{0}」裡的 Pi Agent。' -f $name)
+    } elseif ($state.Exists -and $state.CannotStart) {
+        Write-PaMsg 'Warn' ('Linux「{0}」現在啟動不了,沒有動它。(cannot start the distro, left alone)' -f $name)
     } elseif ($state.Exists) {
         Write-PaMsg 'Warn' ('Linux「{0}」不是這個安裝程式建立的,沒有動它。(not created by this installer, left alone)' -f $name)
     }
@@ -1666,6 +1682,10 @@ function Invoke-PaUninstall {
         }
         Remove-PaEmptyDir -Path $Paths.InstallDir
         return 0
+    }
+    if ($state.CannotStart) {
+        Write-PaMsg 'Error' ('Linux「{0}」現在啟動不了,沒辦法先備份,所以不會刪除任何資料。把 WSL 修好(或重開機)再試一次。(cannot start the distro, nothing was deleted)' -f $name)
+        return 3
     }
     if (-not $state.HasMarker) {
         Write-PaMsg 'Error' ('Linux「{0}」不是這個安裝程式建立的(找不到 /etc/pi-agent-distro),所以不會刪除它。要刪請自己執行 wsl --unregister {0}。(not created by this installer, nothing was deleted)' -f $name)
