@@ -16,6 +16,8 @@ BeforeAll {
     [System.IO.File]::WriteAllText($script:Copy, $text, (New-Object System.Text.UTF8Encoding($true)))
     . $script:Copy
     $script:RealRemoveEmptyDir = ${function:Remove-PaEmptyDir}
+    $script:RealInvokeWsl = ${function:Invoke-Wsl}
+    $script:RealInvokeWslStream = ${function:Invoke-WslStream}
 
     $script:X64Hash = 'bb415d824822c4b878125729af451a5d18fb13d1cf5cbed9a7393ad64ac6039e'
     $script:Arm64Hash = '74478b5024d9047397ba79d17c27f73caf85ada4988f88cffc2892d65e6a806b'
@@ -738,11 +740,11 @@ Describe 'what wsl.exe gets on stdin' {
         Remove-Variable PaTestWslPiped -Scope Global -ErrorAction SilentlyContinue
     }
     It 'is not the console when the output is captured' {
-        (Invoke-Wsl -Arguments @('--version')).ExitCode | Should -Be 0
+        (& $script:RealInvokeWsl -Arguments @('--version')).ExitCode | Should -Be 0
         $global:PaTestWslPiped | Should -Be @($true)
     }
     It 'is not the console when the output is streamed' {
-        Invoke-WslStream -Arguments @('--version') | Should -Be 0
+        & $script:RealInvokeWslStream -Arguments @('--version') | Should -Be 0
         $global:PaTestWslPiped | Should -Be @($true)
     }
 }
