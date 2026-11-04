@@ -1,0 +1,10 @@
+@echo off
+rem Pi Agent for Windows (WSL2): double-click this file to install.
+rem It downloads the install-wsl.ps1 of one release and runs it, the same as the command in docs/WSL2.md.
+rem Arguments go to the installer, e.g. Install-Pi-Agent.cmd -DryRun (a value with spaces will not survive).
+setlocal
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "$ErrorActionPreference='Stop'; $u='@@SCRIPT_URL@@'; $s=[Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing $u).RawContentStream.ToArray()).TrimStart([char]0xFEFF); $ErrorActionPreference='Continue'; & ([ScriptBlock]::Create($s)) %*; exit $LASTEXITCODE"
+set "code=%errorlevel%"
+echo.
+pause
+exit /b %code%

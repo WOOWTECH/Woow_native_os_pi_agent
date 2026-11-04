@@ -13,6 +13,8 @@
 #       replaced by this release's version, URLs and the bundle's sha256, and a UTF-8 BOM
 #       in front: Windows PowerShell 5.1 reads a file without one in the system code page
 #       (950 on a Traditional Chinese Windows) and every Chinese message turns to mojibake.
+#   Install-Pi-Agent.cmd   (release only) the file people double-click: downloads that
+#       install-wsl.ps1 and runs it. CRLF, because cmd.exe can lose its place in a file with bare LF.
 #
 # Everything is built in a temporary directory and moved into OUTDIR only when all of it
 # is right, so a mistake never leaves half a release behind.
@@ -20,6 +22,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PS_SRC="windows/install-wsl.ps1"
+CMD_SRC="windows/install-pi-agent.cmd.in"
 GUIDE="docs/WSL2.md"
 PREFIX="woow-pi-agent-installer"
 SLUG="${PA_REPO_SLUG:-WOOWTECH/Woow_native_os_pi_agent}"
@@ -87,11 +90,17 @@ if [ "$ver" != dev ]; then
   left="$(grep -Eo '@@[A-Z0-9_]+@@' "$work/ps.stamped" | head -1 || true)"
   [ -z "$left" ] || die "$PS_SRC has a placeholder this script does not know: $left"
   { has_bom "$work/ps.stamped" || printf '\357\273\277'; cat "$work/ps.stamped"; } > "$work/install-wsl.ps1"
+
+  git show "HEAD:$CMD_SRC" > "$work/cmd.in" 2>/dev/null || die "$CMD_SRC is not committed"
+  sed -e "s|@@SCRIPT_URL@@|$base/install-wsl.ps1|g" "$work/cmd.in" \
+    | awk '{ sub(/\r$/, ""); printf "%s\r\n", $0 }' > "$work/Install-Pi-Agent.cmd"
+  left="$(grep -Eo '@@[A-Z0-9_]+@@' "$work/Install-Pi-Agent.cmd" | head -1 || true)"
+  [ -z "$left" ] || die "$CMD_SRC has a placeholder this script does not know: $left"
 fi
 
 mkdir -p "$out"
 cp "$work/$name" "$work/$name.sha256" "$out/"
-if [ "$ver" != dev ]; then cp "$work/install-wsl.ps1" "$out/"; fi
+if [ "$ver" != dev ]; then cp "$work/install-wsl.ps1" "$work/Install-Pi-Agent.cmd" "$out/"; fi
 echo "built $out/$name"
 echo "  sha256: $sha"
-if [ "$ver" != dev ]; then echo "  stamped $out/install-wsl.ps1 for ${tag:-v$ver}"; fi
+if [ "$ver" != dev ]; then echo "  stamped $out/install-wsl.ps1 and Install-Pi-Agent.cmd for ${tag:-v$ver}"; fi

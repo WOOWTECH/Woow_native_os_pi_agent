@@ -223,12 +223,25 @@ jobs:
           $out = & ([ScriptBlock]::Create(([Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing $u).RawContentStream.ToArray())).TrimStart([char]0xFEFF))) -DryRun -BundlePath $bundle *>&1
           $code = $LASTEXITCODE
           $text = ($out | Out-String)
+          # The double-click file, stamped the way a release stamps it. stdin is NUL, so its pause returns at once.
+          $tpl = [IO.File]::ReadAllText((Join-Path (Get-Location).Path 'windows\install-pi-agent.cmd.in'))
+          $cmdFile = Join-Path (Get-Location).Path 'dist\Install-Pi-Agent.cmd'
+          [IO.File]::WriteAllText($cmdFile, (($tpl -replace '@@SCRIPT_URL@@', $u) -replace '\r?\n', "`r`n"), [Text.Encoding]::ASCII)
+          $cmdOut = & cmd.exe /c "`"$cmdFile`" -DryRun -BundlePath $bundle < NUL" 2>&1 | Out-String
+          $cmdCode = $LASTEXITCODE
+          # Nothing to download: it has to say so with a failing exit code, not hang and not claim success.
+          $deadFile = Join-Path (Get-Location).Path 'dist\Install-Dead-Url.cmd'
+          [IO.File]::WriteAllText($deadFile, (($tpl -replace '@@SCRIPT_URL@@', 'http://127.0.0.1:8765/no-such-file') -replace '\r?\n', "`r`n"), [Text.Encoding]::ASCII)
+          & cmd.exe /c "`"$deadFile`" -DryRun < NUL" 2>&1 | Out-Null
+          $deadCode = $LASTEXITCODE
           Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
           $zh = -join ([char]0x6B65, [char]0x9A5F)
           ('exit code seen by the caller: ' + $code) | Tee-Object -FilePath $log
           ('this console is still alive (the installer did not call exit): True') | Tee-Object -FilePath $log -Append
           ('Chinese came through intact (the two characters of the word for "step"): ' + $text.Contains($zh)) | Tee-Object -FilePath $log -Append
           ('the list of distros is unchanged: ' + ($before -eq (wsl -l -q | Out-String))) | Tee-Object -FilePath $log -Append
+          ('double-click file, dry run: exit code ' + $cmdCode + ', dry-run lines: ' + ([regex]::Matches($cmdOut, 'dry-run')).Count) | Tee-Object -FilePath $log -Append
+          ('double-click file, nothing to download: exit code ' + $deadCode + ' (must not be 0)') | Tee-Object -FilePath $log -Append
           ($text.Trim() -split "`r?`n" | Select-Object -First 14) | Tee-Object -FilePath $log -Append
 
       - name: Probes

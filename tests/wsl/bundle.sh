@@ -13,6 +13,7 @@ bundle_world() {
   R="$S/repo"
   mkdir -p "$R/scripts" "$R/lib" "$R/windows"
   cp "$REPO/scripts/build-wsl-bundle.sh" "$R/scripts/build-wsl-bundle.sh" 2>/dev/null
+  cp "$REPO/windows/install-pi-agent.cmd.in" "$R/windows/install-pi-agent.cmd.in" 2>/dev/null
   printf '0.9.9\n' > "$R/VERSION"
   printf 'PIN_PI_WEB_VERSION=0.10.0\n' > "$R/lib/pins.sh"
   printf '#!/bin/bash\necho install\n' > "$R/install.sh"
@@ -58,6 +59,19 @@ has   "bundle: stamps the bundle's URL"     "/releases/download/v0.9.9/pi-agent-
 has   "bundle: stamps the script's own URL" "/releases/download/v0.9.9/install-wsl.ps1" "$P"
 has   "bundle: stamps the x64 pi-web tree"  "/releases/download/v0.9.9/piweb-0.10.0-linux-x64.tar.gz" "$P"
 has   "bundle: stamps the arm64 pi-web tree" "/releases/download/v0.9.9/piweb-0.10.0-linux-arm64.tar.gz" "$P"
+
+# The file people double-click. cmd.exe reads it in the system code page and needs CRLF: with bare LF
+# it can lose its place in the file.
+CMD="$OUT/Install-Pi-Agent.cmd"
+C="$(cat "$CMD" 2>/dev/null)"
+[ -f "$CMD" ] && ok "bundle: writes the double-click installer" || no "bundle: writes the double-click installer" "$(ls "$OUT" 2>&1)"
+has   "bundle: it fetches this release's script" "/releases/download/v0.9.9/install-wsl.ps1" "$C"
+lacks "bundle: it has no placeholder left" "@@" "$C"
+has   "bundle: it hands its arguments to the installer" "%*" "$C"
+has   "bundle: it waits, so the window does not close on the result" "pause" "$C"
+has   "bundle: it returns the installer's exit code" "exit /b %code%" "$C"
+eq    "bundle: every line ends in CRLF" "$(wc -l < "$CMD" 2>/dev/null | tr -d ' ')" "$(grep -c "$(printf '\r')\$" "$CMD" 2>/dev/null)"
+eq    "bundle: it is plain ASCII (cmd.exe reads it in the system code page)" "0" "$(LC_ALL=C tr -d '\r\n\t -~' < "$CMD" 2>/dev/null | wc -c | tr -d ' ')"
 lacks "bundle: no placeholder is left" "@@" "$P"
 
 # The sha256 on the release page is only worth anything if anyone can rebuild it.
@@ -74,6 +88,7 @@ run bb "$OUT" dev
 eq "bundle: a dev build succeeds" "0" "$rc"
 [ -f "$OUT/pi-agent-installer-dev.tar.gz" ] && ok "bundle: dev writes pi-agent-installer-dev.tar.gz" || no "bundle: dev writes pi-agent-installer-dev.tar.gz" "$(ls "$OUT" 2>&1)"
 [ ! -e "$OUT/install-wsl.ps1" ] && ok "bundle: dev does not stamp an installer" || no "bundle: dev does not stamp an installer"
+[ ! -e "$OUT/Install-Pi-Agent.cmd" ] && ok "bundle: dev writes no double-click installer" || no "bundle: dev writes no double-click installer"
 
 # Mistakes it must catch before something is published.
 bundle_world bundle-version-mismatch
