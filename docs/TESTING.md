@@ -284,7 +284,7 @@ Measured on real Macs rather than in a sandbox (the commands are in OPERATIONS-G
 See [`WSL2.md`](WSL2.md) for the feature and [`WSL2-PLAN.md`](WSL2-PLAN.md) for the design and the
 experiments (E1-E14) a real machine still has to settle.
 
-**Linux side: 186 checks in a sandbox** (`bash tests/wsl.sh`; macOS 26.4, bash 3.2). Every check runs against
+**Linux side: 195 checks in a sandbox** (`bash tests/wsl.sh`; macOS 26.4, bash 3.2). Every check runs against
 a throw-away directory and stubs -- Windows programs, `useradd`, `apt-get`, `loginctl`, `systemctl`, `/proc/version`,
 `/run/WSL`, `/run/user`, `/etc` -- so it never touches a real WSL, a real install or the real `/etc`. The same suite
 runs on Ubuntu and macOS in CI (`wsl2-linux.yml`).
@@ -296,7 +296,7 @@ runs on Ubuntu and macOS in CI (`wsl2-linux.yml`).
 | `env` | 12 | `pi-agent-env.sh`: System32 and PowerShell are appended LAST (a Windows node/npm/git cannot shadow ours), once, only when the installer recorded them and they exist; an existing `BROWSER` is kept |
 | `install` | 26 | `install.sh`: refuses a home on a Windows drive, warns without systemd, derives the user bus, survives a missing `$USER` under `set -u`, says where Windows finds pi-web, `wire` installs `pi-agent-win`; plain Linux is unchanged |
 | `rootsetup` | 39 | `scripts/wsl-root-setup.sh`: creates the user once, writes `wsl.conf` (interop on/off), switches off the first-run prompt and cloud-init, hands over the installer, records the Windows directory, refuses bad input and a non-root caller; `packages`; `linger` waits for the bus and times out |
-| `bundle` | 28 | `scripts/build-wsl-bundle.sh`: one-directory tarball, same commit gives the same bytes, published sha256 is the tarball's, stamped installer has a UTF-8 BOM and no placeholder left, refuses a VERSION mismatch, a bad version and an unknown placeholder |
+| `bundle` | 37 | `scripts/build-wsl-bundle.sh`: one-directory tarball, same commit gives the same bytes, published sha256 is the tarball's, stamped installer has a UTF-8 BOM and no placeholder left, refuses a VERSION mismatch, a bad version and an unknown placeholder |
 | `smoke` | 3 | `tests/smoke.sh` under a real pty: what it runs has no terminal on stdin. The harness proves it really gives a terminal, and every program the self-check touches is a stand-in |
 
 Test strength was checked by hand with **32 deliberate regressions** (probe skipped, session channel ignored, profile

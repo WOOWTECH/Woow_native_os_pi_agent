@@ -1,6 +1,6 @@
 # Pi Agent on Windows 11 (WSL2)
 
-> **狀態:預覽版。** Linux 那一半在沙盒裡測過(`tests/wsl.sh`,186 項),也在 GitHub 的 Ubuntu 與 macOS 上跑過。
+> **狀態:預覽版(`v0.3.0-rc.1`)。** Linux 那一半在沙盒裡測過(`tests/wsl.sh`,195 項),也在 GitHub 的 Ubuntu 與 macOS 上跑過。
 > Windows 那一半(`windows/install-wsl.ps1`)已經在 **GitHub 的 Windows Server 2025 雲端機**上完整跑通:用
 > Windows PowerShell 5.1 裝完、自我檢查 24 項全過、Windows 這邊連得到 `http://localhost:30141`、保活有效、
 > 重跑與兩種解除安裝都試過。2026-11-03 還用**真的 Omnigent 伺服器**驗證過:那台雲端機登記成 Omnigent 主機,
@@ -35,12 +35,14 @@ Linux 主機,所以 Pi Agent、Claude Code、Codex 三個代理的行為跟 Linu
 在 PowerShell(不必是系統管理員)貼上:
 
 ```powershell
-$u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/latest/download/install-wsl.ps1'
+$u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3.0-rc.1/install-wsl.ps1'
 & ([ScriptBlock]::Create(([Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing $u).RawContentStream.ToArray())).TrimStart([char]0xFEFF)))
 ```
 
 這樣寫(而不是 `irm … | iex`)是因為 Windows PowerShell 5.1 會依回應標頭猜編碼,可能把中文訊息讀成亂碼;
 這裡明確用 UTF-8 解碼。
+
+現在是預覽版,所以網址寫明版本:GitHub 的 `releases/latest` 不會指到預覽版。發佈頁在 [v0.3.0-rc.1](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/tag/v0.3.0-rc.1)。
 
 可以在最後面加選項:
 
@@ -283,6 +285,8 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 
 ## 給工程師
 
+- 發佈:先改好 `VERSION` 和上面安裝指令的網址再打標籤。正式版(`v1.2.3`)的指令要用 `releases/latest/download/install-wsl.ps1`;預覽版(`v1.2.3-rc.1`)要寫明版本,因為 `latest` 不會指到預覽版。
+  不一致的話 `scripts/build-wsl-bundle.sh` 會拒絕發佈。`release.yml` 會把有 `-` 的標籤標成預覽版,發佈後再用 GitHub 的 Windows 機從真網址跑一次這條指令(`wsl-verify`)。
 - 從原始碼試:`bash scripts/build-wsl-bundle.sh dist dev`,再 `pwsh windows/install-wsl.ps1 -BundlePath dist/pi-agent-installer-dev.tar.gz -PiWebArtifact <網址>`。
   (Windows PowerShell 5.1 讀無 BOM 的檔案會用系統字碼頁,中文會亂碼;用 PowerShell 7,或用上面的一行指令。)
 - Linux 端測試:`bash tests/wsl.sh [win ctl env install rootsetup bundle]`。每個測試都在沙盒裡跑,
