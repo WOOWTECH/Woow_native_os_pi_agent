@@ -313,7 +313,7 @@ Measured on the two Macs:
   only `/usr/lib`).
 - not tried: a Mac that has never had the Command Line Tools (both had them by then).
 
-## Pi's models on a fresh install, and resume without /proc — validated 2026-11-05 (the 2017 MacBook Pro above, macOS 13.7.8, with another session running a JDK and Chrome on it; Linux x86_64)
+## Pi's models on a fresh install, and resume without /proc — validated 2026-11-05 (the 2017 MacBook Pro above, macOS 13.7.8, with another session running a JDK and Chrome on it; the 2020 MacBook Air above, macOS 15.4.1; Linux x86_64)
 
 | suite | what it pins | result | watched to fail before the fix |
 |---|---|---|---|
@@ -326,17 +326,21 @@ Measured, `list-models` matches in the omnigent the plugin had just installed (0
 
 | | v0.2.5 | with the hook |
 |---|---|---|
-| Mac: `pi-omnigent install-dependencies`, nothing else started | 0 | 4 |
-| Mac: a real first service start, from an empty plugin directory | 0 | 4 |
+| MacBook Pro: `pi-omnigent install-dependencies`, nothing else started | 0 | 4 |
+| MacBook Pro: a real first service start, from an empty plugin directory | 0 | 4 |
+| MacBook Air: a real first service start, after a full install | not run | 4 |
 | Linux: `pi-omnigent install-dependencies`, nothing else started | not run | 4 |
 
-- The plugin had its omnigent 39 and 76 s after those first starts (10, 40 and 63 s in earlier runs). In none of them had
+- The plugin had its omnigent 39, 46 and 76 s after those first starts (10, 40 and 63 s in earlier runs). In none of them had
   the start script's own step run: there was nothing to patch yet.
-- `data/omnigent-plugin/host.log` on the Mac holds `A host daemon is already running for this server`: the duplicate
-  host each restart starts and omnigent refuses (OPERATIONS-GOTCHAS section 6).
+- A real pi-web restart (`launchctl kickstart -k`) with a connected host, on the MacBook Air, control then fix. v0.2.5's
+  plugin: phase `error`, `HOST_PROCESS_MISSING`, from the first look at 15 s to the last at 120 s, with `connected=true`
+  and the same host pid. With the edit: phase `needs-verification`, no issue, at every look for those 2 minutes, the same
+  pid, and the catalog unchanged (claude 4, codex 3, pi 85). Each restart left one more `A host daemon is already running
+  for this server` in `data/omnigent-plugin/host.log`: the duplicate host omnigent refuses (OPERATIONS-GOTCHAS section 6).
+  No session was bound to that host, so a session running through such a restart was not measured.
 - One more first start, at a load average near 50: `prepare()` threw, `boot.json` said `"phase": "error"`, and omnigent
   was not installed 6 minutes later. At load 7 the same install worked. See OPERATIONS-GOTCHAS section 21; the exception
   is swallowed, so the cause is suspected, not proven.
 - Not run: `tests/session-home-macos.sh` and `tests/smoke.sh`, which use real launchd jobs or restart the service, on a
-  Mac that was in use; a real pi-web restart with a connected host on a Mac carrying the resume edit; Apple silicon; the
-  other Intel Mac, out of reach during this work.
+  Mac that was in use; the suites in the table on the MacBook Air; Apple silicon.
