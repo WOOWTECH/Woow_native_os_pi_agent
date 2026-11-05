@@ -312,3 +312,31 @@ Measured on the two Macs:
   build passed every self-check (CJK at two columns a character, jemalloc the default zone, links
   only `/usr/lib`).
 - not tried: a Mac that has never had the Command Line Tools (both had them by then).
+
+## Pi's models on a fresh install, and resume without /proc — validated 2026-11-05 (the 2017 MacBook Pro above, macOS 13.7.8, with another session running a JDK and Chrome on it; Linux x86_64)
+
+| suite | what it pins | result | watched to fail before the fix |
+|---|---|---|---|
+| `tests/model-options-hook.sh` (new) | **A** `omnigent-plugin-model-options-hook-patch.mjs` applies, is idempotent, version-gated, leaves a moved anchor alone · **B** it composes with the darwin patch in either order · **C** the real `installDependencies()` with stand-ins for uv and the tool's python: the patch runs after the install and before the plugin looks at the result, on install and on update, not otherwise, and no failure of it fails the install · **D** `wire` and the real `fetch` stage · **E** `pi-web-start.sh`, including a re-extracted plugin tree | 26 passed, 0 failed on the Mac and on Linux | yes, on Linux, each piece broken in turn: no run in the hook 6 failures, placed after the probe 3, errors escaping 2, `install.sh` without the calls 4, `wire` without the file 1, the start script without it 2 |
+| `tests/resume-no-proc.sh` + `resume_no_proc_test.py` (new) | the darwin patch's edit: applies, composes with the guard and session-home patches in either order · the REAL `src/omnigent.py` through `resume()` against a stub server, with a stand-in `omnigent` that exits at once as the real one does when a host is running: unpatched `HOST_PROCESS_MISSING`, patched connected, also when the host comes back after a moment; a host that never comes back is still `HOST_CONNECT_TIMEOUT`; with a real `/proc` nothing changes | 11 passed, 0 failed on the Mac, where `/proc` really is absent (the real-`/proc` case skipped); 12 passed, 0 failed on Linux, `/proc` hidden from the module | yes, on Linux: the edit not applied 5 failures, the condition unchanged 4, the check removed everywhere 2 |
+
+Unchanged suites over this tree: `host-name.sh` 138/0, `installer-rerun.sh` 8/0, `pi-wrapper-session-home.sh` 12/0 on both; `intel-mac.sh` 28/0 on the Mac, 24/0 on Linux; `build-macos-pkg.sh` 8/0 on the Mac.
+
+Measured, `list-models` matches in the omnigent the plugin had just installed (0 unpatched, 4 patched):
+
+| | v0.2.5 | with the hook |
+|---|---|---|
+| Mac: `pi-omnigent install-dependencies`, nothing else started | 0 | 4 |
+| Mac: a real first service start, from an empty plugin directory | 0 | 4 |
+| Linux: `pi-omnigent install-dependencies`, nothing else started | not run | 4 |
+
+- The plugin had its omnigent 39 and 76 s after those first starts (10, 40 and 63 s in earlier runs). In none of them had
+  the start script's own step run: there was nothing to patch yet.
+- `data/omnigent-plugin/host.log` on the Mac holds `A host daemon is already running for this server`: the duplicate
+  host each restart starts and omnigent refuses (OPERATIONS-GOTCHAS section 6).
+- One more first start, at a load average near 50: `prepare()` threw, `boot.json` said `"phase": "error"`, and omnigent
+  was not installed 6 minutes later. At load 7 the same install worked. See OPERATIONS-GOTCHAS section 21; the exception
+  is swallowed, so the cause is suspected, not proven.
+- Not run: `tests/session-home-macos.sh` and `tests/smoke.sh`, which use real launchd jobs or restart the service, on a
+  Mac that was in use; a real pi-web restart with a connected host on a Mac carrying the resume edit; Apple silicon; the
+  other Intel Mac, out of reach during this work.
