@@ -48,16 +48,22 @@ proves nothing. The installer and the service avoid both:
   against this libpython would notice. The interpreter finds it through its own
   rpath. v0.2.6 and earlier open the dialog here, once.
 
-**What still opens the dialog is Claude Code.** Measured with the tools moved
-away (`docs/TESTING.md`, "The published v0.2.6 pkg on Intel Macs"): the install, its first boot, the idle
-service, `pi-omnigent`, Codex and Pi reach no stub. Claude Code runs `git` three
-times whenever it starts to work, though not for `--version` or `auth status`,
-and a connected Omnigent host starts `claude` by itself every 3 minutes. So on a
-connected Mac the dialog comes back within 3 minutes of each Cancel. Nothing
-fails meanwhile: the stub fails at once, and Claude sessions work. Clicking
-Install ends it for good, and an agent will want git anyway. A stand-in `git`
-first on Claude's `PATH` also kept the dialog away when tried, but nothing here
-installs one.
+- **Claude Code's `git`.** It runs `git` whenever it starts to work, though not
+  for `--version` or `auth status`, and a connected Omnigent host starts `claude`
+  by itself about every 3 minutes. On the stub, that brings the dialog back within
+  3 minutes of each Cancel. On a Mac without the tools, the `claude` wrapper puts
+  `bin/no-dev-tools/git` ahead of the stub, for itself and what it starts. That
+  answers like a missing git (exit 127) and says how to get the tools, so **an
+  agent under Claude Code has no git until they are installed**. Once they are
+  (`xcode-select --install`) it runs the real one, even for a claude that was
+  already running. A Mac with the tools, or with another git first on `PATH`, is
+  left alone. v0.2.6 and earlier keep opening the dialog.
+
+Measured with the tools moved away (`docs/TESTING.md`, "The published v0.2.6 pkg
+on Intel Macs"): with those stand-ins, the install, its first boot, the idle
+service, `pi-omnigent`, Claude Code, Codex and Pi open no dialog. A `git` that an
+agent runs under Codex or Pi has no stand-in: it goes to the stub, and macOS offers
+the tools.
 
 `tmux` is **bundled in the `.pkg`**: Omnigent's native Pi harness runs the Pi
 TUI inside a private tmux server, and Omnigent finds it with

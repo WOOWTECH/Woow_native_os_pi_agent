@@ -59,7 +59,7 @@ for U in 022 077; do
   if [ -z "$untraversable" ]; then ok "every payload directory can be entered by other users (umask $U)"; else no "every payload directory can be entered by other users (umask $U)" "e.g. $untraversable"; fi
   # what the source tree runs, the installed copy must run -- for the installing user, not only for root
   lost=""
-  for f in install.sh rootfs/bin/pi rootfs/bin/pi-web-start.sh rootfs/bin/pi-agent-session-home rootfs/bin/pi-agent-session-home-macos; do
+  for f in install.sh rootfs/bin/pi rootfs/bin/claude rootfs/bin/no-dev-tools/git rootfs/bin/pi-web-start.sh rootfs/bin/pi-agent-session-home rootfs/bin/pi-agent-session-home-macos; do
     [ -x "$HERE/$f" ] && [ ! -x "$P/$f" -o -z "$(find "$P/$f" -perm -o+x -print 2>/dev/null)" ] && lost="$lost $f"
   done
   if [ -z "$lost" ]; then ok "install.sh and the scripts it installs stay executable for other users (umask $U)"; else no "install.sh and the scripts it installs stay executable for other users (umask $U)" "lost:$lost"; fi

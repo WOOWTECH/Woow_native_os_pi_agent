@@ -1,0 +1,7 @@
+#!/bin/sh
+# git for Claude Code on a Mac without the Command Line Tools (bin/claude puts this first on its PATH). There
+# /usr/bin/git is a stub that opens their install dialog; this answers like a missing git instead. Once the tools are
+# there it is the real one, even for a claude that was already running. xcode-select -p only reports, it never prompts.
+dev="$(xcode-select -p 2>/dev/null)" && [ -x "$dev/usr/bin/git" ] && exec "$dev/usr/bin/git" "$@"
+echo "git: this Mac has no Command Line Tools. To install them: xcode-select --install" >&2
+exit 127

@@ -467,6 +467,9 @@ stage_wire() {
   # on PATH would shadow it for every agent shell too.
   if [ "$OS" = macos ]; then
     install -m 0755 "$HERE/rootfs/bin/flock" "$PA_BIN_DIR/flock"
+    # What bin/claude puts ahead of the /usr/bin/git stub on a Mac without the Command Line Tools.
+    mkdir -p "$PA_BIN_DIR/no-dev-tools"
+    install -m 0755 "$HERE/rootfs/bin/no-dev-tools/git" "$PA_BIN_DIR/no-dev-tools/git"
     # The tmux the pkg bundles (scripts/build-macos-tmux.sh): Omnigent's native
     # Pi harness runs the Pi TUI inside it, and Omnigent finds it with
     # shutil.which("tmux") -- PATH order, where $PA_BIN_DIR comes first. A git

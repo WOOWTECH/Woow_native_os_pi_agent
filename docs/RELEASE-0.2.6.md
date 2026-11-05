@@ -46,13 +46,12 @@ Found after the release
   - On a Mac without the Command Line Tools the "install the command line developer tools?" dialog does appear, although
     the README said it does not. Nothing waits for the answer and nothing fails. There are two causes:
       - Once, during the install: uv renames libpython with `install_name_tool`, and without the tools that is a stub.
-        Fixed after this release: the omnigent stage gives that one call a stand-in.
       - Whenever Claude Code starts to work, from then on: it runs `git` three times, and a connected Omnigent host
-        starts `claude` by itself every 3 minutes. So on a connected Mac the dialog comes back within 3 minutes of each
-        Cancel, until the tools are installed. Clicking Install ends it for good. Not fixed.
-    (docs/MACOS.md, Host requirements.)
+        starts `claude` by itself about every 3 minutes. So on a connected Mac the dialog comes back within 3 minutes of
+        each Cancel, until the tools are installed. Clicking Install ends it for good.
+    Both are fixed in v0.2.7 (docs/RELEASE-0.2.7.md; docs/MACOS.md, Host requirements).
   - The pkg has no title. `installer` prints `Package name is ` with nothing after it, and `installer -pkginfo` prints
-    nothing. Fixed after this release, in the builder.
+    nothing. Fixed in v0.2.7, in the builder.
 
 Measured after the release (2026-11-05), with the published x64 pkg
 

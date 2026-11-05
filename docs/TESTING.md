@@ -350,6 +350,7 @@ Measured, `list-models` matches in the omnigent the plugin had just installed (0
 | suite | what it pins | result | watched to fail |
 |---|---|---|---|
 | `tests/installer-rerun.sh` (5 new checks) | on a simulated Mac with no tools the omnigent stage exits 0, uv's `install_name_tool` call never reaches the stub, and the stand-in is gone afterwards; with the tools it reaches the real tool as before | 13/0 on the MacBook Air, 12/0 on Linux, where the real-uv check is skipped | the stand-in never put on `PATH`; the stand-in used even with the tools |
+| `tests/claude-no-tools.sh` (new) | which git Claude Code finds through the `claude` wrapper. No tools: the stand-in, which exits 127, says how to get the tools, is not added twice, and runs the real git with its arguments intact once the tools are there. With the tools, with another git first on `PATH`, and on Linux: nothing changes | 9/0 on the MacBook Air and on Linux | the old wrapper; the stand-in on every Mac; no Darwin check; no check of which git is first |
 | `tests/build-macos-pkg.sh` (2 new checks) | `installer -pkginfo` shows the pkg's name, at each umask | 10/0 on the MacBook Air | the title edit removed: 2 fail. The published v0.2.6 pkg prints nothing |
 
 The published x64 pkg, `sudo installer`, downloaded with quarantine set (Gatekeeper: accepted, Notarized Developer ID):
@@ -363,11 +364,11 @@ The published x64 pkg, `sudo installer`, downloaded with quarantine set (Gatekee
 
 No tools, on the MacBook Air. `/Library/Developer/CommandLineTools` renamed and put back on any exit; `xcode-select -p` fails; each run ends with a control, `/usr/bin/git`, which answers "No developer tools were found, requesting install" and opens the dialog, so a run with no dialog means something. **This is not a wiped Mac**, and Installer.app's windows were not walked through.
 
+Before the fixes:
+
 | what ran | dialog | stubs reached |
 |---|---|---|
 | every stage in turn, logging stand-ins for the stubs first on `PATH` | yes, in `omnigent` | 1: uv's `install_name_tool -id` on libpython |
-| the same payload with the fix, then its first boot to the end (`boot.json`) | **no** | 0. The Pi patch on the plugin's omnigent: 4 matches |
-| the final `omnigent` stage alone, real uv and real downloads, a scratch home | no | not logged; exit 0 in 41 s, the stand-in gone |
 | a logged-in install: the service idle for 60 s, between the host's timers | no | |
 | `pi-omnigent status`, `pi-omnigent catalog`, `codex exec`, `pi -p` | no | |
 | real sessions: Pi, Codex | no | |
@@ -376,8 +377,17 @@ No tools, on the MacBook Air. `/Library/Developer/CommandLineTools` renamed and 
 | a real Claude session | **yes**, 2 s after it was created | not logged: the host's `PATH` has no stand-ins |
 | the same `claude -p`, stand-ins that exit 127 first on its `PATH` | no | 3, all to the stand-in for `git` |
 
-- Real sessions with all three engines each ran one command through their own tool and replied, in 14 to 28 s. The dialog did not hold anything up: the stub fails at once.
-- An exec trace (`fs_usage -w -f exec -e fs_usage`) shows the host's python running `bin/claude` twice every 3 minutes (18:48:22, 18:51:22), with the dialog up within a second of each and of 18:45:22 before them. What it runs them for was not identified. It takes a running host: the from-zero install has none, and no dialog in its first boot.
+With the fixes:
+
+| what ran | dialog | stubs reached |
+|---|---|---|
+| the published payload with the fixed `install.sh`, in one go, then its first boot to the end (`boot.json`) | **no** | 0. Exit 0 in 162 s. The Pi patch on the plugin's omnigent: 4 matches |
+| the final `omnigent` stage alone, real uv and real downloads, a scratch home | no | not logged; exit 0 in 41 s, the stand-in gone |
+| a logged-in install with the `git` stand-in, the host connected, for 241 s: the host starting `bin/claude` by itself (19:25:22, 19:27:22) and a real Claude session | **no** | `/usr/bin/git` in the exec trace: none |
+
+- The agent's own `git` in that Claude session, tools away: `command -v git` names the stand-in, `git --version` says `git: this Mac has no Command Line Tools. To install them: xcode-select --install`, exit 127. Tools back, the same session, not restarted: `git version 2.39.5 (Apple Git-154)`, exit 0, through the stand-in. A new session with the tools: `/usr/bin/git`, and the stand-in not on `PATH`.
+- Before the fixes, real sessions with all three engines each ran one command through their own tool and replied, in 14 to 28 s. The dialog did not hold anything up: the stub fails at once.
+- An exec trace (`fs_usage -w -f exec -e fs_usage`) shows the host's python running `bin/claude` twice about every 3 minutes (18:48:22, 18:51:22, and 19:27:22 in a later run; once also at 19:25:22, right after a session had ended), with the dialog up within a second of each before the fix. What it runs them for was not identified. It takes a running host: the from-zero install has none, and no dialog in its first boot.
 - `claude -p` on that Mac answers "Your organization has disabled Claude subscription access for Claude Code" with or without the tools, so it never did a turn. Its `git` calls come before that. The Claude sessions, which run the TUI, are not affected.
 - As shipped, libpython's install name is `@rpath/libpython3.12.dylib`. uv renames it to the full path; the stand-in leaves it. The interpreter links `@rpath/libpython3.12.dylib` and finds it through its own rpath, so it runs either way (`import ssl` on one never renamed).
 
@@ -388,5 +398,6 @@ What misled these measurements, for the next person:
 - `pgrep -f` on the dialog's name matches the shell running a command that contains that name. Keep the pattern out of the command line.
 - `fs_usage` leaves out `sh` and others unless given `-e`, and for `posix_spawn` it can print a file action's path instead of the program: Claude's `git` shows up as its working directory.
 - Taking the first boot's `list-models` count before `boot.json` exists reads 0: the hook runs after the first launch.
+- A multi-line prompt reaches a Claude session as pasted text, and Claude may ask whether you meant it rather than run it. Send one line.
 
-Not run: a wiped Mac; Installer.app by hand; `pi-omnigent connect` from the empty state, which would leave a permanent host row on the server.
+Not run: a wiped Mac; Installer.app by hand; `pi-omnigent connect` from the empty state, which would leave a permanent host row on the server; a `git` run by an agent under Codex or Pi, which has no stand-in.
