@@ -122,6 +122,17 @@ if [ -f "${PI_AGENT_HOME}/bin/omnigent-plugin-host-name-guard-patch.mjs" ]; then
     | while IFS= read -r line; do log "$line"; done || true
 fi
 
+# Pi model-options hook (docs/OPERATIONS-GOTCHAS.md section 21): the plugin patches the omnigent it
+# installs, right after installing it -- before any host can start from it, which the step above cannot
+# do on a fresh install (the plugin installs omnigent after this script has run). Applied on every start,
+# like the patches above, so a plugin tree re-extracted outside install.sh is covered at once.
+# Idempotent, version-gated, and it never fails the start.
+if [ -f "${PI_AGENT_HOME}/bin/omnigent-plugin-model-options-hook-patch.mjs" ]; then
+  "${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/bin/omnigent-plugin-model-options-hook-patch.mjs" \
+    "${PI_AGENT_HOME}/plugins/pi-omnigent-plugin" 2>&1 \
+    | while IFS= read -r line; do log "$line"; done || true
+fi
+
 # Ensure the Omnigent host launcher shim is installed (self-heal). It lets the
 # Omnigent host manager boot together with pi-web, which is what makes the
 # connected engines get models + pass verification. Needs a real pi-web on PATH
