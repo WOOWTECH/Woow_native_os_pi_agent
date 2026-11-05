@@ -383,6 +383,7 @@ With the fixes:
 |---|---|---|
 | the published payload with the fixed `install.sh`, in one go, then its first boot to the end (`boot.json`) | **no** | 0. Exit 0 in 162 s. The Pi patch on the plugin's omnigent: 4 matches |
 | the final `omnigent` stage alone, real uv and real downloads, a scratch home | no | not logged; exit 0 in 41 s, the stand-in gone |
+| the published, signed v0.2.7 x64 pkg through `sudo installer`, from zero, then its first boot to the end | **no** | not logged (the postinstall sets its own `PATH`). Exit 0 in 158 s, `Package name is Woow Pi Agent`, 0 compile lines, the Pi patch: 4 matches |
 | a logged-in install with the `git` stand-in, the host connected, for 241 s: the host starting `bin/claude` by itself (19:25:22, 19:27:22) and a real Claude session | **no** | `/usr/bin/git` in the exec trace: none |
 
 - The agent's own `git` in that Claude session, tools away: `command -v git` names the stand-in, `git --version` says `git: this Mac has no Command Line Tools. To install them: xcode-select --install`, exit 127. Tools back, the same session, not restarted: `git version 2.39.5 (Apple Git-154)`, exit 0, through the stand-in. A new session with the tools: `/usr/bin/git`, and the stand-in not on `PATH`.

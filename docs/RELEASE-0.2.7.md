@@ -65,3 +65,9 @@ Verification
   241 s with the host's own starts and a real Claude session, no dialog and nothing running /usr/bin/git. In that session
   the agent's `git` got the message and exit 127, and with the tools back, the same session got the real git. A new session
   with the tools: /usr/bin/git, the stand-in not on PATH. docs/TESTING.md has the tables.
+
+  Measured after the release, with the published x64 pkg on that Mac. From zero with the tools away, a download with
+  quarantine set: `sudo installer` exited 0 in 158 s and printed `Package name is Woow Pi Agent`. Nothing compiled, no dialog
+  at any point through the first boot, the Pi patch on the plugin's omnigent (4 list-models matches), phase needs-login,
+  dependencies ok. The control, `/usr/bin/git`, opened the dialog. Over an install with the tools: exit 0 in 107 s, the host
+  kept its pid, catalog unchanged, and a new Claude session found /usr/bin/git with the stand-in not on PATH.
