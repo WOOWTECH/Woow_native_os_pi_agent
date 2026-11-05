@@ -107,6 +107,7 @@ KC_ARGS=()
 [ -n "$KEYCHAIN" ] && KC_ARGS=(--keychain "$KEYCHAIN")
 
 ID="io.woowtech.pi-agent"
+TITLE="Woow Pi Agent"
 PAYLOAD="/usr/local/lib/woow-pi-agent"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/pa-pkg.XXXXXX")"
 
@@ -239,6 +240,10 @@ else
   sed -i '' -E "s/<options /<options hostArchitectures=\"$HOSTARCH\" /" "$DIST"
 fi
 grep -q "hostArchitectures=\"$HOSTARCH\"" "$DIST" || die "could not restrict the pkg to $HOSTARCH"
+# The synthesized distribution has no <title>, so Installer has no name to show:
+# `installer: Package name is ` with nothing after it.
+sed -i '' -E "s#(<installer-gui-script[^>]*>)#\\1<title>$TITLE</title>#" "$DIST"
+grep -q "<title>$TITLE</title>" "$DIST" || die "could not give the pkg its title"
 rm -f "$PKG"
 productbuild --distribution "$DIST" --package-path "$WORK" "$PKG" >/dev/null
 

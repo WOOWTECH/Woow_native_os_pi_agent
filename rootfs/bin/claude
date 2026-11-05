@@ -27,4 +27,13 @@ fi
 "${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/bin/pi-agent-share-state.mjs" >/dev/null \
   || echo "pi-agent: shared MCP/skills sync failed; starting claude with previous settings" >&2
 
+# On a Mac without the Command Line Tools, /usr/bin/git is a stub that opens their install dialog. Claude Code runs git
+# whenever it starts to work and a connected Omnigent host starts it every 3 minutes, so that dialog would be back within
+# 3 minutes of each Cancel. bin/no-dev-tools/git goes ahead of the stub for this process and what it starts. xcode-select
+# -p only reports, it never prompts. A Mac with the tools, or a git from anywhere else first on PATH, is left alone.
+if [ "$(uname -s)" = Darwin ] && [ "$(command -v git 2>/dev/null)" = /usr/bin/git ]; then
+  _pa_dev="$(xcode-select -p 2>/dev/null || true)"
+  { [ -n "$_pa_dev" ] && [ -x "$_pa_dev/usr/bin/git" ]; } || PATH="${PI_AGENT_HOME}/bin/no-dev-tools:$PATH"
+fi
+
 exec "${PI_AGENT_HOME}/clis/claude/node_modules/.bin/claude" "$@"

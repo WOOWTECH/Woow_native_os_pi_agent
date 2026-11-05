@@ -34,7 +34,10 @@ cat > "$PA/bin/uv" <<EOF
 # stand-in for the pinned uv ($PIN_UV_VERSION): only what the omnigent stage calls
 case "\${1:-}" in
   --version) echo "uv $PIN_UV_VERSION (stand-in)"; exit 0 ;;
-  python)    exit 0 ;;                                    # uv python install --no-bin <ver>
+  python)                                                 # uv python install --no-bin <ver>
+    # the real one renames libpython next, finding the tool through PATH, and carries on if that fails
+    [ -z "\${PA_TEST_UV_RENAMES:-}" ] || install_name_tool -id /x/libpython3.12.dylib /x/libpython3.12.dylib || true
+    exit 0 ;;
   venv)
     shift; clear=0; allow=0; target=""
     while [ \$# -gt 0 ]; do
@@ -80,6 +83,33 @@ echo "== a half-made venv left by an interrupted earlier run"
 rm -rf "$PA/omnigent/venv"; mkdir -p "$PA/omnigent/venv/lib"; echo junk > "$PA/omnigent/venv/lib/stale"
 if run_stage third; then ok "a non-empty leftover directory is replaced, exit 0"; else no "a non-empty leftover directory is replaced, exit 0" "$(grep -i -m1 'error' "$W/third.log" | cut -c1-200)"; fi
 [ ! -e "$PA/omnigent/venv/lib/stale" ] && ok "...the stale file is gone (the venv was recreated, not reused)" || no "...the stale file is gone (the venv was recreated, not reused)" "still there"
+
+echo "== a Mac without the Command Line Tools: uv's install_name_tool must not reach the stub that opens the install dialog"
+# Measured on an Intel Mac with the tools moved away: this one call is the only stub a whole install reaches, and
+# it opens the dialog. A simulated Mac, so it runs anywhere: uname says Darwin, xcode-select knows no developer
+# directory, and install_name_tool plays the one in /usr/bin and logs each call.
+if [ ! -e /usr/bin/python3 ]; then
+  echo "  SKIP  no /usr/bin/python3 here, which is what the check looks for"
+else
+  REALUNAME="$(command -v uname)"
+  SIM="$W/sim"; mkdir -p "$SIM" "$W/clt/usr/bin" "$W/no-clt"
+  printf '#!/bin/bash\n[ "${1:-}" = -s ] && { echo Darwin; exit 0; }\nexec %s "$@"\n' "$REALUNAME" > "$SIM/uname"
+  printf '#!/bin/bash\nexit 2\n' > "$SIM/xcode-select"
+  printf '#!/bin/bash\necho "$*" >> %s/name-tool.calls\nexit 1\n' "$W" > "$SIM/install_name_tool"
+  printf '#!/bin/bash\nexit 0\n' > "$W/clt/usr/bin/python3"
+  chmod 755 "$SIM/uname" "$SIM/xcode-select" "$SIM/install_name_tool" "$W/clt/usr/bin/python3"
+  run_on_mac() {   # run_on_mac LABEL CLT_DIR -> exit status of `install.sh omnigent` on the simulated Mac
+    : > "$W/name-tool.calls"
+    env -i HOME="$W/home" PATH="$SIM:/usr/bin:/bin:/usr/sbin:/sbin" PI_AGENT_HOME="$PA" PI_AGENT_CLT_DIR="$2" PA_TEST_UV_RENAMES=1 \
+      /bin/bash "$HERE/install.sh" omnigent > "$W/$1.log" 2>&1
+  }
+  calls() { wc -l < "$W/name-tool.calls" | tr -d ' '; }
+  if run_on_mac no-tools "$W/no-clt"; then ok "no tools: the stage exits 0"; else no "no tools: the stage exits 0" "$(tail -3 "$W/no-tools.log" | cut -c1-200)"; fi
+  [ "$(calls)" = 0 ] && ok "no tools: uv's rename never reaches the stub, so no dialog" || no "no tools: uv's rename never reaches the stub, so no dialog" "the stub was called $(calls) time(s)"
+  [ ! -e "$PA/tmp/no-dev-tools" ] && ok "no tools: the stand-in is gone afterwards" || no "no tools: the stand-in is gone afterwards" "$(ls "$PA/tmp/no-dev-tools" 2>/dev/null)"
+  if run_on_mac with-tools "$W/clt"; then ok "with the tools: the stage exits 0"; else no "with the tools: the stage exits 0" "$(tail -3 "$W/with-tools.log" | cut -c1-200)"; fi
+  [ "$(calls)" = 1 ] && ok "with the tools: uv's rename reaches the real tool, as it always did" || no "with the tools: uv's rename reaches the real tool, as it always did" "it was called $(calls) time(s)"
+fi
 
 echo "== the stand-in matches the real pinned uv (only when one is at hand)"
 REALUV=""

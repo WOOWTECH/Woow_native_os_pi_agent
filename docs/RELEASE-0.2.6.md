@@ -41,16 +41,48 @@ Seen, not fixed
     exception, so the cause is suspected (locked()'s 5 s limit for its helper), not proven. Connecting from Settings ->
     Omnigent, or `pi-omnigent connect`, installs omnigent anyway, and the fix above runs there too.
 
+Found after the release
+
+  - On a Mac without the Command Line Tools the "install the command line developer tools?" dialog does appear, although
+    the README said it does not. Nothing waits for the answer and nothing fails. There are two causes:
+      - Once, during the install: uv renames libpython with `install_name_tool`, and without the tools that is a stub.
+      - Whenever Claude Code starts to work, from then on: it runs `git` three times, and a connected Omnigent host
+        starts `claude` by itself about every 3 minutes. So on a connected Mac the dialog comes back within 3 minutes of
+        each Cancel, until the tools are installed. Clicking Install ends it for good.
+    Both are fixed in v0.2.7 (docs/RELEASE-0.2.7.md; docs/MACOS.md, Host requirements).
+  - The pkg has no title. `installer` prints `Package name is ` with nothing after it, and `installer -pkginfo` prints
+    nothing. Fixed in v0.2.7, in the builder.
+
+Measured after the release (2026-11-05), with the published x64 pkg
+
+  - `sudo installer` over an install, a download with quarantine set: Gatekeeper accepted it as Notarized Developer ID, and
+    it exited 0 in 165 s on the MacBook Pro (macOS 13.7.8) and 223 s on the MacBook Air (15.4.1). Receipt 0.2.6, the payload
+    root-owned in /usr/local/lib/woow-pi-agent, the postinstall's install.sh exit=0, the installed files owned by the
+    user, catalog unchanged (claude 4, codex 3, pi 85).
+  - A reply running through the upgrade, on the MacBook Air. Claude's Bash tool wrote a heartbeat every second for 420 s
+    while `sudo installer` ran for 283 s: the longest gap was 2 s, the reply arrived, and the host, its tmux server and
+    claude kept their pids. Phase needs-verification, no issue. On the MacBook Pro a session's tmux server and claude kept
+    their pids through the same upgrade.
+  - From zero, without the Command Line Tools, on the MacBook Air: the install, its plist, the npm cache, the payload, the
+    receipt and the tools moved away, `/usr/bin/git` answering "No developer tools were found, requesting install".
+    `sudo installer` exited 0 in 227 s and compiled nothing. The plugin's own omnigent came with cryptography 48.0.1 and
+    argon2-cffi-bindings 25.1.0. Phase needs-login, dependencies ok, no issue. The dialog came up once, as above. In two
+    repeat runs of the same payload, the Pi patch was on that omnigent when the first boot finished (4 list-models matches).
+  - With the tools away and a logged-in install, real sessions with Claude, Codex and Pi each ran a command through
+    their own tool and replied, in 14 to 28 s.
+  - Every time the install was put back after those runs the host really was gone, and the plugin started a new one:
+    connected within 30 s, no issue, catalog unchanged. So the no-/proc edit does not stop a dead host from coming back.
+
 Not verified, and limits
 
-  - A session running through a pi-web restart. The restart was measured with a connected host and no session bound to
-    it (below); the host keeps its pid, but a session under it was not there to watch.
   - tests/session-home-macos.sh and tests/smoke.sh over this tree: they use real launchd jobs or restart the service,
     and the Mac available was in use.
   - Apple silicon: the new paths are covered by tests with stand-ins, not by a run on an Apple silicon Mac.
-  - Double-clicking a pkg on an Intel Mac. What was run on them is the payload's install.sh, the way the postinstall
-    runs it. The pkg's root layer (the payload in /usr/local/lib, launchctl asuser) has not run there.
-  - A Mac that has never had the Command Line Tools. Everything v0.2.5 listed that is not named above.
+  - Installer.app's own windows. The pkg's root layer has run on both Intel Macs through `sudo installer`; nobody has
+    double-clicked it and walked through them.
+  - A wiped Mac. "From zero" above is a used Mac with things moved away for the test. Logging in and connecting from that
+    empty state was not done: it would leave a permanent host row on the server. Everything v0.2.5 listed that is not
+    named above.
 
 Verification
 

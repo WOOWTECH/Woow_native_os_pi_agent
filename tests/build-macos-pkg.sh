@@ -48,6 +48,9 @@ for U in 022 077; do
     if [ "$U" = 077 ] && grep -q 'not readable' "$W/build-$U.log"; then ok "the build refuses under umask $U, saying the payload would be unreadable"; continue; fi
     no "the build succeeds under umask $U" "$(tail -3 "$W/build-$U.log")"; continue
   fi
+  # the name Installer shows: the synthesized distribution has none unless the builder gives it one
+  name="$(installer -pkginfo -pkg "$W/out/$U"/WoowPiAgent-*.pkg 2>/dev/null | head -1)"
+  if [ "$name" = "Woow Pi Agent" ]; then ok "installer shows the pkg's name (umask $U)"; else no "installer shows the pkg's name (umask $U)" "it prints '$name'"; fi
   P="$(payload_of "$U")"
   if [ -z "$P" ] || [ ! -d "$P" ]; then no "the pkg has the payload directory" "not found under $W/x-$U"; continue; fi
   unreadable="$(find "$P" ! -perm -o+r -print | sed "s#^$P/##" | head -4 | tr '\n' ' ')"
@@ -56,7 +59,7 @@ for U in 022 077; do
   if [ -z "$untraversable" ]; then ok "every payload directory can be entered by other users (umask $U)"; else no "every payload directory can be entered by other users (umask $U)" "e.g. $untraversable"; fi
   # what the source tree runs, the installed copy must run -- for the installing user, not only for root
   lost=""
-  for f in install.sh rootfs/bin/pi rootfs/bin/pi-web-start.sh rootfs/bin/pi-agent-session-home rootfs/bin/pi-agent-session-home-macos; do
+  for f in install.sh rootfs/bin/pi rootfs/bin/claude rootfs/bin/no-dev-tools/git rootfs/bin/pi-web-start.sh rootfs/bin/pi-agent-session-home rootfs/bin/pi-agent-session-home-macos; do
     [ -x "$HERE/$f" ] && [ ! -x "$P/$f" -o -z "$(find "$P/$f" -perm -o+x -print 2>/dev/null)" ] && lost="$lost $f"
   done
   if [ -z "$lost" ]; then ok "install.sh and the scripts it installs stay executable for other users (umask $U)"; else no "install.sh and the scripts it installs stay executable for other users (umask $U)" "lost:$lost"; fi
