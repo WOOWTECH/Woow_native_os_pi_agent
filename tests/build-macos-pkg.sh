@@ -48,6 +48,9 @@ for U in 022 077; do
     if [ "$U" = 077 ] && grep -q 'not readable' "$W/build-$U.log"; then ok "the build refuses under umask $U, saying the payload would be unreadable"; continue; fi
     no "the build succeeds under umask $U" "$(tail -3 "$W/build-$U.log")"; continue
   fi
+  # the name Installer shows: the synthesized distribution has none unless the builder gives it one
+  name="$(installer -pkginfo -pkg "$W/out/$U"/WoowPiAgent-*.pkg 2>/dev/null | head -1)"
+  if [ "$name" = "Woow Pi Agent" ]; then ok "installer shows the pkg's name (umask $U)"; else no "installer shows the pkg's name (umask $U)" "it prints '$name'"; fi
   P="$(payload_of "$U")"
   if [ -z "$P" ] || [ ! -d "$P" ]; then no "the pkg has the payload directory" "not found under $W/x-$U"; continue; fi
   unreadable="$(find "$P" ! -perm -o+r -print | sed "s#^$P/##" | head -4 | tr '\n' ' ')"
