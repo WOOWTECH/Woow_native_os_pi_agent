@@ -279,6 +279,40 @@ Measured on real Macs rather than in a sandbox (the commands are in OPERATIONS-G
   16 conversations bound; Claude and Pi verified afterwards; memory never below 33% free, the two
   Apple review demos running throughout.
 
+## Cut-over Apple silicon Macs, real runs — 2026-11-03 to 2026-11-06 (MacBook Air M1, macOS 26.7.1, 8 GB; MacBook Air M2, macOS 26.4.1, 8 GB)
+
+The two Macs the cutover was first run on (docs/RELEASE-0.2.3.md) stayed the test beds for the releases after it. The notes of
+v0.2.5, v0.2.6 and v0.2.7 say Apple silicon is "covered by tests with stand-ins, not by a run"; this section records the runs
+that were made there since. Each was checked against the server, not against what the Mac said: the host row and, for every
+conversation bound to that host, its id, status, host and `created_at`, listed before and after and compared line by line
+(`GET /v1/hosts`, `GET /v1/sessions`); a host's umask through the server's "create directory on a host" call, which makes the
+host's own `mkdir` (OPERATIONS-GOTCHAS section 17); the engines through `pi-omnigent verify`, each opening one test conversation
+that was deleted afterwards by the id in its own result (404 on a later GET). On the M1 the free memory, the swap and the two
+review demo containers were read every 30 seconds.
+
+| when (+0800) | Mac | what ran | result |
+|---|---|---|---|
+| 11-03 17:42-17:50 | M1, 16 conversations | `uncutover`; then a `cutover` cut off after its repair step (the worker, its sleep and the adopted host `kill -9`, their launchd jobs booted out) and both plists bootstrapped in one call, a login with a leftover worker; then `cutover` again | `ROLLED BACK - uncutover requested` in 31 s. The cut-off run: `ROLLED BACK - an earlier run was interrupted`, 22 s after the "login", the old host back online. The last `cutover`: `OK` in 44 s, the host it started with umask 022. The server list (host row and 16 conversations) was identical to the one taken before, after every step; Claude and Pi answered. Memory never below 33% free, the demos running throughout |
+| 11-05 15:23-15:25 | M1 | the published v0.2.5 arm64 pkg, `sudo installer`, over the cut-over install | exit 0, "The upgrade was successful", about 2 min; nine stages OK, no error line in the install log; the host kept its pid; the server list identical before, after, and after the engine checks; umask 022; Claude and Pi answered. The plugin's `state.json` read phase `error` right after the install (the false HOST_PROCESS_MISSING that v0.2.6 removes) and `needs-verification` again once the engines had been checked |
+| 11-05 15:34 | M2, 37 conversations | `pi-agent-session-home restart`, started by a job that waited until no conversation was answering | `RESULT: OK`; the host's umask 077 to 022 (the directory it makes: mode 700 to 755), the v0.2.4 fix now measured on this Mac too; the 37 conversations still bound; Claude and Pi answered |
+| 11-06 07:13-07:16 | M1 | the published v0.2.7 arm64 pkg (sha256 `c07f5ace39f6...ab6ac8`), `sudo installer`, over the cut-over install | exit 0 in 2 min 14 s, "The upgrade was successful", nine stages OK, 0 error lines in 272 log lines. The host kept its pid (up 2 days 13 hours); host row and 16 conversations identical before, after, and after the engine checks; umask 022; Claude and Pi answered, and the host offers Pi's models (61). Config, receipt, session-home state, journal, the service's plist and the parked plists byte for byte the same; only `state.json` (the plugin rewrites it at each start), the scripts the release changed and the payload version differ |
+| 11-06 07:27-07:30 | M2, 37 conversations, two of them in status `running` | the payload of that same pkg: `install.sh` run as the pkg's postinstall runs it (same environment variables, a login shell, the pinned pi-web URL and sha256) but as the user, without `sudo`: no pkg receipt, no `/usr/local/lib/woow-pi-agent` | exit 0 in 179 s, nine stages, 0 error lines. The 11 processes listed before (the host, tmux servers, claude) all still running, the host with the same pid; both `running` conversations still were afterwards, one of them the session that had scheduled the upgrade, which kept answering throughout; 37 conversations before and after, none missing (one idle conversation started a turn on its own, the only status change); umask 022; the installed scripts equal the payload's; the service's plist unchanged; Claude and Pi answered |
+
+What v0.2.6 changed, as the plugin records it. `data/omnigent-plugin/boot.json`, `resumption`, read before and after the
+upgrade of 11-06 on both Macs:
+
+| | before (v0.2.5 and earlier) | after (v0.2.7) |
+|---|---|---|
+| M1 and M2 | `ok: false`, `error.code: HOST_PROCESS_MISSING` | `ok: true`, `resumed: true`, `host.connected: true` |
+
+`state.json` stayed at `needs-verification` (`INCOMPLETE_CHAT_VERIFICATION`: not every installed engine has had a real reply
+verified on that account), where v0.2.5 passed through `error`. The cost PR #3 names, a Mac no longer reporting a host that died
+while the server still shows it online, was not exercised.
+
+Not run: a real reboot (both Macs have FileVault on and no automatic login, so it needs someone at the keyboard); a wiped Mac;
+Installer.app by hand; the pkg route on the M2 (its v0.2.7 went in through `install.sh`, as above); Codex in these engine checks
+(Claude and Pi were verified); a host that dies while the server shows it online.
+
 ## Intel Macs — validated 2026-11-04 (13" MacBook Pro 2017, i5-7360U, macOS 13.7.8; MacBook Air 2020, i3-1000NG4, macOS 15.4.1; 8 GB each)
 
 | suite | what it pins | result | watched to fail before the fix |
