@@ -241,7 +241,7 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
   真的 `--unregister`、資料夾清乾淨)。
 - 以系統管理員登錄「登入時」的工作排程:登錄成功,觸發條件、電池與執行時間設定如設計。
 - 文件裡那行安裝指令(用 UTF-8 解碼、去 BOM、建 ScriptBlock、後面接參數),在本機 HTTP 伺服器上的 dry run。
-- 發佈之後,用文件上的指令從真網址裝一次,再用發佈頁上的 `Install-Pi-Agent.cmd` 蓋裝一次(`release.yml` 的 `wsl-verify`,每次發佈都跑):`v0.3.0-rc.2` 兩次都回 0、最後一次自我檢查 24 項全過,Linux 裡記錄的也是這個版本。
+- 發佈之後,用文件上的指令從真網址裝一次,再用發佈頁上的 `Install-Pi-Agent.cmd` 蓋裝一次(`release.yml` 的 `wsl-verify`,每次發佈都跑):`v0.3.0-rc.3` 兩次都回 0、最後一次自我檢查 24 項全過,Linux 裡記錄的也是這個版本(rc.2 同樣兩次都回 0)。
   這台雲端機本來就有 WSL,這一跑也沒開自動啟動(`-Yes -NoAutostart`)。雙擊檔是用命令列執行的,沒有人按滑鼠,也沒有經過 Windows 的警告畫面。
 
 **已用真的 Omnigent 伺服器驗證**(2026-11-03,同一種雲端機,工作流程 `wsl2-live.yml`,見 [`WSL2-LIVE-TEST.md`](WSL2-LIVE-TEST.md)):

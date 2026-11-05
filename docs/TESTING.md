@@ -329,9 +329,9 @@ the uninstaller could delete data it should not, and that `tests/smoke.sh` overw
 **The published release.** `release.yml` ends with a job that takes the command out of the guide and runs it with `-Yes -NoAutostart`
 on a hosted Windows runner, against the release just published: the HTTPS download and its redirect under Windows PowerShell 5.1, the stamped
 URLs and sha256, the pi-web tree from the release. It then downloads the release's `Install-Pi-Agent.cmd` and runs it over that install, with the
-same options and stdin from NUL. `v0.3.0-rc.2`: both exit 0, smoke 24/24 on the last, and the distro marker names that version. It is still a
+same options and stdin from NUL. `v0.3.0-rc.2` and `v0.3.0-rc.3` (the first with the Windows 11 fixes, its keep-alive started through `conhost.exe --headless`): both exit 0, smoke 24/24 on the last, and the distro marker names that version. It is still a
 runner where WSL is already in place, not a real PC, and `cmd.exe` running the file is not a double-click: no mouse, no Windows warning. The same
-release: marked pre-release, `releases/latest` still v0.2.4, and the script, bundle and double-click file byte for byte what a local build of that
+release: marked pre-release, `releases/latest` unchanged (v0.2.4 for rc.2, v0.2.5 for rc.3: someone else's release from main in between), and the script, bundle and double-click file byte for byte what a local build of that
 commit gives.
 
 **A Windows 11 virtual machine (2026-11-05), not a real PC.** Nothing else answers what a double-click, a first-time WSL enable with a

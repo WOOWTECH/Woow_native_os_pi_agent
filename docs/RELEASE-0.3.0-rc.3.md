@@ -1,7 +1,7 @@
 v0.3.0-rc.3 — the Windows (WSL2) preview, with what a Windows 11 virtual machine turned up
 
-A preview, not the latest release: v0.2.4 stays what releases/latest gives, and nothing changes for
-macOS or Linux. This release has no macOS .pkg; on a Mac, stay on v0.2.4.
+A preview, not the latest release: releases/latest keeps pointing at the newest full release, and nothing
+changes for macOS or Linux. This release has no macOS .pkg; on a Mac, stay on v0.2.4.
 
 Since v0.3.0-rc.2 (all of it found by running the installer on Windows 11 for the first time)
 
