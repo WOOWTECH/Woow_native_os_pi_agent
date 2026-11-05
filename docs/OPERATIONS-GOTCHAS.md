@@ -79,11 +79,27 @@ HOME="$A/home" OMNIGENT_CONFIG_HOME="$A/home/.omnigent" \
 
 Only after that did `claude` go from `needs-auth` to `ready=True` with models.
 
-## 6. `managerRunning=false` and `HOST_PROCESS_MISSING` are cosmetic on macOS
+## 6. `managerRunning=false` is cosmetic on macOS, and the plugin cannot see its host there
 
 The plugin confirms its host process by reading `/proc/<pid>`, which macOS does
 not have, so it always fails to confirm. The host is fine and the engines work.
 Linux shows the same `false` with everything verified. Do not chase it.
+
+Two things follow from that blindness on every pi-web restart:
+
+- **The plugin tries to start another host.** It cannot see the running one, so
+  `ensure_host()` spawns `omnigent host`, omnigent refuses the duplicate and that
+  process exits: `Error: A host daemon is already running for this server` in
+  `data/omnigent-plugin/host.log`. Harmless, and it is what brings a host back
+  when one really did die.
+- **`HOST_PROCESS_MISSING` was a false alarm.** `resume()` then checked for the
+  process it had just failed to see and reported the connected host as gone:
+  phase `error`, the same pid still running, until `pi-omnigent repair` adopted it.
+  The darwin patch now applies that check only where `/proc` exists, so on a Mac
+  the server's answer decides; a host that never comes back still ends in
+  `HOST_CONNECT_TIMEOUT`. On an install from before that edit, `repair` still clears
+  it. No process identity is emulated, and `disconnect`'s check before a signal is
+  unchanged (docs/MACOS.md, "If the daemon paths are needed later").
 
 ## 7. Port 30141 answering 200 does not prove the LOCAL pi-web answered
 
@@ -426,3 +442,50 @@ the wrong place to run it: there the answer is for Terminal.
 System Settings → Privacy & Security → Full Disk Access (broader than needed). Nothing here
 can be pre-granted from a script: the TCC database is protected by TCC itself (`sqlite3`:
 "authorization denied" even for the account's own file).
+
+## 21. Pi shows no models in Omnigent: the host started before the patch was on disk
+
+`omnigent-model-options-patch.py` makes Omnigent's Pi picker ask `pi --list-models`, so the
+models a gateway declares in `models.json` (LiteLLM, Ollama, vLLM) appear. It has to be on
+disk **before the host starts**: the host loads the module once and keeps it for its whole
+life, and **restarting pi-web does not restart the host** (the same pid before and after a
+`launchctl kickstart -k` of the service, measured on an Intel Mac).
+
+`pi-web-start.sh` applies it at every service start, to the omnigent the plugin installed
+under `data/omnigent-plugin/uv/tools/omnigent` -- and skips the step when that does not exist
+yet. On a fresh install it does not: the plugin installs omnigent 10 to 76 s after the
+service starts (measured on two Intel Macs; from its boot, or from `pi-omnigent connect`). The first host then started from
+an unpatched module: `pi-omnigent catalog` showed `pi: ready=false, 0 models` next to
+`claude 4 / codex 3`, while `pi --list-models` listed all 85 and `pi auth check` said `ready`.
+Nothing in Omnigent says why. The same happened whenever the plugin reinstalled omnigent
+(`uv tool install --force` builds a new venv, and the patch went with the old one).
+
+`omnigent-plugin-model-options-hook-patch.mjs` (applied by `fetch`, `wire` and every start,
+like the host-name guard) makes the plugin run the patch itself right after its
+own `uv tool install`, with the tool's interpreter, before it looks at the result -- so no
+host can have started from that omnigent yet, and it does not matter which process installs
+it. Inert when `PI_AGENT_HOME` is unset (the container images) and it never fails the install.
+
+**Measured on one Intel Mac, same machine, before and after** (`list-models` matches in the
+omnigent the plugin had just installed; 0 is unpatched, 4 patched): `pi-omnigent
+install-dependencies` with nothing else started, 0 and 4; a real first service start, 0 and 4.
+The start script's own step had not run in either: nothing to patch yet at that point.
+
+**On a very busy Mac the first boot may not install it at all.** Seen once, at a load average
+near 50 on 4 cores: `data/omnigent-plugin/boot.json` said `"phase": "error"`, "Omnigent
+initialization needs attention in Settings", the plugin's `uv/` did not exist 6 minutes later,
+and nothing retries. The same install at load 7 had omnigent within 76 s. `boot()` swallows the
+exception, so the failing step was not captured; `locked()`'s 5 s limit for its helper is the
+suspect, not proven (the helper took 0.1 to 0.6 s at load 7). It does not leave Pi unpatched:
+`pi-omnigent connect`, or connecting in Settings -> Omnigent, installs omnigent too, and the
+hook runs there as well.
+
+**A host that is already running keeps what it loaded.** An install made before that patch, or
+any host started before the patch landed, needs the host itself restarted once: stop the
+`omnigent host` process (the plugin's `data/omnigent-plugin/bin/omnigent host …`, and its
+`_zygote` child), then `pi-omnigent repair`. Check with `pi-omnigent catalog`: the `pi` entry
+must list models.
+
+**Check, with nothing running:** `grep -c list-models
+data/omnigent-plugin/uv/tools/omnigent/lib/python3.*/site-packages/omnigent/harnesses/pi_native/credentials.py`
+is 0 for an unpatched omnigent and 4 for a patched one.

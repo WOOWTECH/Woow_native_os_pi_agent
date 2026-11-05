@@ -48,6 +48,14 @@ apply_host_name_guard() {
   [ -f "$patch" ] && [ -d "$PA_PLUGINS_DIR/pi-omnigent-plugin" ] || return 0
   PA_NODE "$patch" "$PA_PLUGINS_DIR/pi-omnigent-plugin" 2>&1 | relay_helper_output || true
 }
+# Pi's gateway models in Omnigent (docs/OPERATIONS-GOTCHAS.md section 21): the plugin patches
+# the omnigent it has just installed, so the first host loads the patched module. Every platform;
+# `fetch` and `wire` both apply it (a no-op when present), like the guard above.
+apply_model_options_hook() {
+  local patch="$HERE/rootfs/bin/omnigent-plugin-model-options-hook-patch.mjs"
+  [ -f "$patch" ] && [ -d "$PA_PLUGINS_DIR/pi-omnigent-plugin" ] || return 0
+  PA_NODE "$patch" "$PA_PLUGINS_DIR/pi-omnigent-plugin" 2>&1 | relay_helper_output || true
+}
 seed_host_name() {
   local tool="$HERE/rootfs/bin/pi-agent-host-name.mjs"
   [ -f "$tool" ] || return 0
@@ -173,6 +181,9 @@ stage_fetch() {
   # account already holds (see apply_host_name_guard above). Applied again by
   # `wire` for installs that were fetched before this existed.
   apply_host_name_guard
+  # Every platform: patch the omnigent the plugin installs at the moment it installs it
+  # (see apply_model_options_hook above). Applied again by `wire`, like the guard.
+  apply_model_options_hook
   log "fetch OK (plugins verified, settings patch verified)"
 }
 
@@ -426,7 +437,7 @@ stage_omnigent() {
 stage_wire() {
   log "stage wire — install scripts + symlinks"
   mkdirs
-  for f in pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-session-home pi-agent-session-home-macos pi-agent-host-name pi-agent-host-name.mjs pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs omnigent-plugin-session-home-patch.mjs omnigent-plugin-host-name-guard-patch.mjs; do
+  for f in pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-session-home pi-agent-session-home-macos pi-agent-host-name pi-agent-host-name.mjs pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs omnigent-plugin-session-home-patch.mjs omnigent-plugin-host-name-guard-patch.mjs omnigent-plugin-model-options-hook-patch.mjs; do
     [ -f "$HERE/rootfs/bin/$f" ] && install -m 0755 "$HERE/rootfs/bin/$f" "$PA_BIN_DIR/$f"
   done
   # Host name: the plugin patch (also applied by `fetch`; a no-op when already
@@ -434,6 +445,7 @@ stage_wire() {
   # and a unique default name when the install has none. An existing name is
   # never replaced -- one that equals the machine's own gets a warning instead.
   apply_host_name_guard
+  apply_model_options_hook
   seed_host_name
   # macOS only: a flock(1) for the Omnigent plugin's locked(). macOS ships none,
   # and the darwin patch makes the plugin look on PATH, where pi-agent-env.sh puts

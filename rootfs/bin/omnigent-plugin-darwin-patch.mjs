@@ -58,6 +58,18 @@
  * omnigent once with a generous limit before that probe, on x64 only, so the
  * probe measures a warm start.
  *
+ * The sixth edit is the false HOST_PROCESS_MISSING after a pi-web restart.
+ * resume() in src/omnigent.py checks that its host stayed up by reading
+ * /proc/<pid>, which macOS does not have, so managed_host_pid() answers None for
+ * a live host too. On every restart ensure_host() therefore starts another host,
+ * omnigent refuses the duplicate and that process exits, and resume() reports the
+ * original, still connected host as gone: phase `error` until `pi-omnigent repair`.
+ * No /proc is no evidence either way, so the edit makes the check apply only where
+ * /proc exists; the server's answer, the next lines of resume(), then decides, and
+ * a host that never comes back still ends in host_connect_timeout. It emulates
+ * nothing (see docs/MACOS.md, "If the daemon paths are needed later"): no process
+ * identity is claimed, and the checks that guard a signal are not touched.
+ *
  * This belongs upstream in WOOWTECH/pi-omnigent-plugin, and is applied here
  * only until a release carries it. Same discipline as the omnigent patch in
  * Woow_k3s_pi_agent_package: version-gated, exact-anchor, idempotent, keeps a
@@ -96,6 +108,15 @@ const LAUNCH_NEW = `        // ${LAUNCH_MARKER}: on an Intel Mac the first run o
         }
         discovery = { ...blankDiscovery(), ...await find(env, { fresh }) };
         if (discovery.omnigent?.available) {`;
+
+// src/omnigent.py: resume()'s check that the plugin's host stayed up.
+const PROCESS_MARKER = 'no-proc-no-verdict (Woow native installer)';
+const PROCESS_OLD = "            if manager == 'plugin' and self.managed_host_pid(server) is None:";
+const PROCESS_NEW = `            # ${PROCESS_MARKER}: managed_host_pid() reads /proc/<pid>, so
+            # without /proc it answers None for a live host too. That is no evidence
+            # either way: the server's answer below decides, and a host that never
+            # comes back still ends in host_connect_timeout.
+            if manager == 'plugin' and Path('/proc/self').exists() and self.managed_host_pid(server) is None:`;
 
 // src/common.mjs: flock(1) lookup inside locked().
 const LOCK_MARKER = 'flock-path-fallback (Woow native installer)';
@@ -166,6 +187,11 @@ function main() {
   edit(root, 'common.mjs', version, {
     marker: LOCK_MARKER,
     required: [['flock lookup', LOCK_OLD, LOCK_NEW]],
+  });
+
+  edit(root, 'omnigent.py', version, {
+    marker: PROCESS_MARKER,
+    required: [['resume host-process check', PROCESS_OLD, PROCESS_NEW]],
   });
 
   edit(root, 'installer.mjs', version, {
