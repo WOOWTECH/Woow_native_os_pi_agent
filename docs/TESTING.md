@@ -400,4 +400,6 @@ What misled these measurements, for the next person:
 - Taking the first boot's `list-models` count before `boot.json` exists reads 0: the hook runs after the first launch.
 - A multi-line prompt reaches a Claude session as pasted text, and Claude may ask whether you meant it rather than run it. Send one line.
 
+Over the tree released as v0.2.7, on the MacBook Air with no session on it: `session-home-macos.sh` 292/0 and `smoke.sh` 24/0, neither run for v0.2.6; `model-options-hook.sh` 26/0, `resume-no-proc.sh` 11/0, `intel-mac.sh` 28/0, `host-name.sh` 138/0, `pi-wrapper-session-home.sh` 12/0.
+
 Not run: a wiped Mac; Installer.app by hand; `pi-omnigent connect` from the empty state, which would leave a permanent host row on the server; a `git` run by an agent under Codex or Pi, which has no stand-in.
