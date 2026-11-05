@@ -40,6 +40,24 @@ proves nothing. The installer and the service avoid both:
   own interpreter rather than `python3`.
 - **Building pi-web from source** (the git-clone track) does need git and a
   compiler, and says so up front instead of tripping the stub.
+- **uv's rename of libpython.** Right after it unpacks CPython, `uv python
+  install` runs `install_name_tool -id`, found through `PATH`, and that is a stub
+  too. On a Mac without the tools the omnigent stage puts a stand-in ahead of it
+  for that one call. All that is lost is the rename, from the shipped
+  `@rpath/libpython3.12.dylib` to the full path, which only something linking
+  against this libpython would notice. The interpreter finds it through its own
+  rpath. v0.2.6 and earlier open the dialog here, once.
+
+**What still opens the dialog is Claude Code.** Measured with the tools moved
+away (`docs/TESTING.md`, "The published v0.2.6 pkg on Intel Macs"): the install, its first boot, the idle
+service, `pi-omnigent`, Codex and Pi reach no stub. Claude Code runs `git` three
+times whenever it starts to work, though not for `--version` or `auth status`,
+and a connected Omnigent host starts `claude` by itself every 3 minutes. So on a
+connected Mac the dialog comes back within 3 minutes of each Cancel. Nothing
+fails meanwhile: the stub fails at once, and Claude sessions work. Clicking
+Install ends it for good, and an agent will want git anyway. A stand-in `git`
+first on Claude's `PATH` also kept the dialog away when tried, but nothing here
+installs one.
 
 `tmux` is **bundled in the `.pkg`**: Omnigent's native Pi harness runs the Pi
 TUI inside a private tmux server, and Omnigent finds it with
@@ -197,9 +215,10 @@ runtime comes from a prebuild (on the installed MacBook Pro, none under
 
 With those, an Intel install compiles nothing. Both venvs install with
 `UV_NO_BUILD=1` (`tests/intel-mac.sh`, section E), and so does an end-to-end
-install in the pkg's layout followed by the plugin's dependency install. Not yet
-tried: a Mac that has never had the Command Line Tools -- both test Macs had
-them by then.
+install in the pkg's layout followed by the plugin's dependency install. A Mac
+that has never had the Command Line Tools has not been tried; the published pkg
+installed from zero on one with them moved away, and compiled nothing
+(`docs/TESTING.md`, "The published v0.2.6 pkg on Intel Macs").
 
 **Building the Intel pkg** works on any Mac, Apple silicon included: the pkg
 build only copies and signs `tools/bin/tmux`, it never runs it. Unpack the

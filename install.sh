@@ -414,8 +414,21 @@ stage_omnigent() {
   # both in the user's real home, and the link dangles once this install is
   # removed. --no-bin and a scoped cache prevent that.
   local uv_cache="$PA_TMP_DIR/uv-cache"
-  UV_CACHE_DIR="$uv_cache" UV_PYTHON_INSTALL_DIR="$PA_OMNIGENT_DIR/python" \
+  # Right after it unpacks CPython, uv renames libpython with `install_name_tool`, found through PATH. Without
+  # the Command Line Tools that is one more /usr/bin stub: it opens the "install the developer tools?" dialog in
+  # the middle of an install that needs no tools, then fails, and uv carries on with a warning. It is the only
+  # stub the whole install reaches. The name only matters to something linking against this libpython, which
+  # takes the tools too, so a stand-in on PATH for this one call keeps the outcome and loses the dialog.
+  local uv_path="$PATH"
+  if pa_macos_python3_is_stub; then
+    mkdir -p "$PA_TMP_DIR/no-dev-tools"
+    printf '#!/bin/sh\nexit 0\n' > "$PA_TMP_DIR/no-dev-tools/install_name_tool"
+    chmod 755 "$PA_TMP_DIR/no-dev-tools/install_name_tool"
+    uv_path="$PA_TMP_DIR/no-dev-tools:$PATH"
+  fi
+  PATH="$uv_path" UV_CACHE_DIR="$uv_cache" UV_PYTHON_INSTALL_DIR="$PA_OMNIGENT_DIR/python" \
     "$uv" python install --no-bin "$PIN_PYTHON_VERSION"
+  rm -rf "$PA_TMP_DIR/no-dev-tools"
   # --clear: this stage must converge when it is run again over an existing install -- that is how an install
   # is updated ("install the pkg again"). uv 0.12 refuses to create a venv over a non-empty directory
   # ("A virtual environment already exists ... Use the `--clear` flag"), and by then the earlier stages had

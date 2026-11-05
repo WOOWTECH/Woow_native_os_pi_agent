@@ -151,7 +151,10 @@ fails if anything other than `tools/bin/tmux` in the payload is a Mach-O binary.
 uv is a pinned standalone binary rather than a pip install. `flock` is a
 `/usr/bin/perl` shim. On a Mac without the tools, `python3` is linked to the
 uv-managed CPython, so the Omnigent tab's dependency check never runs the
-`/usr/bin/python3` stub and its install dialog. And **tmux is bundled**, built
+`/usr/bin/python3` stub and its install dialog. Claude Code does open that dialog:
+it runs `git` when it starts to work, and a connected Omnigent host starts it every
+3 minutes. Nothing fails or waits for the answer, and clicking Install ends it
+([`docs/MACOS.md`](docs/MACOS.md#host-requirements)). And **tmux is bundled**, built
 from source rather than copied from Homebrew. Homebrew's tmux is built for
 macOS 26 only and links four `/opt/homebrew` dylibs. Ours targets macOS 13+,
 links only `/usr/lib`, and includes utf8proc, without which tmux gets
