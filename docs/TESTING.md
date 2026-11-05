@@ -311,7 +311,7 @@ Measured on the two Macs:
   legs green. On the `macos-15-intel` runner pi-web built and packed (146 MB artifact) and the tmux
   build passed every self-check (CJK at two columns a character, jemalloc the default zone, links
   only `/usr/lib`).
-- not tried: a Mac that has never had the Command Line Tools (both had them by then).
+- not tried then: a Mac without the Command Line Tools (both had them by then). Tried later, with them moved away: see "The published v0.2.6 pkg on Intel Macs" below.
 
 ## Pi's models on a fresh install, and resume without /proc — validated 2026-11-05 (the 2017 MacBook Pro above, macOS 13.7.8, with another session running a JDK and Chrome on it; the 2020 MacBook Air above, macOS 15.4.1; Linux x86_64)
 
@@ -338,9 +338,55 @@ Measured, `list-models` matches in the omnigent the plugin had just installed (0
   and the same host pid. With the edit: phase `needs-verification`, no issue, at every look for those 2 minutes, the same
   pid, and the catalog unchanged (claude 4, codex 3, pi 85). Each restart left one more `A host daemon is already running
   for this server` in `data/omnigent-plugin/host.log`: the duplicate host omnigent refuses (OPERATIONS-GOTCHAS section 6).
-  No session was bound to that host, so a session running through such a restart was not measured.
+  No session was bound to that host, so a session running through such a restart was not measured here. It was later, through a whole upgrade: see "The published v0.2.6 pkg on Intel Macs" below.
 - One more first start, at a load average near 50: `prepare()` threw, `boot.json` said `"phase": "error"`, and omnigent
   was not installed 6 minutes later. At load 7 the same install worked. See OPERATIONS-GOTCHAS section 21; the exception
   is swallowed, so the cause is suspected, not proven.
 - Not run: `tests/session-home-macos.sh` and `tests/smoke.sh`, which use real launchd jobs or restart the service, on a
   Mac that was in use; the suites in the table on the MacBook Air; Apple silicon.
+
+## The published v0.2.6 pkg on Intel Macs, and a Mac without the Command Line Tools — validated 2026-11-05 (the 2020 MacBook Air, macOS 15.4.1; the 2017 MacBook Pro, macOS 13.7.8)
+
+| suite | what it pins | result | watched to fail |
+|---|---|---|---|
+| `tests/installer-rerun.sh` (5 new checks) | on a simulated Mac with no tools the omnigent stage exits 0, uv's `install_name_tool` call never reaches the stub, and the stand-in is gone afterwards; with the tools it reaches the real tool as before | 13/0 on the MacBook Air, 12/0 on Linux, where the real-uv check is skipped | the stand-in never put on `PATH`; the stand-in used even with the tools |
+| `tests/build-macos-pkg.sh` (2 new checks) | `installer -pkginfo` shows the pkg's name, at each umask | 10/0 on the MacBook Air | the title edit removed: 2 fail. The published v0.2.6 pkg prints nothing |
+
+The published x64 pkg, `sudo installer`, downloaded with quarantine set (Gatekeeper: accepted, Notarized Developer ID):
+
+| run | on | result |
+|---|---|---|
+| over an install | MacBook Air | exit 0 in 223 s. Payload root-owned, receipt 0.2.6, installed files owned by the user |
+| over an install, a session's tmux and claude running | MacBook Pro | exit 0 in 165 s. Those and the host kept their pids; no issue at any look for 60 s |
+| over an install, Claude's Bash tool writing a heartbeat every second | MacBook Air | exit 0 in 283 s. Heartbeat 420 beats, longest gap 2 s, the reply arrived; host, tmux and claude kept their pids |
+| from zero, no tools | MacBook Air | exit 0 in 227 s, 0 compile lines, dependencies ok, phase `needs-login`. The dialog came up once |
+
+No tools, on the MacBook Air. `/Library/Developer/CommandLineTools` renamed and put back on any exit; `xcode-select -p` fails; each run ends with a control, `/usr/bin/git`, which answers "No developer tools were found, requesting install" and opens the dialog, so a run with no dialog means something. **This is not a wiped Mac**, and Installer.app's windows were not walked through.
+
+| what ran | dialog | stubs reached |
+|---|---|---|
+| every stage in turn, logging stand-ins for the stubs first on `PATH` | yes, in `omnigent` | 1: uv's `install_name_tool -id` on libpython |
+| the same payload with the fix, then its first boot to the end (`boot.json`) | **no** | 0. The Pi patch on the plugin's omnigent: 4 matches |
+| the final `omnigent` stage alone, real uv and real downloads, a scratch home | no | not logged; exit 0 in 41 s, the stand-in gone |
+| a logged-in install: the service idle for 60 s, between the host's timers | no | |
+| `pi-omnigent status`, `pi-omnigent catalog`, `codex exec`, `pi -p` | no | |
+| real sessions: Pi, Codex | no | |
+| `claude --version`, `claude auth status` | no | 0 |
+| `claude -p` | **yes** | 3: `git`, starting with `git -c core.hooksPath=/dev/null ... ls-files --error-unmatch -- :(icase).claude/settings.local.json` |
+| a real Claude session | **yes**, 2 s after it was created | not logged: the host's `PATH` has no stand-ins |
+| the same `claude -p`, stand-ins that exit 127 first on its `PATH` | no | 3, all to the stand-in for `git` |
+
+- Real sessions with all three engines each ran one command through their own tool and replied, in 14 to 28 s. The dialog did not hold anything up: the stub fails at once.
+- An exec trace (`fs_usage -w -f exec -e fs_usage`) shows the host's python running `bin/claude` twice every 3 minutes (18:48:22, 18:51:22), with the dialog up within a second of each and of 18:45:22 before them. What it runs them for was not identified. It takes a running host: the from-zero install has none, and no dialog in its first boot.
+- `claude -p` on that Mac answers "Your organization has disabled Claude subscription access for Claude Code" with or without the tools, so it never did a turn. Its `git` calls come before that. The Claude sessions, which run the TUI, are not affected.
+- As shipped, libpython's install name is `@rpath/libpython3.12.dylib`. uv renames it to the full path; the stand-in leaves it. The interpreter links `@rpath/libpython3.12.dylib` and finds it through its own rpath, so it runs either way (`import ssl` on one never renamed).
+
+What misled these measurements, for the next person:
+
+- The dialog ignores SIGTERM. `pkill` leaves it on the screen, and the next run sees it and blames its first stage. Use SIGKILL; launchd may still bring it back about 10 s later, once.
+- A logged-in install that was made with the tools has no `python3` link, since `wire` only makes one on a Mac without them. Take the tools away afterwards and every discovery runs the `python3` stub, which a real tools-less install never does. Make the link for the test.
+- `pgrep -f` on the dialog's name matches the shell running a command that contains that name. Keep the pattern out of the command line.
+- `fs_usage` leaves out `sh` and others unless given `-e`, and for `posix_spawn` it can print a file action's path instead of the program: Claude's `git` shows up as its working directory.
+- Taking the first boot's `list-models` count before `boot.json` exists reads 0: the hook runs after the first launch.
+
+Not run: a wiped Mac; Installer.app by hand; `pi-omnigent connect` from the empty state, which would leave a permanent host row on the server.
