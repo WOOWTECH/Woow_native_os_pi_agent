@@ -22,8 +22,8 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 
 ### macOS — download and double-click
 
-- Apple silicon: [WoowPiAgent-0.2.5-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.5/WoowPiAgent-0.2.5-macos-arm64.pkg)
-- Intel: [WoowPiAgent-0.2.5-macos-x64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.5/WoowPiAgent-0.2.5-macos-x64.pkg)
+- Apple silicon: [WoowPiAgent-0.2.6-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.6/WoowPiAgent-0.2.6-macos-arm64.pkg)
+- Intel: [WoowPiAgent-0.2.6-macos-x64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.6/WoowPiAgent-0.2.6-macos-x64.pkg)
 
 Each is signed with a Developer ID and notarized, so Gatekeeper opens it without
 a warning, and each installs only on its own kind of Mac. It fetches the rest of
@@ -38,7 +38,7 @@ needed and the build disappears entirely.
 ```bash
 git clone https://github.com/WOOWTECH/Woow_native_os_pi_agent
 cd Woow_native_os_pi_agent
-PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.5/piweb-0.10.0-linux-x64.tar.gz \
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.6/piweb-0.10.0-linux-x64.tar.gz \
   ./install.sh
 ```
 
