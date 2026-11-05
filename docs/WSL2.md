@@ -205,7 +205,7 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 | 預檢說不能執行 WSL2 / 虛擬化 | BIOS/UEFI 沒開虛擬化(Intel VT-x、AMD-V);或在虛擬機器裡沒有巢狀虛擬化。Apple 晶片上的 Parallels 做不到 |
 | 連接埠被占用 | 加 `-Port 30142`。6769 是 Paseo 用的 |
 | 說有同名的 Linux | 你已經有一個叫 `PiAgent` 的 Linux 不是這個安裝程式建的。用 `-DistroName` 換個名字 |
-| 瀏覽器連不上 | `pi-agent doctor` 的 `localhost` 一項;`pi-agent status`。`wsl --shutdown` 之後,保活應該會把 Linux 叫回來(尚未驗證);沒有的話登出再登入一次 |
+| 瀏覽器連不上 | `pi-agent doctor` 的 `localhost` 一項;`pi-agent status`。`wsl --shutdown` 之後,保活會把 Linux 叫回來(雲端機實測 20 秒內 pi-web 又回應);沒有的話登出再登入一次 |
 | 電腦睡眠後 Omnigent 離線 | 睡眠期間 Linux 一起暫停;醒來後應該自動重新連線。若沒有,`pi-agent restart` |
 | 安裝到一半失敗 | 看 `%LOCALAPPDATA%\PiAgent\install.log`,重跑一次(會從失敗的地方繼續) |
 | `wsl --update` 回「災難性的失敗」 | Microsoft Store 那條路失敗,2026-11-04 在一台 Windows 10 22H2 碰到過。安裝程式會自動改用 `wsl --update --web-download`;自己手動跑時也用這個 |
@@ -234,7 +234,8 @@ pi-agent-win open https://example.com                       # 用 Windows 預設
 - systemd、使用者級 systemd 服務、`enable-linger` 都正常;整套安裝(pi-web、Claude Code、Codex、Omnigent 外掛、Paseo)
   走完,自我檢查 24 項全過。
 - Windows 這邊用 `localhost:30141` 連得到 WSL 裡綁在 `127.0.0.1` 的 pi-web。
-- **保活有效,而且需要**:有保活時 90 秒後服務還在;把保活停掉,Linux 就被 Windows 關掉了。
+- **保活有效,而且需要**:有保活時 90 秒後服務還在;把保活停掉,Linux 就被 Windows 關掉了。保活用 `conhost.exe --headless` 啟動(見上面「為什麼用…」),雲端機的端到端測試用的就是這個寫法。
+- **`wsl --shutdown` 之後保活把 Linux 叫回來**:pi-web 隨著關機一起不回應,20 秒後又回 200,保活程式仍是 1 個(`wsl2-windows.yml` 的 e2e,每次推送都跑)。
 - `pi-agent-win` 在一般 session 裡、以及在 systemd 使用者服務裡(沒有互通環境變數的那種環境)都能執行 PowerShell。
 - 重跑安裝、解除安裝(保留資料:Windows 端移除、之後手動再開 Linux,pi-web 不會自己跑起來)、解除安裝並清除資料(真的備份、
   真的 `--unregister`、資料夾清乾淨)。
@@ -327,10 +328,10 @@ build 26300.9457(26H2),3 個 vCPU、10 GB 記憶體,沒有 TPM 與 Secure Boot;�
 **還沒驗證**:
 
 - Windows 11 **實體電腦**。Windows 11 只在上面那台雲端虛擬機看過,Linux 那一半(裝 pi-web、代理、自我檢查)在 Windows 11 上沒有走完。
-- **Linux 被保活叫回來**:Windows 10 實機驗過(重開機後登入,不到 30 秒回來),Windows Server 2025 驗過保活有效;`wsl --shutdown` 之後保活會不會把 Linux 叫回來(疑難排解那一列)只有讀程式推論,沒有實跑。
+- **Windows 11 上 Linux 被保活叫回來**:Windows 10 實機驗過(重開機後登入,不到 30 秒回來),Windows Server 2025 驗過保活有效與 `wsl --shutdown` 後 20 秒內回來;Windows 11 上因為虛擬機跑不動 WSL2,只看到保活程式本身在登入時起來,沒看到它真的留住 Linux。
 - **新的保活寫法在 Windows 10 上**:`conhost.exe --headless` 在 Windows 11 build 26300 上實測過;Windows 10 實機驗證時用的是舊寫法,沒有用新寫法測。
 - 在真的電腦上從發佈網址裝:那台 Windows 10 實機用的是開發版安裝包,這條指令從真網址只在雲端機(Windows Server 2025)與 Windows 11 虛擬機(雙擊檔)上跑過。
-- 輸出文字錯位(「階梯狀」)的修法:rc.2 在 Windows 11 的 Windows Terminal 上看過那個問題,修法只有單元測試;虛擬機沒跑到串流輸出那一步。
+- 輸出文字錯位(「階梯狀」)的修法:rc.2 在 Windows 11 的 Windows Terminal 上看過那個問題。修法(每一行前面加 `\r`)用模擬確認過:把主控台設成「換行不回到行首」的模式,不加 `\r` 的行一行比一行往右爬,加了的行都從最左邊開始。但真的 `wsl.exe` 串流輸出沒有跑到(虛擬機沒走到那一步),所以「`wsl.exe` 執行時真的是這個模式」仍是 rc.2 那次觀察的推論。
 - 安裝程式內建的 `--web-download` 退路沒實跑過(WSL 3.0.3 的 `wsl --update` 在這幾台都成功)。被擋的其他情況(WSL 被政策停用、磁碟或記憶體不足)的訊息也還沒看過。
 - 公司的 PowerShell 執行原則(AllSigned、Restricted)若蓋過 `-ExecutionPolicy Bypass`,保活與自動續跑都不會執行。
 - 睡眠喚醒後 host 自動重連(E8):虛擬機沒有 S3 睡眠(只有休眠),這項只能在實體電腦上測。

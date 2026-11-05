@@ -836,7 +836,7 @@ function Test-PaKeepaliveRunning {
 }
 
 function Wait-PaKeepalive {
-    param([string]$ScriptPath, [int]$Seconds = 15)
+    param([string]$ScriptPath, [int]$Seconds = 30)
     for ($i = 0; $i -lt $Seconds; $i++) {
         if (Test-PaKeepaliveRunning -ScriptPath $ScriptPath) { return $true }
         Start-PaSleep -Seconds 1
@@ -1551,7 +1551,8 @@ function Invoke-PaStepIntegration {
         Write-PaFile -Path $Paths.Keepalive -Text (New-PaKeepaliveScript -Distro $name) -Bom $true
         $plain = $false
         Start-PaKeepalive -ScriptPath $Paths.Keepalive
-        if (-not (Wait-PaKeepalive -ScriptPath $Paths.Keepalive -Seconds 15)) {
+        # A first start on a freshly provisioned PC took longer than 12 seconds once, so give it time; it returns the moment it is up.
+        if (-not (Wait-PaKeepalive -ScriptPath $Paths.Keepalive -Seconds 30)) {
             # The logon task uses the same command line, so this is also what would fail at sign-in.
             Write-PaMsg 'Warn' '沒有視窗的啟動方式在這台電腦上沒成功,改用一般的隱藏視窗。登入後可能會多一個終端機視窗,請不要關掉它。(headless start failed, using a plain hidden window)'
             $plain = $true
