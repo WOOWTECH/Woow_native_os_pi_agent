@@ -79,11 +79,27 @@ HOME="$A/home" OMNIGENT_CONFIG_HOME="$A/home/.omnigent" \
 
 Only after that did `claude` go from `needs-auth` to `ready=True` with models.
 
-## 6. `managerRunning=false` and `HOST_PROCESS_MISSING` are cosmetic on macOS
+## 6. `managerRunning=false` is cosmetic on macOS, and the plugin cannot see its host there
 
 The plugin confirms its host process by reading `/proc/<pid>`, which macOS does
 not have, so it always fails to confirm. The host is fine and the engines work.
 Linux shows the same `false` with everything verified. Do not chase it.
+
+Two things follow from that blindness on every pi-web restart:
+
+- **The plugin tries to start another host.** It cannot see the running one, so
+  `ensure_host()` spawns `omnigent host`, omnigent refuses the duplicate and that
+  process exits: `Error: A host daemon is already running for this server` in
+  `data/omnigent-plugin/host.log`. Harmless, and it is what brings a host back
+  when one really did die.
+- **`HOST_PROCESS_MISSING` was a false alarm.** `resume()` then checked for the
+  process it had just failed to see and reported the connected host as gone:
+  phase `error`, the same pid still running, until `pi-omnigent repair` adopted it.
+  The darwin patch now applies that check only where `/proc` exists, so on a Mac
+  the server's answer decides; a host that never comes back still ends in
+  `HOST_CONNECT_TIMEOUT`. On an install from before that edit, `repair` still clears
+  it. No process identity is emulated, and `disconnect`'s check before a signal is
+  unchanged (docs/MACOS.md, "If the daemon paths are needed later").
 
 ## 7. Port 30141 answering 200 does not prove the LOCAL pi-web answered
 
