@@ -313,5 +313,7 @@ did not start a second host.
 **Not verified:** a real reboot in the middle of a cutover. Both Macs have FileVault on and no
 automatic login, so a reboot stops at the disk-unlock screen until a password is typed at the
 keyboard: it cannot be done, or undone, remotely. What is tested is a worker killed half way and
-recovered at the next login (real launchd jobs, a stand-in for the server). Also not verified:
-Windows, Intel Macs, and the privacy prompts of the native `codex` binary.
+recovered at the next login (real launchd jobs, a stand-in for the server; once also on a
+real Mac, with the real server -- docs/TESTING.md, "Cut-over Apple silicon Macs"). Also not
+verified: a cutover on an Intel Mac (the Intel Macs were installed on and run on, never cut
+over; Windows has no cutover), and the privacy prompts of the native `codex` binary.

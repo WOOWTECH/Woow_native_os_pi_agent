@@ -600,9 +600,10 @@ its old name with every conversation still bound. Any failure rolls everything b
 that carries this host's own id is not a collision.
 
 *Status:* exercised in a sandbox (real launchd jobs, fake hosts, a stub of the server
-API), and its read-only preflight has been run against a real Mac. It has **not yet**
-been run for real against a live Omnigent server and a live `ai.omnigent.host`; until
-it has, treat the first run as a test and keep the backups it writes.
+API), and run for real against a live Omnigent server and a live `ai.omnigent.host` on
+two Apple silicon Macs on 2026-11-03 (16 and 39 conversations, all still bound afterwards;
+docs/RELEASE-0.2.3.md), with real-machine runs since then in docs/TESTING.md. The first
+run on your own Mac is still a test: keep the backups it writes.
 
 What the guard does and does not cover (it covers the hosts the *plugin* starts,
 not one started by hand), and why it fails closed when the server cannot be asked,
