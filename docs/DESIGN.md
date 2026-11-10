@@ -32,7 +32,7 @@ Runtime components (all Node/Python, no separate agent daemon):
 
 Pins (single source `cli-runtime/versions.json` + Dockerfile ARGs):
 - pi-web `0.10.0` @ ref `6fcd7d44981ab51a21d6cd6eb06d361d0e3d3068`
-- omnigent-plugin `0.3.31` (sha256 `b62059cd…`), UI patch sha256 `b204fcae…`
+- omnigent-plugin `0.3.32` (sha256 `00c555a2…`), UI patch sha256 `b204fcae…`
 - paseo-plugin `0.1.15` (sha256 `1a8fd99a…`), getpaseo/cli `0.11.2`
 - shared-runtime `@woowtech/pi-agent-shared-runtime` @ `e648882638fa0674f83ec274d58d5fcd7e703a7b`
 - omnigent `0.16.0`, claude `2.1.296`, codex `0.162.1`, node `22.x`

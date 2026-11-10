@@ -43,7 +43,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const EXPECTED_VERSIONS = ['0.3.31'];
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32'];
 
 const GATE_OLD = "if (platform !== 'linux' || !['x64', 'arm64'].includes(arch)) {";
 const GATE_NEW = "if (!['linux', 'darwin'].includes(platform) || !['x64', 'arm64'].includes(arch)) {";

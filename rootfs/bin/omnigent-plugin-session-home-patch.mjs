@@ -30,7 +30,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const EXPECTED_VERSIONS = ['0.3.31'];
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32'];
 const MARKER = 'session-home (Woow native installer)';
 const ANCHOR = '                environment["OMNIGENT_HOST_NO_OPEN"] = "1"\n';
 const ADDITION = [
