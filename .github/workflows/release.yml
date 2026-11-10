@@ -38,7 +38,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14,      label: macos-arm64  }
+          - { os: macos-15,      label: macos-arm64  }
           - { os: ubuntu-latest, label: linux-x64    }
           # Windows on ARM runs WSL2 with an arm64 Ubuntu, which needs this tree. Not
           # built in CI before, so a failure here must not stop the other releases.

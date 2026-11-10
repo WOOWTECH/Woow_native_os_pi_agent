@@ -1,6 +1,6 @@
 # Pi Agent on Windows 11 (WSL2)
 
-> **狀態:預覽版(`v0.3.0-rc.5`;Windows 部分與 rc.3 相同,另加 2026-11-10 在 Allwinner H618 4 GB 板上找到的修正,見 `docs/RELEASE-0.3.0-rc.5.md`)。** 比 rc.2 多了 2026-11-05 在 Windows 11 上試出來的幾個修正(登入時多出一個關不得的終端機視窗、電腦還沒裝 WSL 時畫面靜止 2 分鐘、WSL 啟動逾時、把自己的 Linux 誤判成別人的)。裝過 rc.1 或 rc.2 的電腦,重跑同樣的安裝就會換成新的。
+> **狀態:預覽版(`v0.3.0-rc.6`;Windows 部分與 rc.3 相同,另加 2026-11-10 在 Allwinner H618 4 GB 板上找到的修正,見 `docs/RELEASE-0.3.0-rc.6.md`)。** 比 rc.2 多了 2026-11-05 在 Windows 11 上試出來的幾個修正(登入時多出一個關不得的終端機視窗、電腦還沒裝 WSL 時畫面靜止 2 分鐘、WSL 啟動逾時、把自己的 Linux 誤判成別人的)。裝過 rc.1 或 rc.2 的電腦,重跑同樣的安裝就會換成新的。
 > 驗證到哪裡(每一項的細節在最後的「驗證到哪裡」):
 >
 > - **GitHub 的 Windows Server 2025 雲端機**:完整跑通(自我檢查 24 項全過、保活、重跑、兩種解除安裝),也從真網址裝過發佈版。
@@ -34,7 +34,7 @@ Linux 主機,所以 Pi Agent、Claude Code、Codex 三個代理的行為跟 Linu
 在 PowerShell(不必是系統管理員)貼上:
 
 ```powershell
-$u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3.0-rc.5/install-wsl.ps1'
+$u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3.0-rc.6/install-wsl.ps1'
 & ([ScriptBlock]::Create(([Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing $u).RawContentStream.ToArray())).TrimStart([char]0xFEFF)))
 ```
 
@@ -54,7 +54,7 @@ $u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3
 - 改用上面那兩行指令。
 - 在檔案上按右鍵 →「內容」→ 勾選「解除封鎖」→「確定」,再雙擊一次。
 
-現在是預覽版,所以網址寫明版本:GitHub 的 `releases/latest` 不會指到預覽版。發佈頁在 [v0.3.0-rc.5](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/tag/v0.3.0-rc.5)。
+現在是預覽版,所以網址寫明版本:GitHub 的 `releases/latest` 不會指到預覽版。發佈頁在 [v0.3.0-rc.6](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/tag/v0.3.0-rc.6)。
 
 可以在最後面加選項:
 
