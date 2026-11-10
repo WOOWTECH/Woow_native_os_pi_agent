@@ -20,6 +20,20 @@ export HOME="${PI_AGENT_HOME}/home"
 export PI_TELEMETRY="${PI_TELEMETRY:-0}"
 export PI_SKIP_VERSION_CHECK="${PI_SKIP_VERSION_CHECK:-1}"
 
+# Claude Code's auto-updater, off. In long-lived interactive sessions (the ones
+# Omnigent's claude-native harness keeps open) it ran
+# `npm install -g @anthropic-ai/claude-code` about every 30 minutes, writing
+# ~330 MB each time -- to eMMC on an H618 board -- and put 2.1.319, then
+# 2.1.321, into the scoped Node's prefix next to the 2.1.296 pinned under
+# clis/claude, the only copy the claude wrapper ever starts (measured
+# 2026-11-09/10). Claude Code is updated by this installer: PIN_CLAUDE_VERSION,
+# then ./install.sh clis. Every launch of it here sources this file: the claude
+# wrapper does (Omnigent starts its sessions through the wrapper, with a
+# filtered environment), and pi-web-start.sh does, whose environment the Paseo
+# daemon inherits. An explicit value wins; Claude Code reads only 1/true/yes/on
+# as "off", so DISABLE_AUTOUPDATER=0 lets it update itself where that reaches.
+export DISABLE_AUTOUPDATER="${DISABLE_AUTOUPDATER:-1}"
+
 # Scoped Node + our wrappers first on PATH.
 export PATH="${PI_AGENT_HOME}/bin:${PI_AGENT_HOME}/node/bin:${PATH}"
 

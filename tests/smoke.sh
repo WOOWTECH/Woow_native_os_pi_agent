@@ -83,7 +83,7 @@ chk "settings.json registers omnigent plugin" 'grep -q pi-omnigent-plugin "$PI_A
 chk "settings.json registers paseo plugin"    'grep -q pi-paseo-plugin "$PI_AGENT_DATA_DIR/settings.json"'
 chk "omnigent plugin active"       '[ "$(jq_api /api/omnigent "o.active")" = true ]'
 chk "omnigent detects 3 engines"   '[ "$(jq_api /api/omnigent "o.engines.length")" = 3 ]'
-chk "omnigent version 0.3.31"      '[ "$(jq_api /api/omnigent "o.version")" = 0.3.31 ]'
+chk "omnigent version 0.3.32"      '[ "$(jq_api /api/omnigent "o.version")" = 0.3.32 ]'
 
 echo "## 5. skill sharing round-trip"
 mkdir -p "$PI_AGENT_DATA_DIR/skills/qa-skill"
