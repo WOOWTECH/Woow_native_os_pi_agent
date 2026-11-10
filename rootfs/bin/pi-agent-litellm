@@ -7,8 +7,16 @@
 #
 #   pi-agent-litellm set --base-url https://gw.example.com/v1 [--key-stdin|--key-env]
 #   pi-agent-litellm refresh          # re-read the gateway model list
-#   pi-agent-litellm probe [--apply]  # find models that actually answer
+#   pi-agent-litellm probe [--apply]  # find models that actually answer; --apply keeps only those
+#   pi-agent-litellm default [MODEL]  # show, or set, the model Pi starts with (e.g. apporo/gpt-6-sol)
 #   pi-agent-litellm status
+#
+# Each model's context window and output limit come from the gateway's
+# /model/info (LiteLLM) and go into models.json, which is what Pi sizes every
+# request from; the probe asks each model for exactly that much output. The
+# default is Pi's own setting (defaultProvider + defaultModel in settings.json,
+# what pi-web's "set as default" writes). Without it Pi takes the FIRST model in
+# the list -- whatever sorts first on the gateway, working or not.
 #
 # USING PI THROUGH OMNIGENT needs nothing extra here: pi-web-start.sh applies
 # omnigent-model-options-patch.py on every start, which teaches Omnigent to ask
@@ -27,8 +35,10 @@ ENVFILE="$PI_AGENT_HOME/litellm.env"
 MODELS="$PI_AGENT_DATA_DIR/models.json"
 STORE="$PI_AGENT_DATA_DIR/models-store.json"
 AUTH="$PI_AGENT_DATA_DIR/auth.json"
+SETTINGS="$PI_AGENT_DATA_DIR/settings.json"
 NODE="$PI_AGENT_HOME/node/bin/node"
 PROVIDER=litellm
+TAB="$(printf '\t')"
 
 die(){ echo "pi-agent-litellm: $*" >&2; exit 1; }
 read_base_url(){ [ -f "$ENVFILE" ] && sed -n 's/^LITELLM_BASE_URL=//p' "$ENVFILE" | tail -1; }
@@ -57,14 +67,55 @@ seed_store(){
 
 # Write the provider block into models.json, preserving every other provider.
 # Model ids come from the gateway itself, so the menu matches what it serves.
+# Prints "<models> <models with limits> info|noinfo".
 write_models(){
-  local base="$1" key="$2" list
+  local base="$1" key="$2" list info
   list="$(curl -fsS -m 25 -H "Authorization: Bearer $key" "${base%/}/models")" \
     || die "cannot list models at ${base%/}/models (check URL and key)"
+  # LiteLLM's per-deployment metadata. Optional: a plain OpenAI-compatible
+  # server (vLLM, Ollama) has no such route, and then Pi keeps its defaults.
+  info="$(curl -fsS -m 25 -H "Authorization: Bearer $key" "${base%/}/model/info" 2>/dev/null)" || info=""
   PROVIDER="$PROVIDER" BASE="$base" MODELS="$MODELS" "$NODE" -e '
     const fs=require("fs"), p=require("path");
     const ids=(JSON.parse(fs.readFileSync(0,"utf8")).data||[]).map(m=>m.id).filter(Boolean).sort();
     if(!ids.length) throw new Error("gateway returned no models");
+    // Limits per model, from /model/info (on fd 3). It lists every deployment, so
+    // a model served by several gets the smallest limit any of them reports: a
+    // request may land on any one. Anything but a positive number is unknown.
+    let rows=null;
+    try{ rows=JSON.parse(fs.readFileSync(3,"utf8")).data; }catch{}
+    const known=v=>typeof v==="number"&&Number.isFinite(v)&&v>=1?Math.floor(v):undefined;
+    const least=(a,b)=>a===undefined?b:b===undefined?a:Math.min(a,b);
+    const limits=new Map();
+    for(const r of Array.isArray(rows)?rows:[]){
+      if(!r||typeof r.model_name!=="string") continue;
+      const mi=r.model_info||{}, was=limits.get(r.model_name)||{};
+      limits.set(r.model_name,{ctx:least(was.ctx,known(mi.max_input_tokens)),out:least(was.out,known(mi.max_output_tokens))});
+    }
+    // Pi 1.4.0 gives an entry without these fields a 128000-token contextWindow
+    // and maxTokens 16384 (core/provider-composer.js). It asks for maxTokens of
+    // output on every turn, cut to contextWindow - prompt - 4096
+    // (pi-ai api/simple-options.js) -- so with the real window a small model gets
+    // a request that fits, and with the assumed 128000 it does not: a 24,576-token
+    // model behind an MCP server (an 8.2k-token tool prompt) failed every turn with
+    // ContextWindowExceededError. maxTokens is the model limit, at most half the
+    // window (Pi estimates the prompt at 3.5 characters a token, which CJK text
+    // beats), and never above the 16384 Pi asked for until now: upstreams such as
+    // OpenRouter decide from max_tokens whether the credit left covers a request
+    // (402 otherwise), so asking for more would turn working models into failing ones.
+    const PI_MAX_TOKENS=16384;
+    let described=0;
+    const models=ids.map(id=>{
+      const l=limits.get(id)||{}, m={id};
+      if(l.ctx) m.contextWindow=l.ctx;
+      if(l.ctx||l.out){
+        let max=Math.min(l.out??PI_MAX_TOKENS,PI_MAX_TOKENS);
+        if(l.ctx) max=Math.min(max,Math.floor(l.ctx/2));
+        m.maxTokens=Math.max(1,max);
+        described++;
+      }
+      return m;
+    });
     const f=process.env.MODELS;
     let cfg={};
     try{ cfg=JSON.parse(fs.readFileSync(f,"utf8")); }catch{}
@@ -73,21 +124,110 @@ write_models(){
     // "id" is what goes on the wire, so it stays exactly as the gateway spells
     // it, slashes included. Select with the provider prefix --
     // pi --model litellm/apporo/gpt-6-astra -- which resolves even when the id
-    // itself contains a slash. Pi picks the FIRST entry as its automatic
-    // default, so a dead model sorting first makes every unqualified run fail:
-    // see the probe subcommand.
+    // itself contains a slash. Without a default in settings.json Pi takes the
+    // FIRST entry, so a dead model sorting first makes every unqualified run
+    // fail: see the probe and default subcommands.
     cfg.providers[process.env.PROVIDER]={
       baseUrl:process.env.BASE,
       api:"openai-completions",
       apiKey:"${LITELLM_API_KEY}",
-      models:ids.map(id=>({id})),
+      models,
     };
     const tmp=f+"."+process.pid+".tmp";
     fs.mkdirSync(p.dirname(f),{recursive:true});
     fs.writeFileSync(tmp,JSON.stringify(cfg,null,2)+"\n",{mode:0o600});
     fs.renameSync(tmp,f);
-    console.log(ids.length);
-  ' <<<"$list"
+    console.log(ids.length+" "+described+" "+(Array.isArray(rows)?"info":"noinfo"));
+  ' 3<<<"$info" <<<"$list"
+}
+
+# What write_models found out about the limits, for the person running this.
+report_limits(){
+  local n="$1" m="$2" src="$3" base="$4"
+  if [ "$src" = info ]; then
+    echo "pi-agent-litellm: context window and output limit for $m of $n model(s), from ${base%/}/model/info"
+  else
+    echo "pi-agent-litellm: WARN: no model limits (${base%/}/model/info did not answer); Pi assumes a 128000-token context window and 16384 output tokens for every model" >&2
+  fi
+}
+
+# Pi's default model: defaultProvider + defaultModel in settings.json, the two
+# keys pi-web's "set as default" writes (SettingsManager.setDefaultModelAndProvider).
+# Nothing else in the file is touched. Pi saves this file by reading it, merging
+# what it changed and writing it back under a proper-lockfile lock -- the
+# directory settings.json.lock -- so this takes the same lock: neither side can
+# lose the other's change.
+#   settings_default get            -> provider/model, or "not set"
+#   settings_default set MODEL      -> MODEL must be one of this provider's models
+#   settings_default choose FILE    -> keep a usable default, else pick the first usable model (FILE: one id a line)
+settings_default(){
+  SETTINGS="$SETTINGS" MODELS="$MODELS" PROVIDER="$PROVIDER" "$NODE" -e '
+    const fs=require("fs"), path=require("path");
+    const [mode,arg]=process.argv.slice(1);
+    const f=process.env.SETTINGS, P=process.env.PROVIDER;
+    let ids=[];
+    try{ ids=((JSON.parse(fs.readFileSync(process.env.MODELS,"utf8")).providers||{})[P]||{}).models.map(m=>m.id); }catch{}
+    function read(){
+      let t;
+      try{ t=fs.readFileSync(f,"utf8"); }catch(e){ if(e.code==="ENOENT") return {}; throw e; }
+      t=t.replace(/^\uFEFF/,"");
+      if(!t.trim()) return {};
+      const s=JSON.parse(t);
+      if(!s||typeof s!=="object"||Array.isArray(s)) throw new Error(f+" is not a JSON object; left as it is");
+      return s;
+    }
+    const sleep=ms=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms);
+    function locked(fn){
+      const lock=f+".lock";
+      fs.mkdirSync(path.dirname(f),{recursive:true});
+      for(let i=0;;i++){
+        try{ fs.mkdirSync(lock); break; }catch(e){
+          if(e.code!=="EEXIST") throw e;
+          let age=0;
+          try{ age=Date.now()-fs.statSync(lock).mtimeMs; }catch{ continue; }
+          // proper-lockfile (stale: 10 s) takes over a lock this old; so do we.
+          if(age>10000){ try{ fs.rmdirSync(lock); }catch{} continue; }
+          if(i>=250) throw new Error(lock+" has been held for 5 s by another process; try again");
+          sleep(20);
+        }
+      }
+      try{ return fn(); }finally{ try{ fs.rmdirSync(lock); }catch{} }
+    }
+    function save(s,id){
+      s.defaultProvider=P; s.defaultModel=id;
+      const tmp=f+"."+process.pid+".tmp";
+      let mode;
+      try{ mode=fs.statSync(f).mode&0o777; }catch{}
+      fs.writeFileSync(tmp,JSON.stringify(s,null,2)+"\n");
+      if(mode!==undefined) fs.chmodSync(tmp,mode);
+      fs.renameSync(tmp,f);
+    }
+    const name=s=>s.defaultProvider&&s.defaultModel?s.defaultProvider+"/"+s.defaultModel:"not set";
+    if(mode==="get"){ console.log(name(read())); }
+    else if(mode==="set"){
+      // Accept the id as listed (apporo/gpt-6-sol) or with the provider prefix
+      // Pi itself prints (litellm/apporo/gpt-6-sol).
+      let id=arg;
+      if(!ids.includes(id)&&id.startsWith(P+"/")&&ids.includes(id.slice(P.length+1))) id=id.slice(P.length+1);
+      if(!ids.includes(id)){ console.error("pi-agent-litellm: "+arg+" is not one of the "+ids.length+" "+P+" models in models.json (pi --list-models "+P+")"); process.exit(2); }
+      locked(()=>save(read(),id));
+      console.log("Pi default is now "+P+"/"+id);
+    }
+    else if(mode==="choose"){
+      const usable=new Set(fs.readFileSync(arg,"utf8").split("\n").map(s=>s.trim()).filter(Boolean));
+      locked(()=>{
+        const s=read(), was=name(s);
+        if(s.defaultProvider&&s.defaultModel&&s.defaultProvider!==P){ console.log("Pi default stays "+was+" (not this gateway; left as it is)"); return; }
+        if(s.defaultProvider===P&&usable.has(s.defaultModel)){ console.log("Pi default stays "+was+" (it answered)"); return; }
+        // Deterministic: the first model that answered, in models.json order (sorted ids).
+        const pick=ids.find(id=>usable.has(id));
+        if(!pick) throw new Error("no usable model to make the default");
+        save(s,pick);
+        console.log("Pi default is now "+P+"/"+pick+(was==="not set"?" (there was none)":" (was "+was+", which did not answer)"));
+      });
+    }
+    else { throw new Error("settings_default: unknown mode "+mode); }
+  ' "$@"
 }
 
 cmd="${1:-status}"; shift || true
@@ -114,54 +254,98 @@ case "$cmd" in
     umask 077
     printf 'LITELLM_BASE_URL=%s\nLITELLM_API_KEY=%s\n' "$base" "$key" > "$ENVFILE"
     chmod 600 "$ENVFILE"
-    n="$(write_models "$base" "$key")"; seed_store >/dev/null
+    out="$(write_models "$base" "$key")"; seed_store >/dev/null
+    read -r n m src <<<"$out"
     echo "pi-agent-litellm: configured $PROVIDER at $base with $n model(s); key in $ENVFILE (mode 600)"
-    echo "next: pi-agent-litellm probe --apply   # drop models the gateway cannot actually serve"
+    report_limits "$n" "$m" "$src" "$base"
+    echo "next: pi-agent-litellm probe --apply   # keep only the models that answer, and make one of them Pi's default"
     echo "      run 'pi' then /login -> API key -> $PROVIDER   # required for Omnigent"
     ;;
   refresh)
     [ -f "$ENVFILE" ] || die "not configured yet; run 'pi-agent-litellm set --base-url ...' first"
     # shellcheck source=/dev/null
     . "$ENVFILE"
-    n="$(write_models "$LITELLM_BASE_URL" "$LITELLM_API_KEY")"; seed_store >/dev/null
+    out="$(write_models "$LITELLM_BASE_URL" "$LITELLM_API_KEY")"; seed_store >/dev/null
+    read -r n m src <<<"$out"
     echo "pi-agent-litellm: refreshed $n model(s) from $LITELLM_BASE_URL"
+    report_limits "$n" "$m" "$src" "$LITELLM_BASE_URL"
+    echo "next: pi-agent-litellm probe --apply   # the list is the gateway's whole list again, dead models included"
     ;;
   probe)
     apply=0; [ "${1:-}" = "--apply" ] && apply=1
     [ -f "$ENVFILE" ] || die "not configured yet"
     # shellcheck source=/dev/null
     . "$ENVFILE"
-    ids="$("$NODE" -e 'const c=require(process.argv[1]);console.log(((c.providers.litellm||{}).models||[]).map(m=>m.id).join("\n"))' "$MODELS")"
-    [ -n "$ids" ] || die "no models configured; run refresh first"
+    # One line per model: id, output ceiling, request body (node escapes the id).
+    reqs="$("$NODE" -e '
+      const c=require(process.argv[1]);
+      const PROMPT="Reply with the single word OK";
+      // The output ceiling Pi 1.4.0 puts on a turn with this model: its maxTokens
+      // (16384 when absent), cut to its contextWindow (128000 when absent) minus
+      // the prompt minus 4096, the prompt estimated at 3.5 characters a token
+      // (pi-ai api/simple-options.js). The prompt stays tiny, so a probe costs
+      // little; the ceiling has to be the real one, because upstreams decide from
+      // it whether to serve the request at all. Probed at 96 tokens, models passed
+      // that then answered every real Pi turn with HTTP 402 (OpenRouter: "declined
+      // the request for a billing reason").
+      const promptTokens=Math.ceil(PROMPT.length/3.5);
+      for(const m of ((c.providers.litellm||{}).models||[])){
+        if(!m||typeof m.id!=="string"||!m.id||/[\t\r\n]/.test(m.id)) continue;
+        const max=Math.min(m.maxTokens||16384,Math.max(1,(m.contextWindow||128000)-promptTokens-4096));
+        // max_completion_tokens: the field Pi sends to an OpenAI-compatible
+        // gateway (pi-ai api/openai-completions.js, detectCompat).
+        console.log([m.id,max,JSON.stringify({model:m.id,max_completion_tokens:max,messages:[{role:"user",content:PROMPT}]})].join("\t"));
+      }' "$MODELS")"
+    [ -n "$reqs" ] || die "no models configured; run refresh first"
+    echo "probe: each model is asked for as much output as Pi will ask it for (max_tokens)"
     ok=""; bad=0
-    while IFS= read -r id; do
+    while IFS="$TAB" read -r id max body; do
       [ -n "$id" ] || continue
-      body="$(printf '{"model":%s,"max_tokens":96,"messages":[{"role":"user","content":"Reply with the single word OK"}]}' "$("$NODE" -e 'console.log(JSON.stringify(process.argv[1]))' "$id")")"
-      if curl -sS -m 45 -X POST "${LITELLM_BASE_URL%/}/chat/completions" \
+      resp="$(curl -sS -m 45 -X POST "${LITELLM_BASE_URL%/}/chat/completions" \
            -H "Authorization: Bearer $LITELLM_API_KEY" -H 'Content-Type: application/json' \
-           -d "$body" 2>/dev/null | grep -q '"content"[[:space:]]*:[[:space:]]*"'; then
-        printf '  OK   %s\n' "$id"; ok="$ok$id"$'\n'
+           -d "$body" -w '\n%{http_code}' 2>/dev/null)" || true
+      code="${resp##*$'\n'}"; resp="${resp%$'\n'*}"
+      good=0
+      case "$code" in 2??) printf '%s' "$resp" | grep -q '"content"[[:space:]]*:[[:space:]]*"' && good=1 ;; esac
+      if [ "$good" = 1 ]; then
+        printf '  OK   %s  (max_tokens %s)\n' "$id" "$max"; ok="$ok$id"$'\n'
       else
-        printf '  dead %s\n' "$id"; bad=$((bad+1))
+        printf '  dead %s  (HTTP %s at max_tokens %s)\n' "$id" "${code:-000}" "$max"; bad=$((bad+1))
       fi
-    done <<<"$ids"
-    echo "probe: $(printf '%s' "$ok" | grep -c . || true) usable, $bad unusable"
+    done <<<"$reqs"
+    usable="$(printf '%s' "$ok" | grep -c . || true)"
+    echo "probe: $usable usable, $bad unusable"
     if [ "$apply" = 1 ]; then
-      printf '%s' "$ok" > "$PI_AGENT_HOME/.litellm-usable"
-      KEEP="$PI_AGENT_HOME/.litellm-usable" MODELS="$MODELS" "$NODE" -e '
+      # A gateway or network that is down answers nothing; pruning to nothing
+      # would leave Pi without a model until the next refresh.
+      [ "${usable:-0}" -gt 0 ] || die "no model answered, so nothing was applied: models.json and Pi's default are as they were (check the gateway and the key, then probe again)"
+      keep="$PI_AGENT_HOME/.litellm-usable"
+      printf '%s' "$ok" > "$keep"
+      KEEP="$keep" MODELS="$MODELS" "$NODE" -e '
         const fs=require("fs");
         const keep=new Set(fs.readFileSync(process.env.KEEP,"utf8").split("\n").map(s=>s.trim()).filter(Boolean));
         const f=process.env.MODELS, cfg=JSON.parse(fs.readFileSync(f,"utf8"));
+        const before=(cfg.providers.litellm.models||[]).length;
         cfg.providers.litellm.models=(cfg.providers.litellm.models||[]).filter(m=>keep.has(m.id));
         const tmp=f+"."+process.pid+".tmp";
         fs.writeFileSync(tmp,JSON.stringify(cfg,null,2)+"\n",{mode:0o600});
         fs.renameSync(tmp,f);
-        console.log("models.json kept "+cfg.providers.litellm.models.length+"; Pi default is now litellm/"+(cfg.providers.litellm.models[0]||{}).id);
+        console.log("models.json kept "+cfg.providers.litellm.models.length+" of "+before);
       '
-      rm -f "$PI_AGENT_HOME/.litellm-usable"
+      # The list alone no longer decides the default: a later refresh puts the
+      # dead models back at the top, and Pi would take the first again.
+      rc=0; settings_default choose "$keep" || rc=$?
+      rm -f "$keep"
       seed_store >/dev/null
       echo "restart pi-web to pick it up:  pi-agent restart"
+      [ "$rc" = 0 ] || die "models.json was pruned, but Pi's default could not be set (above); set one with: pi-agent-litellm default MODEL"
     fi
+    ;;
+  default)
+    [ -f "$MODELS" ] || die "not configured yet; run 'pi-agent-litellm set --base-url ...' first"
+    if [ $# -eq 0 ]; then echo "Pi default: $(settings_default get)"; exit 0; fi
+    settings_default set "$1"
+    echo "new Pi sessions that name no model start with it; 'pi --model ...' still picks another"
     ;;
   status)
     base="$(read_base_url || true)"
@@ -172,6 +356,9 @@ case "$cmd" in
     echo "key file          : $ENVFILE ($mode)"
     if [ -f "$MODELS" ]; then
       echo "models.json       : $("$NODE" -e 'const c=require(process.argv[1]);console.log(((c.providers.litellm||{}).models||[]).length)' "$MODELS") model(s); key stored $(grep -q '"apiKey": "\${LITELLM_API_KEY}"' "$MODELS" && echo 'by env reference' || echo 'CHECK')"
+      def="$(settings_default get 2>/dev/null || echo 'unreadable settings.json')"
+      [ "$def" = "not set" ] && def="not set -- Pi takes the first model listed; set one with probe --apply or default MODEL"
+      echo "Pi default        : $def"
     fi
     echo "models-store.json : $( [ -f "$STORE" ] && "$NODE" -e 'const c=require(process.argv[1]);console.log(((c.litellm||{}).models||[]).length)' "$STORE" || echo 0 ) model(s)  [Omnigent reads this]"
     echo "auth.json login   : $( [ -f "$AUTH" ] && "$NODE" -e 'const c=require(process.argv[1]);console.log(Object.keys(c).includes("litellm")?"yes":"NO - run pi then /login")' "$AUTH" || echo 'NO - run pi then /login' )  [Omnigent requires this]"
@@ -179,5 +366,5 @@ case "$cmd" in
     [ -f "$ENVFILE" ] && . "$ENVFILE"
     echo "live check        : HTTP $(curl -sS -m 10 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${LITELLM_API_KEY:-}" "${base%/}/models" 2>/dev/null || echo ERR)"
     ;;
-  *) echo "usage: pi-agent-litellm {set --base-url URL [--key-stdin|--key-env] | refresh | probe [--apply] | status}"; exit 1 ;;
+  *) echo "usage: pi-agent-litellm {set --base-url URL [--key-stdin|--key-env] | refresh | probe [--apply] | default [MODEL] | status}"; exit 1 ;;
 esac
