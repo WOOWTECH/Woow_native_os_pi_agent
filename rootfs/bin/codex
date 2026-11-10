@@ -23,7 +23,18 @@ if [ -f "${PI_AGENT_HOME}/session-home.state" ] && [ -n "${_pa_caller_home:-}" ]
   export HOME="$_pa_caller_home"
 fi
 
-"${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/bin/pi-agent-share-state.mjs" >/dev/null \
-  || echo "pi-agent: shared MCP/skills sync failed; starting codex with previous settings" >&2
+# --version and --help start no session: skip the sync, as the claude wrapper
+# does (the Paseo daemon asks `codex --version` every 17.3 s).
+_pa_sync=1
+if [ "$#" -gt 0 ]; then
+  _pa_sync=0
+  for _pa_arg in "$@"; do
+    case "$_pa_arg" in --version|-v|-V|--help|-h) ;; *) _pa_sync=1; break ;; esac
+  done
+fi
+if [ "$_pa_sync" = 1 ]; then
+  "${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/bin/pi-agent-share-state.mjs" >/dev/null \
+    || echo "pi-agent: shared MCP/skills sync failed; starting codex with previous settings" >&2
+fi
 
 exec "${PI_AGENT_HOME}/clis/codex/node_modules/.bin/codex" "$@"
