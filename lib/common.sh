@@ -62,12 +62,34 @@ sha256_of() {
 }
 
 # fetch_verify URL SHA256 DEST
+#
+# PI_AGENT_ASSET_CACHE (optional) names a directory of assets fetched beforehand,
+# for a machine whose download of one keeps failing: on 2026-11-09 GitHub
+# answered HTTP 504 to all five tries for the Omnigent plugin's release asset,
+# and the install stopped. A file there named like the URL's last part (the
+# asset's own name, e.g. woowtech-pi-omnigent-plugin-0.3.31.tgz) or like DEST is
+# copied instead of downloading. The sha256 check runs either way, so a stale or
+# wrong copy stops the install just as a bad download would.
+#
+# Retries: 10 s apart, up to 10 tries within 300 s. curl's own backoff (1, 2, 4,
+# 8, 16 s) gave a 5xx about 30 s in all to clear.
 fetch_verify() {
-  local url="$1" sha="$2" dest="$3" got
-  log "download $(basename "$dest")"
-  curl -fSL --retry 5 --retry-all-errors "$url" -o "$dest" || die "download failed: $url"
+  local url="$1" sha="$2" dest="$3" got name cached=""
+  if [ -n "${PI_AGENT_ASSET_CACHE:-}" ]; then
+    for name in "${url##*/}" "$(basename "$dest")"; do
+      if [ -n "$name" ] && [ -f "$PI_AGENT_ASSET_CACHE/$name" ]; then cached="$PI_AGENT_ASSET_CACHE/$name"; break; fi
+    done
+  fi
+  if [ -n "$cached" ]; then
+    log "use $(basename "$dest") from $cached"
+    cp "$cached" "$dest" || die "cannot copy $cached"
+  else
+    log "download $(basename "$dest")"
+    curl -fSL --retry 10 --retry-all-errors --retry-delay 10 --retry-max-time 300 "$url" -o "$dest" \
+      || die "download failed: $url (to install from a copy: put ${url##*/} in a directory and set PI_AGENT_ASSET_CACHE to it)"
+  fi
   got="$(sha256_of "$dest")"
-  [ "$got" = "$sha" ] || die "sha256 mismatch for $(basename "$dest"): expected $sha got $got"
+  [ "$got" = "$sha" ] || die "sha256 mismatch for $(basename "$dest")${cached:+ (copied from $cached)}: expected $sha got $got"
 }
 
 # Portable shims for the places GNU and BSD userland differ. macOS ships bash

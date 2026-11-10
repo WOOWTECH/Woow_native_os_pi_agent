@@ -76,10 +76,15 @@ Verified on the Linux host:
    "upstream provider declined for a billing reason".
    Reliable groups observed: `apporo/gpt-*`, `chatgpt-pool/gpt-*`,
    `qwen3-4b-*` (local GPU), several `:free` models.
-2. **`settings.json` `defaultModel` is ignored by `pi -p`** (pi 1.4.0). Print
-   mode falls back to automatic selection, which takes the alphabetically first
+2. **A default in `settings.json` needs both keys** (pi 1.4.0;
+   corrected 2026-11-10 — this note used to say `pi -p` ignores `defaultModel`).
+   Pi starts with the saved default only when `defaultProvider` *and*
+   `defaultModel` are set (`core/model-resolver.js`, `findInitialModel`), which
+   is what pi-web's "set as default" writes. Without them it takes the first
    catalog entry — `anthropic/claude-fable-5.1` here, one of the no-credit ones.
-   Pass `--model` explicitly, or keep no-credit models out of the gateway.
+   With both, a bare `pi -p` used `litellm/apporo/gpt-6-sol` (2026-11-09, on an
+   H618 board). `pi-agent-litellm probe --apply` now writes them, and
+   `pi-agent-litellm default MODEL` sets them; see the H618 section below.
 3. **Using Pi *through Omnigent* needs two files that `models.json` does not
    touch.** Omnigent enumerates a self-hosted Pi's models in
    `omnigent/harnesses/pi_native/credentials.py::pi_own_login_model_options`
@@ -130,6 +135,13 @@ Verified on the Linux host:
    down the list. `pi-agent-litellm probe --apply` tests every model and keeps
    only the ones that answer (81 → 24 here), which makes the automatic default
    a working model and the Omnigent picker honest.
+
+   Two gaps in that, found on the H618 boards (section below): the probe asked
+   for 96 output tokens, and OpenRouter decides from `max_tokens` whether the
+   credit left covers a request, so models passed it that refused every real
+   turn with 402; and a later `refresh` put the dead models back on top. Since
+   2026-11-10 the probe asks each model for the output Pi will ask it for, and
+   `--apply` also writes Pi's default, which a refresh leaves alone.
 
 ## macOS — validated 2026-11-01 (M2 MacBook Air, macOS 26.4.1, 8 GB RAM, arm64)
 
@@ -438,3 +450,47 @@ What misled these measurements, for the next person:
 Over the tree released as v0.2.7, on the MacBook Air with no session on it: `session-home-macos.sh` 292/0 and `smoke.sh` 24/0, neither run for v0.2.6; `model-options-hook.sh` 26/0, `resume-no-proc.sh` 11/0, `intel-mac.sh` 28/0, `host-name.sh` 138/0, `pi-wrapper-session-home.sh` 12/0.
 
 Not run: a wiped Mac; Installer.app by hand; `pi-omnigent connect` from the empty state, which would leave a permanent host row on the server; a `git` run by an agent under Codex or Pi, which has no stand-in.
+
+## Allwinner H618 4 GB boards: Pi's gateway models, the CLI wrappers, Claude Code's updater, downloads — 2026-11-10
+
+Found while testing v0.3.0-rc.3 (linux-arm64; pi 1.4.0, Claude Code 2.1.296, Codex 0.162.1) on 4 GB H618 boards,
+2026-11-09/10. What was measured there, and what changed:
+
+| on the boards | change |
+|---|---|
+| `anthropic/claude-fable-5.1` and `claude-sonnet-5.5`, through OpenRouter, passed `probe --apply`, then answered every real Pi turn with LiteLLM HTTP 402 "The upstream provider declined the request for a billing reason". Asked directly (11-10), `anthropic/claude-haiku-5.5` took `max_tokens` 16 and refused 8000 | the probe asks each model for as much output as Pi will ask it for (its `maxTokens`, else Pi's 16384, cut to the window as Pi cuts it), in `max_completion_tokens` as Pi sends it, still with a one-line prompt |
+| `models.json` had only `{id}`, so Pi assumed a 128000-token window and asked for 16384 output tokens: `litellm/qwen3-4b-cluster1` (24,576 tokens) behind an MCP server's ~8.2k-token tool prompt failed every turn with `ContextWindowExceededError` | `set` and `refresh` take `contextWindow` and `maxTokens` from LiteLLM's `GET /v1/model/info` (`max_input_tokens`, `max_output_tokens`, the smallest across a model's deployments): `maxTokens` is the model's limit, at most half the window and at most 16384. No `/model/info`: entries as before, with a warning |
+| with no default Pi took the first model listed, the 402 one, so `pi -p`, Paseo's Pi and Omnigent's pi-native failed out of the box. With `defaultProvider` + `defaultModel` in `settings.json` a bare `pi -p` used `litellm/apporo/gpt-6-sol` | `pi-agent-litellm default MODEL`; `probe --apply` keeps a default that still answers, else makes the first model that answered the default and says so, and applies nothing when no model answered |
+| the Paseo daemon runs `claude --version` and `codex --version` every 17.3 s, each also running the shared MCP/skills sync: about 6% of the 4-core board, about 60% of its idle CPU | the wrappers skip the sync when every argument is `--version`, `-v`, `-V`, `--help` or `-h` |
+| in long-lived Omnigent claude-native sessions Claude Code ran `npm install -g @anthropic-ai/claude-code` about every 30 minutes, ~330 MB written to eMMC each time; 2.1.319, then 2.1.321, landed in `node/lib/node_modules` next to the pinned 2.1.296, which the wrapper kept running | `DISABLE_AUTOUPDATER=1` in `pi-agent-env.sh`; a value the caller set wins |
+| 11-09: the Omnigent plugin's GitHub release asset answered HTTP 504 to all five curl tries and the install stopped | `fetch_verify` uses a copy from `PI_AGENT_ASSET_CACHE` when there is one (sha256 still checked); retries 10 s apart, up to 10 within 300 s |
+
+The suites, on Ubuntu 24.04 x86_64 in temp trees under `env -i` (the host's own install was not touched):
+
+| suite | what it pins | result | against main |
+|---|---|---|---|
+| `tests/litellm.sh` (new) | **A** limits into `models.json` and `models-store.json`, the key stays a reference and lives in `litellm.env` only · **B** a gateway without `/model/info` · **C** the probe's `max_completion_tokens` per model, its one-line prompt, nothing written · **D** `--apply` prunes, keeps or picks the default, refuses when nothing answers; `settings.json` keeps its other keys, their order and its mode · **E** `default`: both spellings, refusals, a byte-order mark, Pi's lock (held: waits; stale: taken over) · **R** the real pi 1.4.0 (from npm) through `bin/pi` | 62 passed, 0 failed | 22 passed, 40 failed |
+| `tests/cli-wrappers.sh` (new) | **A** which arguments skip the sync, the arguments intact · **B** `DISABLE_AUTOUPDATER=1` through the claude wrapper with only `HOME` and `PATH` (what Omnigent passes), and through `pi-web-start.sh` to pi-web; a caller's value wins | 19 passed, 0 failed | 7 passed, 12 failed |
+| `tests/fetch-verify.sh` (new) | **A** the cache: the asset's own name, DEST's name, which comes first, a wrong copy refused, a copy and not a link · **B** curl's retry options, the hint on failure · **C** `install.sh fetch` while every download fails | 13 passed, 0 failed | 3 passed, 8 failed (C not run) |
+
+What the real Pi did in R (the stub gateway counts a token as 4 characters, Pi estimates 3.5):
+
+- `pi --list-models`: `qwen3-4b-cluster1` 24.6K / 12.3K; a model with no limits 128K / 16.4K.
+- a bare `pi -p`: the model in `settings.json`, asked for 16384.
+- `qwen3-4b-cluster1` with a one-line prompt: asked for 12288, what the probe asks for. With ~8.2k tokens of tool prompt:
+  asked for 9338, 20,218 tokens in all, and answered. The same turn with the entry as main writes it (`{id}`): asked
+  for 16384, 27,264 tokens in all, over the 24,576 — the boards' `ContextWindowExceededError`.
+
+Also measured on that host: the real curl 8.5 through the new `fetch_verify`, against a server answering 504 twice,
+retried twice 10 s apart and then passed the sha256 check, 20 s in all. And 50 × `claude --version` through the wrapper
+(the real node and `pi-agent-share-state.mjs`, a stub CLI, load average about 14): main 5.9 s wall and 6.2 s CPU, this
+branch 0.9 to 1.1 s wall and 0.9 to 1.0 s CPU, so about 105 ms of CPU less for each probe on x86_64.
+
+Unchanged suites over this tree, same host: `pi-wrapper-session-home.sh` 12/0, `claude-no-tools.sh` 9/0,
+`installer-rerun.sh` 13/0 (its real-uv check with the pinned uv), `model-options-hook.sh` 26/0, `resume-no-proc.sh`
+12/0, `intel-mac.sh` 24/0 (E needs an Intel Mac), `host-name.sh` 132/0 with K skipped (no python with the omnigent
+package).
+
+Not run: anything on an H618 board with these changes; `smoke.sh` and `smoke-linux.sh`, which restart the service of an
+install in use; the macOS suites; a real LiteLLM gateway (the stub is shaped from LiteLLM's `/model/info` and the errors
+seen on the boards); a claude-native session left open long enough to show that no `npm install -g` follows.
