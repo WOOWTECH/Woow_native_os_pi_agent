@@ -27,13 +27,13 @@ Runtime components (all Node/Python, no separate agent daemon):
   In-process `require`s `@earendil-works/pi-coding-agent` (= `pi`). Listens on a port.
 - **Claude Code** `@anthropic-ai/claude-code` **2.1.296**, **Codex** `@openai/codex` **0.162.1** (npm).
 - **Omnigent host** — Omnigent CLI **0.16.0** in a **uv + Python 3.12** venv; connects to a remote Omnigent server.
-- **Paseo** — `pi-paseo` plugin 0.1.15 + managed `@getpaseo/cli` **0.11.2** runtime; daemon on `127.0.0.1:6769`; pairs via `https://app.paseo.sh` relay.
+- **Paseo** — `pi-paseo` plugin 0.1.16 + managed `@getpaseo/cli` **0.11.2** runtime; daemon on `127.0.0.1:6769`; pairs via `https://app.paseo.sh` relay.
 - **Settings tabs** — `general/models/skills/agents/plugins/mcp` are pi-web native; **Omnigent/Paseo** added by applying `combined.adapter.patch` to a pinned pi-web source commit (`PI_WEB_REF=6fcd7d44…`, `PI_WEB_VERSION=0.10.0`) then `npm run build`.
 
 Pins (single source `cli-runtime/versions.json` + Dockerfile ARGs):
 - pi-web `0.10.0` @ ref `6fcd7d44981ab51a21d6cd6eb06d361d0e3d3068`
 - omnigent-plugin `0.3.32` (sha256 `00c555a2…`), UI patch sha256 `b204fcae…`
-- paseo-plugin `0.1.15` (sha256 `1a8fd99a…`), getpaseo/cli `0.11.2`
+- paseo-plugin `0.1.16` (sha256 `c5705564…`), getpaseo/cli `0.11.2`
 - shared-runtime `@woowtech/pi-agent-shared-runtime` @ `e648882638fa0674f83ec274d58d5fcd7e703a7b`
 - omnigent `0.16.0`, claude `2.1.296`, codex `0.162.1`, node `22.x`
 
