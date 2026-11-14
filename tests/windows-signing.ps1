@@ -11,12 +11,13 @@ function Sign-Fixture($Path, $Certificate) {
 }
 try {
     foreach ($name in 'WOOW TECH CO., LTD.', 'Other Publisher') {
+        Write-Host ('Creating disposable test certificate: ' + $name)
         $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject ('CN="' + $name + '"') -CertStoreLocation Cert:\CurrentUser\My
         $certs += $cert
         $file = Join-Path $dir ($cert.Thumbprint + '.cer')
         Export-Certificate -Cert $cert -FilePath $file | Out-Null
-        Import-Certificate -FilePath $file -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
-        Import-Certificate -FilePath $file -CertStoreLocation Cert:\CurrentUser\TrustedPublisher | Out-Null
+        Import-Certificate -FilePath $file -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+        Import-Certificate -FilePath $file -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
     }
     $fixture = Join-Path $dir 'install-wsl.ps1'
     $body = 'param([string]$Message); [IO.File]::WriteAllText($env:PA_TEST_MARKER, $Message); exit 17'
@@ -67,8 +68,8 @@ try {
     Assert-PaTest (-not $global:PaFixtureExecuted) 'guide rejects the tampered script'
 } finally {
     foreach ($cert in $certs) {
-        foreach ($store in 'My', 'Root', 'TrustedPublisher') {
-            Remove-Item -LiteralPath ("Cert:\CurrentUser\$store\" + $cert.Thumbprint) -Force -ErrorAction SilentlyContinue
+        foreach ($store in 'CurrentUser\My', 'LocalMachine\Root', 'LocalMachine\TrustedPublisher') {
+            Remove-Item -LiteralPath ("Cert:\$store\" + $cert.Thumbprint) -Force -ErrorAction SilentlyContinue
         }
     }
     Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
