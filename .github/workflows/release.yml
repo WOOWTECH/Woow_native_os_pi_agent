@@ -35,6 +35,10 @@ on:
         description: Build and sign only the Windows installer (no release publication)
         type: boolean
         default: false
+      verify_windows_install:
+        description: Install the signed candidate on a disposable WSL2 runner without publishing
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -132,6 +136,65 @@ jobs:
           name: wsl-signed
           path: dist-wsl/*
           if-no-files-found: error
+          retention-days: 14
+
+  candidate-install:
+    name: Signed candidate install, keep-data uninstall and reinstall
+    needs: windows-sign
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_windows_install
+    runs-on: windows-2025
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: wsl-signed
+          path: candidate
+      - name: Install and verify the unpublished signed candidate
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content VERSION -Raw).Trim()
+          $pins = Get-Content lib/pins.sh -Raw
+          if ($pins -notmatch '(?m)^PIN_PI_WEB_VERSION=0\.10\.0\s' -or $pins -notmatch '(?m)^PIN_PI_WEB_REF=6fcd7d44981ab51a21d6cd6eb06d361d0e3d3068\s') {
+            throw 'Update the pinned acceptance Pi Web artifact for this source before testing'
+          }
+          $dir = (Resolve-Path candidate).Path
+          $exe = Join-Path $dir 'Install-Pi-Agent.exe'
+          $bundle = Join-Path $dir ('pi-agent-installer-' + $version + '.tar.gz')
+          $piweb = Join-Path $dir 'piweb-0.10.0-linux-x64.tar.gz'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3.0-rc.7/piweb-0.10.0-linux-x64.tar.gz' -OutFile $piweb
+          if ((Get-FileHash $piweb -Algorithm SHA256).Hash -ne '988e28957a415bc5b6930173290036d7e485a7880a07c771fd97f1ab1007a669') { throw 'Pi Web artifact hash mismatch' }
+          $sig = Get-AuthenticodeSignature $exe
+          if ($sig.Status -ne 'Valid' -or -not $sig.TimeStamperCertificate -or $sig.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false) -cne 'WOOW TECH CO., LTD.') { throw 'Candidate EXE signature is invalid' }
+          $ErrorActionPreference = 'Continue'
+          & $exe -Yes -NoAutostart -BundlePath $bundle -PiWebArtifact $piweb 2>&1 | Tee-Object candidate-install.log
+          $ErrorActionPreference = 'Stop'
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate first installation failed' }
+          wsl.exe -d PiAgent --exec /bin/sh -c 'echo candidate-preservation-proof > /home/piagent/installer-acceptance-proof'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create preservation proof' }
+          $ErrorActionPreference = 'Continue'
+          & $exe -Uninstall -Yes 2>&1 | Tee-Object candidate-uninstall.log
+          $ErrorActionPreference = 'Stop'
+          if ($LASTEXITCODE -ne 0) { throw 'Keep-data uninstall failed' }
+          $proof = (wsl.exe -d PiAgent --exec /bin/cat /home/piagent/installer-acceptance-proof | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $proof -cne 'candidate-preservation-proof') { throw 'Uninstall did not preserve data' }
+          $ErrorActionPreference = 'Continue'
+          & $exe -Yes -NoAutostart -BundlePath $bundle -PiWebArtifact $piweb 2>&1 | Tee-Object candidate-reinstall.log
+          $ErrorActionPreference = 'Stop'
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate reinstall failed' }
+          $marker = wsl.exe -d PiAgent --exec /bin/cat /etc/pi-agent-distro | Out-String
+          if ($LASTEXITCODE -ne 0 -or $marker -notmatch ('(?m)^installer=' + [regex]::Escape($version) + '\s*$')) { throw 'Wrong installed version' }
+          $proof = (wsl.exe -d PiAgent --exec /bin/cat /home/piagent/installer-acceptance-proof | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $proof -cne 'candidate-preservation-proof') { throw 'Reinstall did not preserve data' }
+          Write-Host 'Signed candidate install, keep-data uninstall and reinstall passed'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: candidate-windows-acceptance
+          path: candidate-*.log
           retention-days: 14
 
   release:

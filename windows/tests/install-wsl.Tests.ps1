@@ -120,6 +120,7 @@ BeforeEach {
     Mock Write-PaFile { }
     Mock Save-PaFile { }
     Mock Get-PaFileSha256 {
+        if ($Path -eq 'C:\b\bundle.tar.gz') { return ('b' * 64) }
         if ($script:Scn.HashOverride) { return $script:Scn.HashOverride }
         if ($Path -match 'amd64') { return $script:X64Hash }
         if ($Path -match 'arm64') { return $script:Arm64Hash }
@@ -608,6 +609,19 @@ Describe 'running it again' {
 }
 
 Describe 'failures on the way' {
+    It 'rejects a different local bundle in a stamped candidate before importing' {
+        Mock Get-PaFileSha256 { 'deadbeef' } -ParameterFilter { $Path -eq 'C:\b\bundle.tar.gz' }
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 40
+        (Get-CallIndex -Pattern '^--import ') | Should -Be -1
+        Get-AllMessages | Should -Match 'bundle sha256 mismatch'
+    }
+    It 'checks the local candidate bundle against the signed stamp' {
+        $opts = New-TestOpts
+        Resolve-PaBundle -Opts $opts -Paths (Get-PaPaths -Opts $opts) | Should -Be 'C:\b\bundle.tar.gz'
+        Should -Invoke Get-PaFileSha256 -Times 1 -Exactly -ParameterFilter { $Path -eq 'C:\b\bundle.tar.gz' }
+        Should -Invoke Save-PaFile -Times 0 -Exactly
+    }
+
     It 'refuses a rootfs whose hash does not match and never imports it' {
         $script:Scn.HashOverride = 'deadbeef'
         Invoke-PaMain -Options (New-TestOpts) | Should -Be 40
@@ -1001,6 +1015,45 @@ Describe 'Remove-PaEmptyDir' {
         & $script:RealRemoveEmptyDir -Path $full
         Test-Path -LiteralPath $empty | Should -BeFalse
         Test-Path -LiteralPath (Join-Path $full 'keep.txt') | Should -BeTrue
+    }
+}
+
+Describe 'GUI progress contract' {
+    BeforeEach { $env:PI_AGENT_LAUNCHER_GUI = '1' }
+    AfterEach { Remove-Item Env:PI_AGENT_LAUNCHER_GUI -ErrorAction SilentlyContinue }
+    It 'reports the recorded port only after successful verification' {
+        $script:Scn.DistroExists = $true
+        $script:Scn.RecordedPort = 43210
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 0
+        Should -Invoke Write-Host -Times 1 -Exactly -ParameterFilter { $Object -eq '[PiAgent:ready]http://localhost:43210/' }
+    }
+    It 'reports an explicitly selected candidate port' {
+        Invoke-PaMain -Options (New-TestOpts -Extra @{ Port = 43211 }) | Should -Be 0
+        Should -Invoke Write-Host -Times 1 -Exactly -ParameterFilter { $Object -eq '[PiAgent:ready]http://localhost:43211/' }
+    }
+    It 'does not report readiness on dry run' {
+        Invoke-PaMain -Options (New-TestOpts -Extra @{ DryRun = $true }) | Should -Be 0
+        Should -Invoke Write-Host -Times 0 -Exactly -ParameterFilter { $Object -like '[[]PiAgent:ready]*' }
+    }
+    It 'does not report readiness when smoke tests fail' {
+        $script:Scn.SmokeExit = 1
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 70
+        Should -Invoke Write-Host -Times 0 -Exactly -ParameterFilter { $Object -like '[[]PiAgent:ready]*' }
+    }
+    It 'requires manual rerun of the candidate EXE after reboot without a public URL' {
+        $script:Scn.WslReady = $false
+        $script:Scn.RebootPending = $true
+        Invoke-PaMain -Options (New-TestOpts) | Should -Be 20
+        Should -Invoke Restart-PaComputer -Times 0 -Exactly
+        Should -Invoke Set-PaRunOnce -Times 0 -Exactly
+        Should -Invoke Write-Host -Times 0 -Exactly -ParameterFilter { $Object -like '[[]PiAgent:ready]*' }
+    }
+    It 'emits stage events only for the GUI child' {
+        Write-PaMsg 'Step' 'stage 2/6'
+        Should -Invoke Write-Host -Times 1 -Exactly -ParameterFilter { $Object -eq '[PiAgent:step]stage 2/6' }
+        Remove-Item Env:PI_AGENT_LAUNCHER_GUI
+        Write-PaMsg 'Step' 'stage 3/6'
+        Should -Invoke Write-Host -Times 0 -Exactly -ParameterFilter { $Object -eq '[PiAgent:step]stage 3/6' }
     }
 }
 

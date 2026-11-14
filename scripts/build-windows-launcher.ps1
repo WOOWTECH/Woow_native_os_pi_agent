@@ -19,6 +19,6 @@ try {
     [IO.File]::WriteAllText($temp, $source)
     $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     if (-not (Test-Path $compiler)) { $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe' }
-    & $compiler /nologo /target:exe /platform:anycpu /optimize+ "/out:$Output" "/resource:$Installer,install-wsl.ps1" $temp
+    & $compiler /nologo /target:exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /platform:anycpu /optimize+ "/out:$Output" "/resource:$Installer,install-wsl.ps1" $temp
     if ($LASTEXITCODE -ne 0) { throw 'Compiling the Windows launcher failed' }
 } finally { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }

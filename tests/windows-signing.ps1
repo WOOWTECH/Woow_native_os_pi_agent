@@ -1,6 +1,7 @@
 # Runs only on an ephemeral Windows CI runner. No eSigner secrets or WSL changes.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+& "$root/tests/windows-gui-contract.ps1"
 $dir = Join-Path $env:RUNNER_TEMP ('pa-sign-test-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $dir | Out-Null
 $certs = @()
@@ -20,7 +21,16 @@ try {
         Import-Certificate -FilePath $file -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
     }
     $fixture = Join-Path $dir 'install-wsl.ps1'
-    $body = 'param([string]$Message); [IO.File]::WriteAllText($env:PA_TEST_MARKER, $Message); exit 17'
+    $body = @'
+param([string]$Message, [switch]$Yes)
+$locked = $false
+try { $f = [IO.File]::Open($PSCommandPath, 'Open', 'Write', 'ReadWrite'); $f.Dispose() } catch { $locked = $true }
+if (-not $locked) { throw 'Installer bytes were writable while running' }
+[IO.File]::WriteAllText($env:PA_TEST_MARKER, $Message)
+Write-Host ('fixture-output:' + $Message)
+[Console]::Error.WriteLine('fixture-stderr')
+exit 17
+'@
     [IO.File]::WriteAllText($fixture, $body, (New-Object Text.UTF8Encoding($true)))
     $exe = Join-Path $dir 'Install-Pi-Agent.exe'
     $rejected = $false
@@ -38,6 +48,24 @@ try {
     & $exe -Message $message
     Assert-PaTest ($LASTEXITCODE -eq 17) 'launcher preserves installer exit code'
     Assert-PaTest (([IO.File]::ReadAllText($env:PA_TEST_MARKER)) -ceq $message) 'launcher preserves argument values without interpreting them'
+
+    $testSource = Join-Path $dir 'Launcher.Tests.cs'
+    [IO.File]::WriteAllText($testSource, [IO.File]::ReadAllText("$root/windows/tests/Launcher.Tests.cs"))
+    $uiTest = Join-Path $dir 'Launcher.Tests.exe'
+    & "$root/tests/windows-launcher-ui.ps1" -Installer $fixture -Output $uiTest
+    $guiOutput = & $uiTest --run-installer -Message $message -Yes
+    Assert-PaTest ($LASTEXITCODE -eq 17) 'GUI worker preserves installer exit code and fixed-byte lock'
+    Assert-PaTest (($guiOutput -join "`n").Contains('fixture-output:' + $message)) 'GUI worker drains stdout and preserves arguments'
+    Assert-PaTest (($guiOutput -join "`n").Contains('fixture-stderr')) 'GUI worker drains stderr'
+    Assert-PaTest (-not ($guiOutput -join "`n").Contains('#< CLIXML')) 'GUI worker emits plain text rather than serialized error records'
+    Assert-PaTest (([IO.File]::ReadAllText($env:PA_TEST_MARKER)) -ceq $message) 'GUI worker executes signed fixture with exact argument value'
+    foreach ($yes in '-Y', '-Ye', '-y', '-yE') {
+        $abbreviationMessage = "GUI abbreviation $yes"
+        $abbreviationOutput = & $uiTest --run-installer -Message $abbreviationMessage $yes
+        Assert-PaTest ($LASTEXITCODE -eq 17) "GUI accepts $yes without duplicate switch binding"
+        Assert-PaTest (([IO.File]::ReadAllText($env:PA_TEST_MARKER)) -ceq $abbreviationMessage) "GUI preserves arguments with $yes"
+    }
+
 
     # Reproduce invocation from pwsh: its core modules cannot load in Windows PowerShell.
     $savedModulePath = $env:PSModulePath
@@ -69,7 +97,7 @@ try {
             [IO.File]::WriteAllText($cs, $source)
             $badExe = Join-Path $dir 'negative.exe'
             $csc = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-            & $csc /nologo /target:exe /platform:anycpu "/out:$badExe" "/resource:$fixture,install-wsl.ps1" $cs
+            & $csc /nologo /target:exe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /platform:anycpu "/out:$badExe" "/resource:$fixture,install-wsl.ps1" $cs
             Assert-PaTest ($LASTEXITCODE -eq 0) 'negative launcher fixture compiles'
             # Suppress only the expected child error stream; assertions still fail normally.
             $oldPreference = $ErrorActionPreference
@@ -78,6 +106,11 @@ try {
             $rejectedCode = $LASTEXITCODE
             $ErrorActionPreference = $oldPreference
             Assert-PaTest ($rejectedCode -ne 0) "EXE runtime rejects $kind embedded script"
+            & $csc /nologo /target:exe /platform:anycpu /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /main:LauncherTests "/out:$badExe" "/resource:$fixture,install-wsl.ps1" $cs $testSource
+            Assert-PaTest ($LASTEXITCODE -eq 0) 'negative GUI worker fixture compiles'
+            $null = & $badExe --run-installer -Message test
+            Assert-PaTest ($LASTEXITCODE -ne 0) "GUI worker rejects $kind embedded script"
+
         }
         foreach ($mode in 'command', 'resume') {
             $global:PaFixtureExecuted = $false

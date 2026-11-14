@@ -120,6 +120,9 @@ function Write-PaMsg {
         'Error' { $color = 'Red'; $prefix = 'X ' }
         'Dry'   { $color = 'DarkYellow'; $prefix = '[dry-run] ' }
     }
+    if ($env:PI_AGENT_LAUNCHER_GUI -eq '1' -and $Level -eq 'Step') {
+        Write-Host ('[PiAgent:step]' + $Text)
+    }
     Write-Host ($prefix + $Text) -ForegroundColor $color
     Write-PaLogLine -Text ($Level + ': ' + $Text)
 }
@@ -1242,6 +1245,12 @@ function Invoke-PaStepReboot {
         $source = $script:PaSelfPath
     }
     Write-PaMsg 'Warn' '需要重新開機,才能完成 WSL 的安裝。'
+    if ($env:PI_AGENT_LAUNCHER_GUI -eq '1') {
+        # Candidate assets may not have a public ScriptUrl. Do not replace this
+        # signed EXE with a downloaded script or lose its candidate arguments.
+        Write-PaMsg 'Info' '請儲存工作並自行重新開機，然後以相同參數再次開啟這個安裝程式。圖形模式不登錄自動續裝。'
+        return 20
+    }
     if ($kind -ne '') {
         $stub = New-PaResumeStub -Splat (Get-PaResumeSplat -Opts $Opts) -Kind $kind -Source $source
         Write-PaFile -Path $Paths.ResumeStub -Text $stub -Bom $true
@@ -1312,7 +1321,16 @@ function Resolve-PaBundle {
             Write-PaMsg 'Error' ('找不到安裝包:{0}(bundle not found)' -f $Opts.BundlePath)
             return $null
         }
-        Write-PaMsg 'Warn' '開發模式:使用你指定的安裝包,不驗證它的校驗碼。(dev mode: bundle hash is not verified)'
+        if (Test-Stamped) {
+            $expected = [string](Get-PaStamp).BundleSha256
+            if ($expected -notmatch '^[0-9a-fA-F]{64}$' -or (Get-PaFileSha256 -Path $Opts.BundlePath) -ne $expected) {
+                Write-PaMsg 'Error' '指定的安裝包校驗碼與本安裝程式不符，不會使用。(bundle sha256 mismatch)'
+                return $null
+            }
+            Write-PaMsg 'Ok' '本機安裝包 SHA-256 校驗通過。'
+        } else {
+            Write-PaMsg 'Warn' '開發模式:使用你指定的安裝包,不驗證它的校驗碼。(dev mode: bundle hash is not verified)'
+        }
         return $Opts.BundlePath
     }
     $st = Get-PaStamp
@@ -1814,6 +1832,11 @@ function Invoke-PaMainCore {
     if ($rc -ne 0) { return $rc }
     $rc = Invoke-PaStepVerify -Opts $Opts -Ctx $ctx
     if ($rc -ne 0) { return $rc }
+    # The preflight may have reused the recorded port. Report the final option,
+    # only after verification succeeds; DryRun must never enable the open button.
+    if ($env:PI_AGENT_LAUNCHER_GUI -eq '1' -and -not $Opts.DryRun) {
+        Write-Host ('[PiAgent:ready]http://localhost:{0}/' -f $Opts.Port)
+    }
     return 0
 }
 
