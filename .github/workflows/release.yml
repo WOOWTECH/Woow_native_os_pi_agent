@@ -1,201 +1,28 @@
-# Build the downloadable artifacts for a tagged release.
-#
-# The point of this workflow is the prebuilt pi-web tree. Building it from
-# source costs ~15 minutes and a full toolchain, which is fine for the engineer
-# track and impossible for someone who just downloaded an installer. CI pays
-# that cost once per platform; install.sh then consumes the result through
-# PI_AGENT_PIWEB_ARTIFACT and finishes in seconds (measured: 6s on macOS).
-#
-# The artifact is platform-specific -- node_modules carries native builds
-# (node-pty above all) -- so there is one per OS/arch and the installer checks
-# the name before using it.
-#
-# NOT DONE HERE: the macOS .pkg. It is built, signed and notarized on the
-# maintainer's Mac, where the Developer ID certificates live -- CI holds no
-# signing material -- and it pins the macos-arm64 tree this workflow publishes
-# by URL and sha256 rather than embedding it. See docs/MACOS.md:
-#
-#     scripts/build-macos-tmux.sh
-#     scripts/build-macos-pkg.sh --artifact-url <this release's macos-arm64 asset> \
-#         --artifact-sha256 <its .sha256> --sign-app ... --sign ... --notary-key ...
-name: release
-
-on:
-  push:
-    tags: ['v*']
-  workflow_dispatch:
-    inputs:
-      version:
-        description: Version to stamp when run manually, e.g. 0.1.0
-        required: true
-      signed_run_id:
-        description: Successful woowtech-smart signing run ID for this exact commit
-        type: string
-      windows_only:
-        description: Build and sign only the Windows installer (no release publication)
-        type: boolean
-        default: false
-
+# Standalone public-asset acceptance for the immutable rc.7 source.
+# Used when a hosted macOS queue prevents the combined release workflow completing.
+name: rc7 public Windows acceptance
+on: workflow_dispatch
 permissions:
-  contents: write
-
+  contents: read
 jobs:
-  artifact:
-    if: ${{ !inputs.windows_only }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: macos-15,      label: macos-arm64  }
-          - { os: ubuntu-latest, label: linux-x64    }
-          # Windows on ARM runs WSL2 with an arm64 Ubuntu, which needs this tree. Not
-          # built in CI before, so a failure here must not stop the other releases.
-          - { os: ubuntu-24.04-arm, label: linux-arm64, experimental: true }
-    runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental == true }}
-    steps:
-      - uses: actions/checkout@v4
-
-      # Only the stages the artifact needs: the scoped Node, the verified
-      # plugin tarballs (the settings patch lives in one of them), and the
-      # pi-web build itself.
-      - name: Build pi-web
-        run: ./install.sh node fetch piweb
-
-      - name: Package artifact
-        run: scripts/build-piweb-artifact.sh dist
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.label }}
-          path: |
-            dist/*.tar.gz
-            dist/*.sha256
-
-  # The Windows (WSL2) installer: the bundle it unpacks inside the new Linux, and
-  # install-wsl.ps1 stamped with this release's version, URLs and the bundle's sha256
-  # (scripts/build-wsl-bundle.sh; docs/WSL2.md).
-  wsl-bundle:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build the bundle and stamp the installer
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          VERSION="${INPUT_VERSION:-${GITHUB_REF_NAME#v}}"
-          scripts/build-wsl-bundle.sh dist-wsl "$VERSION" --tag "v$VERSION"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wsl-bundle
-          path: dist-wsl/*
-
-  windows-sign:
-    needs: wsl-bundle
-    runs-on: windows-2025
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      actions: read
-    env:
-      SIGNED_RUN_ID: ${{ inputs.signed_run_id || vars.WINDOWS_SIGNED_RUN_ID }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Validate signing service run
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if ($env:SIGNED_RUN_ID -notmatch '^[1-9][0-9]*$') { throw 'First run scripts/request-windows-signing.py for this commit; supply signed_run_id or WINDOWS_SIGNED_RUN_ID' }
-          $config = Get-Content scripts/windows-signer.json -Raw | ConvertFrom-Json
-          $run = gh api "repos/WOOWTECH/woowtech-smart/actions/runs/$env:SIGNED_RUN_ID" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $run.conclusion -ne 'success' -or $run.event -ne 'workflow_dispatch' -or $run.path -ne '.github/workflows/desktop-release.yml' -or $run.head_sha -cne $config.sha -or $run.head_repository.full_name -cne 'WOOWTECH/woowtech-smart') { throw 'Unexpected signing workflow, source or result' }
-      - uses: actions/download-artifact@v4
-        with:
-          name: wsl-bundle
-          path: unsigned-wsl
-      - uses: actions/download-artifact@v4
-        with:
-          name: pi-agent-windows-signed
-          repository: WOOWTECH/woowtech-smart
-          run-id: ${{ env.SIGNED_RUN_ID }}
-          github-token: ${{ github.token }}
-          path: dist-wsl
-      - name: Verify provenance, exact bundle and signatures before running
-        shell: pwsh
-        run: |
-          ./scripts/verify-windows-artifact.ps1 -SignedDir dist-wsl -UnsignedDir unsigned-wsl -SourceSha $env:GITHUB_SHA -RunId $env:SIGNED_RUN_ID
-          & ./dist-wsl/Install-Pi-Agent.exe -DryRun
-          if ($LASTEXITCODE -ne 0) { throw 'Signed launcher dry run failed' }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wsl-signed
-          path: dist-wsl/*
-          if-no-files-found: error
-          retention-days: 14
-
-  release:
-    needs: [artifact, windows-sign]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: '{macos-arm64,linux-*,wsl-signed}'
-          path: dist
-          merge-multiple: true
-      - name: Attach to the release
-        uses: softprops/action-gh-release@v2
-        with:
-          # v1.2.3-rc.1 is a pre-release, which GitHub never makes the latest release: what
-          # `releases/latest` gives everybody else stays as it is.
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          files: |
-            dist/*.tar.gz
-            dist/*.sha256
-            dist/install-wsl.ps1
-            dist/Install-Pi-Agent.cmd
-            dist/Install-Pi-Agent.exe
-          body: |
-            Built by CI from ${{ github.ref_name }}.
-            ${{ contains(github.ref_name, '-') && '**Preview: not the latest release.** Read the status at the top of the guide linked below first.' || '' }}
-
-            `piweb-*-<os>-<arch>.tar.gz` is a prebuilt pi-web tree. Point the
-            installer at it to skip the ~15 minute source build:
-
-                PI_AGENT_PIWEB_ARTIFACT=<url> ./install.sh
-
-            Windows (WSL2): download `Install-Pi-Agent.exe` and double-click it.
-            The launcher and its embedded `install-wsl.ps1` are signed by WOOW TECH CO., LTD.
-            The launcher verifies the script before execution. Signing does not guarantee
-            that SmartScreen or an organization's policies will allow a new installer.
-            `Install-Pi-Agent.cmd` remains a legacy text entry point; it verifies the
-            downloaded script but the CMD file itself cannot carry this signature.
-
-            Options, what it changes and how to remove it:
-            https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/docs/WSL2.md
-
-            The macOS `.pkg` is not built here: it is signed and notarized on the
-            maintainer's Mac and attached separately.
-
-  # The command in the guide, from where people get it: the script, the bundle and the pi-web tree all
-  # come from the release just published. This cannot unpublish anything: a failure here means telling
-  # nobody and fixing it in the next release candidate.
   wsl-verify:
     name: the guide's command on Windows (real WSL2)
-    needs: release
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: f1ce4ad75d28db214a8a475ab7dee9a04fdd26a9
       - name: Run it
         shell: powershell
+        env:
+          RELEASE_TAG: v0.3.0-rc.7
         run: |
           $ErrorActionPreference = 'Continue'
           # Fresh install through the actual downloaded EXE, then exercise the guide
           # as an upgrade over that installation. Both use the public release assets.
           $cmdFile = Join-Path (Get-Location).Path 'Install-Pi-Agent.exe'
-          Invoke-WebRequest -UseBasicParsing -OutFile $cmdFile ('https://github.com/' + $env:GITHUB_REPOSITORY + '/releases/download/' + $env:GITHUB_REF_NAME + '/Install-Pi-Agent.exe')
+          Invoke-WebRequest -UseBasicParsing -OutFile $cmdFile ('https://github.com/' + $env:GITHUB_REPOSITORY + '/releases/download/' + $env:RELEASE_TAG + '/Install-Pi-Agent.exe')
           $held = [IO.File]::Open($cmdFile, 'Open', 'Read', 'Read')
           try {
             $sig = Get-AuthenticodeSignature -LiteralPath $cmdFile
@@ -213,7 +40,7 @@ jobs:
             $code = $LASTEXITCODE
           } catch { Write-Output ('::error::Verified install command failed: ' + $_.Exception.Message) }
           $marker = (wsl.exe -d PiAgent --exec /bin/cat /etc/pi-agent-distro | Out-String)
-          $want = 'installer=' + ($env:GITHUB_REF_NAME -replace '^v', '')
+          $want = 'installer=' + ($env:RELEASE_TAG -replace '^v', '')
           $ok = ($code -eq 0) -and ($cmdCode -eq 0) -and $marker.Contains($want)
           # Annotations can be read through GitHub's API without signing in; the job log cannot.
           $log = Join-Path $env:LOCALAPPDATA 'PiAgent\install.log'
