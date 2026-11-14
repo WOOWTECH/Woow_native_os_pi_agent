@@ -1,6 +1,8 @@
 # Pi Agent on Windows 11 (WSL2)
 
-> **狀態:預覽版(`v0.3.0-rc.6`;Windows 部分與 rc.3 相同,另加 2026-11-10 在 Allwinner H618 4 GB 板上找到的修正,見 `docs/RELEASE-0.3.0-rc.6.md`)。** 比 rc.2 多了 2026-11-05 在 Windows 11 上試出來的幾個修正(登入時多出一個關不得的終端機視窗、電腦還沒裝 WSL 時畫面靜止 2 分鐘、WSL 啟動逾時、把自己的 Linux 誤判成別人的)。裝過 rc.1 或 rc.2 的電腦,重跑同樣的安裝就會換成新的。
+> **`v0.3.0-rc.7`：Windows 簽章預覽版。** 新增已簽章的 EXE 與 PS1；正式簽章、成品驗證與 EXE `-DryRun` 已通過。完整 WSL2 CI 的安裝、互通、保活、重跑及解除安裝也已通過（[執行紀錄](https://github.com/WOOWTECH/Woow_native_os_pi_agent/actions/runs/43545382063)）。新 EXE 的實體 Windows 完整安裝仍需另驗；以下 rc.6 以前的實測紀錄不代表新入口已在實體電腦驗過。發佈資產見 [rc.7](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/tag/v0.3.0-rc.7)。
+>
+> **前版狀態:預覽版(`v0.3.0-rc.6`;Windows 部分與 rc.3 相同,另加 2026-11-10 在 Allwinner H618 4 GB 板上找到的修正,見 `docs/RELEASE-0.3.0-rc.6.md`)。** 比 rc.2 多了 2026-11-05 在 Windows 11 上試出來的幾個修正(登入時多出一個關不得的終端機視窗、電腦還沒裝 WSL 時畫面靜止 2 分鐘、WSL 啟動逾時、把自己的 Linux 誤判成別人的)。裝過 rc.1 或 rc.2 的電腦,重跑同樣的安裝就會換成新的。
 > 驗證到哪裡(每一項的細節在最後的「驗證到哪裡」):
 >
 > - **GitHub 的 Windows Server 2025 雲端機**:完整跑通(自我檢查 24 項全過、保活、重跑、兩種解除安裝),也從真網址裝過發佈版。
@@ -31,32 +33,24 @@ Linux 主機,所以 Pi Agent、Claude Code、Codex 三個代理的行為跟 Linu
 
 ## 安裝
 
-在 PowerShell(不必是系統管理員)貼上:
+以下是已簽章預覽版 `v0.3.0-rc.7` 的安裝方式；rc.6 及更舊版本的檔案未簽章，不能通過這個檢查。不要把下面網址改成舊版本。
 
+下載發佈頁的 `Install-Pi-Agent.exe` 並雙擊。Windows 顯示的簽署者應為 **WOOW TECH CO., LTD.**。
+程式內含已簽章的安裝腳本，會先驗證簽章與發行者再執行。簽章不保證新檔案立即累積 SmartScreen 信譽，也不會覆蓋公司的安全原則。
+
+要從 PowerShell 安裝（不必是系統管理員），使用這段先驗證再執行的指令：
+
+<!-- signed-install-command -->
 ```powershell
-$u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3.0-rc.6/install-wsl.ps1'
-& ([ScriptBlock]::Create(([Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing $u).RawContentStream.ToArray())).TrimStart([char]0xFEFF)))
+$u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3.0-rc.7/install-wsl.ps1'
+$p=Join-Path ([IO.Path]::GetTempPath()) (([guid]::NewGuid().ToString('N'))+'.ps1'); $h=$null; try { Invoke-WebRequest -UseBasicParsing -ErrorAction Stop -Uri $u -OutFile $p; $h=[IO.File]::Open($p,'Open','Read','Read'); $s=Get-AuthenticodeSignature -LiteralPath $p; if ($s.Status -ne 'Valid' -or $s.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false) -cne 'WOOW TECH CO., LTD.') { throw 'Installer signature or publisher is invalid' }; & $p  } finally { if ($h) { $h.Dispose() }; Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
 ```
 
-這樣寫(而不是 `irm … | iex`)是因為 Windows PowerShell 5.1 會依回應標頭猜編碼,可能把中文訊息讀成亂碼;
-這裡明確用 UTF-8 解碼。
+腳本以 UTF-8 BOM 發佈；下載時保留原始位元組，驗證 Windows 信任鏈與公司名稱後才執行。
+舊的 `Install-Pi-Agent.cmd` 入口仍保留，也會驗證下載腳本，但 `.cmd` 本身無法加上同樣的內嵌簽章。
+驗證失敗時停止安裝，請重新下載正確版本，不要移除驗證步驟。
 
-**不想貼指令的話,也可以雙擊:** 到發佈頁下載 `Install-Pi-Agent.cmd`,雙擊它。它做的事和上面那兩行一樣,跑完視窗會停著讓你看結果,按任意鍵才關。
-這個檔案沒有程式碼簽章,所以會跳警告。它是純文字,可以先用記事本打開看。以下是在 Windows 10 和 Windows 11 上實際看到的畫面,兩邊的字一樣:
-
-1. 下載時,Edge 問「Install-Pi-Agent.cmd 可能會危害您的裝置。是否仍要保留?」:按「保留」。Chrome 沒有問,直接下載完成(Chrome 157,全新的設定檔)。
-2. 雙擊時,Windows 問「無法確認發行者,您確定要執行這個軟體?」:按「執行」。
-
-有些電腦跳的可能是「Windows 已保護您的電腦」(這個畫面還沒有實際看過):按「其他資訊」→「仍要執行」。
-
-**如果跳的是「智慧型應用程式控制已封鎖可能不安全的檔案」**,只有「確定」可以按,這個檔案就執行不了。新電腦可能開著這個功能(Smart App Control)。有兩個辦法,都試過可行:
-
-- 改用上面那兩行指令。
-- 在檔案上按右鍵 →「內容」→ 勾選「解除封鎖」→「確定」,再雙擊一次。
-
-現在是預覽版,所以網址寫明版本:GitHub 的 `releases/latest` 不會指到預覽版。發佈頁在 [v0.3.0-rc.6](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/tag/v0.3.0-rc.6)。
-
-可以在最後面加選項:
+在 EXE 後面、或 PowerShell 指令中的 `& $p` 後面加選項：
 
 | 選項 | 意思 |
 |---|---|
@@ -361,7 +355,14 @@ build 26300.9457(26H2),3 個 vCPU、10 GB 記憶體,沒有 TPM 與 Secure Boot;�
 
 ## 給工程師
 
-- 雙擊檔的範本是 `windows/install-pi-agent.cmd.in`,發佈時蓋上網址、轉成 CRLF,變成 `Install-Pi-Agent.cmd`。參數會傳給安裝程式,但值不能有空白。
+- 新的雙擊入口是 `windows/Launcher.cs`；`scripts/build-windows-launcher.ps1` 把已簽章的 `install-wsl.ps1` 嵌入 EXE。編譯時與執行時都驗證 Windows 信任鏈及 `WOOW TECH CO., LTD.`，執行時鎖住腳本避免驗證後被改寫。EXE 也必須簽章。
+- 簽章由 `WOOWTECH/woowtech-smart` 的 `Desktop Release`（`platform=pi-agent`、`publish=false`）處理。指定完整 commit 與版本，在沒有金鑰的 runner 建 bundle，再由該 repo 的固定腳本簽 PS1 與 EXE；每版通常兩次簽章，重試另計。
+- 此 repo **不需要 eSigner Secrets**。金鑰留在 woowtech-smart；不讀回、不複製。`scripts/windows-signer.json` 固定簽章服務的 `pi-agent-signer-v1` tag 與完整 commit，服務更新必須先審查並更新此設定。
+- 在已推送且乾淨的分支，使用已登入兩個 repo 的 GitHub CLI，執行 `python3 scripts/request-windows-signing.py`。它依序觸發簽章、等成功，再觸發 Pi Agent 的 `release`（`windows_only=true`、`signed_run_id`）；不會建立 GitHub Release。若簽章服務原本停用，結束後恢復停用。
+- `release.yml` 的 `windows-sign` 取回已簽檔案，檢查指定服務 commit、成功的工作流程、來源 commit、版本、全部檔案雜湊、Windows 信任鏈、時間戳及公司名稱，並比較重新建置的 bundle 與腳本本文。全部通過才試跑 EXE `-DryRun` 並上傳 `wsl-signed`。缺檔或不相符即停止。
+- 正式發佈需另行核准：先為要打 tag 的同一 commit 完成上述流程，再將簽章 run ID 填入 repository variable `WINDOWS_SIGNED_RUN_ID`，才推 tag。成品保留 14 天，過期須重新簽章；不同 commit 的成品不能沿用。
+- `tests/windows-signing.ps1` 在拋棄式 Windows runner 用測試憑證檢查編譯、參數、退出碼及下載／續裝入口對未簽章、修改過、其他發行者的拒絕；正式 SSL.com 簽章與實體電腦驗證需另外執行。
+- 舊雙擊檔的範本是 `windows/install-pi-agent.cmd.in`,發佈時蓋上網址、轉成 CRLF,變成 `Install-Pi-Agent.cmd`。參數會傳給安裝程式,但值不能有空白。
 - 發佈:先改好 `VERSION` 和上面安裝指令的網址再打標籤。正式版(`v1.2.3`)的指令要用 `releases/latest/download/install-wsl.ps1`;預覽版(`v1.2.3-rc.1`)要寫明版本,因為 `latest` 不會指到預覽版。
   不一致的話 `scripts/build-wsl-bundle.sh` 會拒絕發佈。`release.yml` 會把有 `-` 的標籤標成預覽版,發佈後再用 GitHub 的 Windows 機從真網址跑一次這條指令(`wsl-verify`)。
 - 從原始碼試:`bash scripts/build-wsl-bundle.sh dist dev`,再 `pwsh windows/install-wsl.ps1 -BundlePath dist/pi-agent-installer-dev.tar.gz -PiWebArtifact <網址>`。

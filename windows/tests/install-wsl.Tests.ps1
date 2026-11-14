@@ -348,7 +348,8 @@ Describe 'small pure helpers' {
         $s | Should -Match "\`$splat\['Resume'\] = \`$true"
         $s | Should -Match "\`$splat\['DistroName'\] = 'O''Neil'"
         $s | Should -Match "\`$splat\['Port'\] = 30141"
-        $s | Should -Match 'RawContentStream'
+        $s | Should -Match 'Get-AuthenticodeSignature'
+        $s | Should -Match 'WOOW TECH CO., LTD.'
         $s | Should -Match 'TrimStart\(\[char\]0xFEFF\)'
         $s | Should -Match "Uri 'https://example\.invalid/install-wsl\.ps1'"
         $s | Should -Match 'for \(\$try = 1; \$try -le 24; \$try\+\+\)'

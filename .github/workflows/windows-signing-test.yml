@@ -1,0 +1,38 @@
+name: windows-signing-test
+on:
+  push:
+    branches: [feat/windows-code-signing]
+  pull_request:
+    paths:
+      - 'windows/**'
+      - 'scripts/*windows*'
+      - 'tests/windows-signing.ps1'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/windows-signing-test.yml'
+      - 'docs/WSL2.md'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test real Authenticode verification and launcher
+        shell: powershell
+        run: ./tests/windows-signing.ps1
+      - name: Existing installer tests
+        shell: powershell
+        run: |
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -MinimumVersion 5.5.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser
+          Import-Module Pester -MinimumVersion 5.5.0 -MaximumVersion 5.99.99
+          $r = Invoke-Pester -Path windows/tests -PassThru
+          if ($r.FailedCount -gt 0 -or $r.FailedContainersCount -gt 0 -or $r.FailedBlocksCount -gt 0) { throw 'Installer tests failed' }
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/wsl.sh bundle
+      - run: scripts/build-wsl-bundle.sh dist-wsl "$(cat VERSION)" --tag "v$(cat VERSION)"
