@@ -694,3 +694,45 @@ that: `claude ready=True` with `opus, fable, sonnet, haiku`, and
 
 `pi-agent-adopt-logins --undo` reverses everything it did, and it never writes
 to the real home — verified: the owner's Omnigent files stayed 6/6 after the run.
+
+## Double-click PKG entry and candidate acceptance (2026-11-14)
+
+The package now installs **Applications → Pi Agent.command** and **Pi Agent
+Repair.command**. They open Terminal for stage output and errors; once the
+existing user launchd job is loaded and HTTP responds, the normal entry opens
+the browser. This is a shell entry, not a new Electron app or `.app` bundle.
+The Installer conclusion page points to both entries.
+
+Postinstall still performs setup in the console user's GUI session, with that
+user's HOME. Setup also writes `<install>/logs/macos-setup.log`; root's wrapper
+log remains `/var/log/woow-pi-agent-install.log`. Reopening the normal entry
+retries an incomplete setup. Repair reruns the existing installer; it does not
+remove data, reset logins, or change the launchd label `io.woowtech.pi-agent`.
+It reads an existing plist's `PI_AGENT_HOME` and `PI_WEB_PORT` first
+(falling back to the saved `pi-web-port` file when needed), and
+refuses conflicting explicit locations or an unreadable existing plist.
+A kernel lock serializes these two entries and postinstall. Direct invocations
+of the shared `install.sh` do not take this new lock; do not run one concurrently.
+
+The package remains an **online installer**. `--artifact-file` can embed the
+pi-web tarball with explicit SHA verification at build and before setup, avoiding
+a new public staging URL; other dependencies still need internet. Installer's progress bar does not
+represent individual downloads; the normal/repair Terminal entry displays real
+stage output, not a fabricated percentage. A failed postinstall still fails the
+Installer transaction; its staged Applications entry can retry setup. If no
+console user is logged in, postinstall fails with instructions to log in and
+use that entry. On another account, that entry sets up a separate scoped install.
+Custom installs without the standard launchd plist must invoke the helper with
+an explicit `PI_AGENT_HOME` to avoid selecting the default location.
+
+For exact build inputs, formal signing gates and the required Mac evidence, see
+[PKG candidate acceptance](MACOS-PKG-ACCEPTANCE.md). Linux tests use command
+stand-ins and do not establish Finder, Apple trust, or native runtime support.
+
+
+Embedded formal PKGs also require the pi-web native files to be Developer ID
+signed before packaging. Use `scripts/sign-macos-piweb-artifact.sh` with the
+original SHA, then pass its **new output SHA** to the builder; see the
+[actual notarization failure and signing runbook](MACOS-PKG-ACCEPTANCE.md#sign-an-embedded-pi-web-artifact-build-host-only-python-396-compatible).
+The helper is for build hosts only and supports CLT Python 3.9.6 with isolated
+`-I` execution. End-user installation does not invoke it.

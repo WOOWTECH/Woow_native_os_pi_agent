@@ -15,6 +15,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 BUILDER="${PI_TEST_BUILDER:-$HERE/scripts/build-macos-pkg.sh}"
+TEST_VERSION=0.3.0-rc.8
 pass=0; fail=0
 ok() { printf '  PASS  %s\n' "$1"; pass=$((pass + 1)); }
 no() { printf '  FAIL  %s\n        %s\n' "$1" "${2:-}"; fail=$((fail + 1)); }
@@ -26,12 +27,22 @@ W="$(mktemp -d "${TMPDIR:-/tmp}/pa-pkgmodes.XXXXXX")" || exit 2
 trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/tools/bin" "$W/out"
 cp /usr/bin/true "$W/tools/bin/tmux"
+case "$(uname -m)" in arm64) ARCH=arm64 ;; x86_64) ARCH=x64 ;; *) exit 1 ;; esac
 SHA="$(printf '0%.0s' $(seq 1 64))"
+
+# A tiny real tarball exercises embedding without downloading a runtime.
+mkdir -p "$W/artifact-fixture"
+printf 'native package fixture\n' > "$W/artifact-fixture/fixture.txt"
+LOCAL_ART="$W/piweb-test-macos-$ARCH.tar.gz"
+tar czf "$LOCAL_ART" -C "$W/artifact-fixture" .
+LOCAL_SHA="$(shasum -a 256 "$LOCAL_ART" | awk '{print $1}')"
 
 # build_under UMASK: build in a fresh subshell with that umask; leaves the pkg in $W/out/<umask>/
 build_under() {
   mkdir -p "$W/out/$1"
-  ( umask "$1"; "$BUILDER" --artifact-url https://example.invalid/piweb-0.0.0-macos-arm64.tar.gz --artifact-sha256 "$SHA" \
+  local source_args=(--artifact-url "https://example.invalid/piweb-0.0.0-macos-$ARCH.tar.gz" --artifact-sha256 "$SHA")
+  if [ "$1" = 077 ]; then source_args=(--artifact-file "$LOCAL_ART" --artifact-sha256 "$LOCAL_SHA" --arch "$ARCH"); fi
+  ( umask "$1"; PI_AGENT_VERSION="$TEST_VERSION" "$BUILDER" "${source_args[@]}" \
       --tools "$W/tools" --out "$W/out/$1" ) > "$W/build-$1.log" 2>&1
 }
 # payload_of UMASK: expands the built pkg (under a normal umask, so the expansion itself cannot mask anything)
@@ -53,6 +64,31 @@ for U in 022 077; do
   if [ "$name" = "Woow Pi Agent" ]; then ok "installer shows the pkg's name (umask $U)"; else no "installer shows the pkg's name (umask $U)" "it prints '$name'"; fi
   P="$(payload_of "$U")"
   if [ -z "$P" ] || [ ! -d "$P" ]; then no "the pkg has the payload directory" "not found under $W/x-$U"; continue; fi
+  if [ -f "$W/out/$U/WoowPiAgent-$TEST_VERSION-macos-$ARCH.pkg" ] && [ "$(cat "$P/VERSION")" = "$TEST_VERSION" ]; then
+    ok "version override reaches filename and payload (umask $U)"
+  else no "version override reaches filename and payload (umask $U)"; fi
+  component="${P%/Payload*}/PackageInfo"
+  actual="$(/usr/bin/xmllint --xpath 'string(/pkg-info/@version)' "$component" 2>/dev/null)"
+  if [ "$actual" = "$TEST_VERSION" ]; then ok "pkgutil expands the exact prerelease component version (umask $U)"
+  else no "pkgutil expands the exact prerelease component version (umask $U)" "got: $actual"; fi
+  if [ "$U" = 077 ]; then
+    embedded="$P/artifacts/$(basename "$LOCAL_ART")"
+    actual_sha="$(shasum -a 256 "$embedded" 2>/dev/null | awk '{print $1}')"
+    if [ "$actual_sha" = "$LOCAL_SHA" ] && [ "$(cat "$P/piweb-artifact-file")" = "$(basename "$LOCAL_ART")" ] && [ "$(cat "$P/piweb-artifact-url")" = '' ]; then
+      ok 'embedded artifact and selector survive native packaging with exact SHA'
+    else no 'embedded artifact and selector survive native packaging with exact SHA'; fi
+  else
+    if [ "$(cat "$P/piweb-artifact-url")" = "https://example.invalid/piweb-0.0.0-macos-$ARCH.tar.gz" ] && [ "$(cat "$P/piweb-artifact-file")" = '' ]; then
+      ok 'URL mode survives packaging without a stale file selector'
+    else no 'URL mode survives packaging without a stale file selector'; fi
+  fi
+  for entry in 'Pi Agent.command' 'Pi Agent Repair.command'; do
+    launcher="${P%/usr/local/lib/woow-pi-agent}/Applications/$entry"
+    if [ -f "$launcher" ] && [ -n "$(find "$launcher" -perm -o+rx -print)" ]; then
+      ok "$entry is readable and executable under umask $U"
+    else no "$entry is readable and executable under umask $U"; fi
+  done
+  if [ -f "$P/scripts/macos/pi-agent-launch.sh" ]; then ok 'shared first-run helper is packaged'; else no 'shared first-run helper is packaged'; fi
   unreadable="$(find "$P" ! -perm -o+r -print | sed "s#^$P/##" | head -4 | tr '\n' ' ')"
   if [ -z "$unreadable" ]; then ok "every payload file and directory is readable by other users (umask $U)"; else no "every payload file and directory is readable by other users (umask $U)" "e.g. $unreadable"; fi
   untraversable="$(find "$P" -type d ! -perm -o+x -print | sed "s#^$P/##" | head -4 | tr '\n' ' ')"
