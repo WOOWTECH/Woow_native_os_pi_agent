@@ -1,6 +1,6 @@
 # Pi Agent on Windows 11 (WSL2)
 
-> **此分支狀態：`v0.3.0-rc.7` 簽章候選版，尚未發佈。** 以下是已發佈 `v0.3.0-rc.6` 的實測紀錄，不能視為新簽章入口已在實體電腦驗過。
+> **`v0.3.0-rc.7`：Windows 簽章預覽版。** 新增已簽章的 EXE 與 PS1；正式簽章、成品驗證與 EXE `-DryRun` 已通過。完整 WSL2 CI 的安裝、互通、保活、重跑及解除安裝也已通過（[執行紀錄](https://github.com/WOOWTECH/Woow_native_os_pi_agent/actions/runs/43545382063)）。新 EXE 的實體 Windows 完整安裝仍需另驗；以下 rc.6 以前的實測紀錄不代表新入口已在實體電腦驗過。發佈資產見 [rc.7](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/tag/v0.3.0-rc.7)。
 >
 > **前版狀態:預覽版(`v0.3.0-rc.6`;Windows 部分與 rc.3 相同,另加 2026-11-10 在 Allwinner H618 4 GB 板上找到的修正,見 `docs/RELEASE-0.3.0-rc.6.md`)。** 比 rc.2 多了 2026-11-05 在 Windows 11 上試出來的幾個修正(登入時多出一個關不得的終端機視窗、電腦還沒裝 WSL 時畫面靜止 2 分鐘、WSL 啟動逾時、把自己的 Linux 誤判成別人的)。裝過 rc.1 或 rc.2 的電腦,重跑同樣的安裝就會換成新的。
 > 驗證到哪裡(每一項的細節在最後的「驗證到哪裡」):
@@ -33,7 +33,7 @@ Linux 主機,所以 Pi Agent、Claude Code、Codex 三個代理的行為跟 Linu
 
 ## 安裝
 
-以下是下一個已簽章候選版 `v0.3.0-rc.7` 的安裝方式，**尚未發佈**；rc.6 及更舊版本的檔案未簽章，不能通過這個檢查。不要把下面網址改成舊版本。
+以下是已簽章預覽版 `v0.3.0-rc.7` 的安裝方式；rc.6 及更舊版本的檔案未簽章，不能通過這個檢查。不要把下面網址改成舊版本。
 
 下載發佈頁的 `Install-Pi-Agent.exe` 並雙擊。Windows 顯示的簽署者應為 **WOOW TECH CO., LTD.**。
 程式內含已簽章的安裝腳本，會先驗證簽章與發行者再執行。簽章不保證新檔案立即累積 SmartScreen 信譽，也不會覆蓋公司的安全原則。
@@ -357,7 +357,7 @@ build 26300.9457(26H2),3 個 vCPU、10 GB 記憶體,沒有 TPM 與 Secure Boot;�
 
 - 新的雙擊入口是 `windows/Launcher.cs`；`scripts/build-windows-launcher.ps1` 把已簽章的 `install-wsl.ps1` 嵌入 EXE。編譯時與執行時都驗證 Windows 信任鏈及 `WOOW TECH CO., LTD.`，執行時鎖住腳本避免驗證後被改寫。EXE 也必須簽章。
 - 簽章由 `WOOWTECH/woowtech-smart` 的 `Desktop Release`（`platform=pi-agent`、`publish=false`）處理。指定完整 commit 與版本，在沒有金鑰的 runner 建 bundle，再由該 repo 的固定腳本簽 PS1 與 EXE；每版通常兩次簽章，重試另計。
-- 此 repo **不需要 eSigner Secrets**。金鑰留在 woowtech-smart；不讀回、不複製。`scripts/windows-signer.json` 固定簽章服務版本，服務更新必須先審查並更新此設定。
+- 此 repo **不需要 eSigner Secrets**。金鑰留在 woowtech-smart；不讀回、不複製。`scripts/windows-signer.json` 固定簽章服務的 `pi-agent-signer-v1` tag 與完整 commit，服務更新必須先審查並更新此設定。
 - 在已推送且乾淨的分支，使用已登入兩個 repo 的 GitHub CLI，執行 `python3 scripts/request-windows-signing.py`。它依序觸發簽章、等成功，再觸發 Pi Agent 的 `release`（`windows_only=true`、`signed_run_id`）；不會建立 GitHub Release。若簽章服務原本停用，結束後恢復停用。
 - `release.yml` 的 `windows-sign` 取回已簽檔案，檢查指定服務 commit、成功的工作流程、來源 commit、版本、全部檔案雜湊、Windows 信任鏈、時間戳及公司名稱，並比較重新建置的 bundle 與腳本本文。全部通過才試跑 EXE `-DryRun` 並上傳 `wsl-signed`。缺檔或不相符即停止。
 - 正式發佈需另行核准：先為要打 tag 的同一 commit 完成上述流程，再將簽章 run ID 填入 repository variable `WINDOWS_SIGNED_RUN_ID`，才推 tag。成品保留 14 天，過期須重新簽章；不同 commit 的成品不能沿用。

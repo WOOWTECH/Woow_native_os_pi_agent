@@ -192,26 +192,26 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'
-          $doc = [IO.File]::ReadAllText((Join-Path (Get-Location).Path 'docs\WSL2.md'))
-          $m = [regex]::Match($doc, '(?s)<!-- signed-install-command -->\s*```powershell\s*(.*?)\s*```')
-          if (-not $m.Success) { Write-Output '::error::no install command in docs/WSL2.md'; exit 1 }
-          Write-Output $m.Groups[1].Value
-          $code = 1
-          try {
-            & ([ScriptBlock]::Create($m.Groups[1].Value.Replace('& $p', '& $p -Yes -NoAutostart')))
-            $code = $LASTEXITCODE
-          } catch { Write-Output ('::error::Verified install command failed: ' + $_.Exception.Message) }
-          # The file people double-click, from the release, over that install. stdin is NUL here, so its
-          # pause returns at once. Nothing can press a key or see a window on a runner.
+          # Fresh install through the actual downloaded EXE, then exercise the guide
+          # as an upgrade over that installation. Both use the public release assets.
           $cmdFile = Join-Path (Get-Location).Path 'Install-Pi-Agent.exe'
           Invoke-WebRequest -UseBasicParsing -OutFile $cmdFile ('https://github.com/' + $env:GITHUB_REPOSITORY + '/releases/download/' + $env:GITHUB_REF_NAME + '/Install-Pi-Agent.exe')
           $held = [IO.File]::Open($cmdFile, 'Open', 'Read', 'Read')
           try {
             $sig = Get-AuthenticodeSignature -LiteralPath $cmdFile
             if ($sig.Status -ne 'Valid' -or -not $sig.TimeStamperCertificate -or $sig.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false) -cne 'WOOW TECH CO., LTD.') { throw 'Downloaded EXE signature is invalid' }
-            & $cmdFile -Yes -NoAutostart 2>&1 | Out-Null
+            & $cmdFile -Yes -NoAutostart 2>&1 | Tee-Object -FilePath exe-install.log
             $cmdCode = $LASTEXITCODE
           } finally { $held.Dispose() }
+          $doc = [IO.File]::ReadAllText((Join-Path (Get-Location).Path 'docs\WSL2.md'))
+          $m = [regex]::Match($doc, '(?s)<!-- signed-install-command -->\s*```powershell\s*(.*?)\s*```')
+          if (-not $m.Success) { Write-Output '::error::no install command in docs/WSL2.md'; exit 1 }
+          Write-Output $m.Groups[1].Value
+          $code = 1
+          try {
+            & ([ScriptBlock]::Create($m.Groups[1].Value.Replace('& $p', '& $p -Yes -NoAutostart'))) 2>&1 | Tee-Object -FilePath script-reinstall.log
+            $code = $LASTEXITCODE
+          } catch { Write-Output ('::error::Verified install command failed: ' + $_.Exception.Message) }
           $marker = (wsl.exe -d PiAgent --exec /bin/cat /etc/pi-agent-distro | Out-String)
           $want = 'installer=' + ($env:GITHUB_REF_NAME -replace '^v', '')
           $ok = ($code -eq 0) -and ($cmdCode -eq 0) -and $marker.Contains($want)
@@ -222,3 +222,11 @@ jobs:
           $level = if ($ok) { 'notice' } else { 'error' }
           Write-Output ('::' + $level + ' title=one-line install::' + $text.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A'))
           if ($ok) { exit 0 } else { exit 1 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signed-windows-install-acceptance
+          path: |
+            exe-install.log
+            script-reinstall.log
+          retention-days: 14
