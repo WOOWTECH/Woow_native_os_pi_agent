@@ -26,12 +26,13 @@ W="$(mktemp -d "${TMPDIR:-/tmp}/pa-pkgmodes.XXXXXX")" || exit 2
 trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/tools/bin" "$W/out"
 cp /usr/bin/true "$W/tools/bin/tmux"
+case "$(uname -m)" in arm64) ARCH=arm64 ;; x86_64) ARCH=x64 ;; *) exit 1 ;; esac
 SHA="$(printf '0%.0s' $(seq 1 64))"
 
 # build_under UMASK: build in a fresh subshell with that umask; leaves the pkg in $W/out/<umask>/
 build_under() {
   mkdir -p "$W/out/$1"
-  ( umask "$1"; "$BUILDER" --artifact-url https://example.invalid/piweb-0.0.0-macos-arm64.tar.gz --artifact-sha256 "$SHA" \
+  ( umask "$1"; "$BUILDER" --artifact-url "https://example.invalid/piweb-0.0.0-macos-$ARCH.tar.gz" --artifact-sha256 "$SHA" \
       --tools "$W/tools" --out "$W/out/$1" ) > "$W/build-$1.log" 2>&1
 }
 # payload_of UMASK: expands the built pkg (under a normal umask, so the expansion itself cannot mask anything)
@@ -53,6 +54,13 @@ for U in 022 077; do
   if [ "$name" = "Woow Pi Agent" ]; then ok "installer shows the pkg's name (umask $U)"; else no "installer shows the pkg's name (umask $U)" "it prints '$name'"; fi
   P="$(payload_of "$U")"
   if [ -z "$P" ] || [ ! -d "$P" ]; then no "the pkg has the payload directory" "not found under $W/x-$U"; continue; fi
+  for entry in 'Pi Agent.command' 'Pi Agent Repair.command'; do
+    launcher="${P%/usr/local/lib/woow-pi-agent}/Applications/$entry"
+    if [ -f "$launcher" ] && [ -n "$(find "$launcher" -perm -o+rx -print)" ]; then
+      ok "$entry is readable and executable under umask $U"
+    else no "$entry is readable and executable under umask $U"; fi
+  done
+  if [ -f "$P/scripts/macos/pi-agent-launch.sh" ]; then ok 'shared first-run helper is packaged'; else no 'shared first-run helper is packaged'; fi
   unreadable="$(find "$P" ! -perm -o+r -print | sed "s#^$P/##" | head -4 | tr '\n' ' ')"
   if [ -z "$unreadable" ]; then ok "every payload file and directory is readable by other users (umask $U)"; else no "every payload file and directory is readable by other users (umask $U)" "e.g. $unreadable"; fi
   untraversable="$(find "$P" -type d ! -perm -o+x -print | sed "s#^$P/##" | head -4 | tr '\n' ' ')"

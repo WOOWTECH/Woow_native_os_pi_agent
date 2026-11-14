@@ -4,6 +4,7 @@
 #   scripts/build-macos-pkg.sh \
 #       --artifact-url    https://github.com/.../piweb-<ver>-macos-arm64.tar.gz \
 #       --artifact-sha256 <64 hex> \
+#       [--release]               require Developer ID signing + accepted notarization
 #       [--tools <dir>]           default dist/tools-macos-<arch>  (scripts/build-macos-tmux.sh)
 #       [--out <dir>]             default dist
 #       [--sign-app "<Developer ID Application: ...>"]   codesign every Mach-O under tools/
@@ -47,10 +48,11 @@ say()  { printf '[build-macos-pkg] %s\n' "$*"; }
 usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
 
 ART_URL="" ART_SHA="" TOOLS="" OUT="$HERE/dist"
-SIGN_APP="" SIGN_PKG="" KEYCHAIN=""
+SIGN_APP="" SIGN_PKG="" KEYCHAIN="" RELEASE=0
 NOTARY_KEY="" NOTARY_KEY_ID="" NOTARY_ISSUER=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --release)         RELEASE=1; shift ;;
     --artifact-url)    ART_URL="${2:-}"; shift 2 ;;
     --artifact-sha256) ART_SHA="${2:-}"; shift 2 ;;
     --tools)           TOOLS="${2:-}"; shift 2 ;;
@@ -65,6 +67,14 @@ while [ $# -gt 0 ]; do
     *)                 die "unknown argument: $1 (see --help)" ;;
   esac
 done
+
+# Fail closed before using tools, signing identities or network.
+if [ "$RELEASE" = 1 ]; then
+  case "$SIGN_APP" in 'Developer ID Application: '*) ;; *) die '--release needs --sign-app Developer ID Application identity' ;; esac
+  case "$SIGN_PKG" in 'Developer ID Installer: '*) ;; *) die '--release needs --sign Developer ID Installer identity' ;; esac
+  [ -n "$NOTARY_KEY" ] && [ -n "$NOTARY_KEY_ID" ] && [ -n "$NOTARY_ISSUER" ] \
+    || die '--release needs all three notarization parameters'
+fi
 
 # --- validate inputs ----------------------------------------------------------
 # The URL ends up in the payload and in install.sh's environment. Restrict it to
@@ -121,7 +131,7 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/pa-pkg.XXXXXX")"
 # So every keychain-facing tool here runs with the account's real home, and the
 # search list is restored on exit, including on failure. Assumes keychain paths
 # without spaces (true for ~/Library/Keychains and electron-builder's cache).
-REAL_HOME="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+REAL_HOME="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | sed 's/^NFSHomeDirectory: //')"
 as_real_home() { HOME="${REAL_HOME:-$HOME}" "$@"; }
 real_home_security() { as_real_home security "$@"; }
 ORIG_SEARCH_LIST=""
@@ -149,6 +159,18 @@ for f in install.sh lib/pins.sh vendor/omnigent-requirements.lock VERSION \
          rootfs/bin/flock rootfs/bin/pi-agent-env.sh tools/bin/tmux; do
   [ -e "$ROOT$PAYLOAD/$f" ] || die "payload is missing $f"
 done
+mkdir -p "$ROOT/Applications" "$WORK/resources"
+cp "$HERE/scripts/macos/Pi-Agent.command" "$ROOT/Applications/Pi Agent.command"
+cp "$HERE/scripts/macos/Pi-Agent.command" "$ROOT/Applications/Pi Agent Repair.command"
+chmod 755 "$ROOT/Applications/"*.command
+cat > "$WORK/resources/conclusion.html" <<'HTML'
+<html><body><h1>Pi Agent</h1>
+<p>Open Applications → Pi Agent.command to start Pi Agent in your browser.
+Terminal shows startup progress. Internet is required for first setup.</p>
+<p>If setup failed, open Pi Agent Repair.command to retry while keeping your data.
+Setup logs: ~/.local/share/pi-agent/logs/macos-setup.log (or your existing custom install directory).
+Installer log: /var/log/woow-pi-agent-install.log.</p></body></html>
+HTML
 printf '%s\n' "$ART_URL" > "$ROOT$PAYLOAD/piweb-artifact-url"
 printf '%s\n' "$ART_SHA" > "$ROOT$PAYLOAD/piweb-artifact-sha256"
 # Explicit, whatever the umask was (a second line of defence; the check after expansion is the third): owner
@@ -187,11 +209,11 @@ echo "=== $(date) pi-agent postinstall ==="
 USER_NAME="$(stat -f%Su /dev/console)"
 case "$USER_NAME" in
   ""|root|_mbsetupuser|loginwindow)
-    echo "no console user ('$USER_NAME'); cannot install per-user. Run $PAYLOAD/install.sh as that user."
+    echo "no console user ('$USER_NAME'); cannot install per-user. Log in and open /Applications/Pi Agent.command to finish setup."
     exit 1 ;;
 esac
 USER_UID="$(id -u "$USER_NAME")" || exit 1
-USER_HOME="$(dscl . -read "/Users/$USER_NAME" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+USER_HOME="$(dscl . -read "/Users/$USER_NAME" NFSHomeDirectory 2>/dev/null | sed 's/^NFSHomeDirectory: //')"
 if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
   echo "cannot resolve the home directory of $USER_NAME"; exit 1
 fi
@@ -213,7 +235,7 @@ launchctl asuser "$USER_UID" sudo -H -u "$USER_NAME" /usr/bin/env \
   HOME="$USER_HOME" \
   PI_AGENT_PIWEB_ARTIFACT="$URL" \
   PI_AGENT_PIWEB_ARTIFACT_SHA256="$SHA" \
-  /bin/bash -lc 'cd "$HOME" && exec /usr/local/lib/woow-pi-agent/install.sh'
+  /bin/bash "$PAYLOAD/scripts/macos/pi-agent-launch.sh" --install
 rc=$?
 echo "install.sh exit=$rc"
 exit $rc
@@ -244,14 +266,19 @@ grep -q "hostArchitectures=\"$HOSTARCH\"" "$DIST" || die "could not restrict the
 # `installer: Package name is ` with nothing after it.
 sed -i '' -E "s#(<installer-gui-script[^>]*>)#\\1<title>$TITLE</title>#" "$DIST"
 grep -q "<title>$TITLE</title>" "$DIST" || die "could not give the pkg its title"
+sed -i '' -E 's#</installer-gui-script>#<conclusion file="conclusion.html"/></installer-gui-script>#' "$DIST"
 rm -f "$PKG"
-productbuild --distribution "$DIST" --package-path "$WORK" "$PKG" >/dev/null
+productbuild --resources "$WORK/resources" --distribution "$DIST" --package-path "$WORK" "$PKG" >/dev/null
 
 # --- verify what was actually built ---------------------------------------------
 X="$WORK/expanded"
 pkgutil --expand-full "$PKG" "$X" >/dev/null
 P="$(find "$X" -type d -path "*/Payload$PAYLOAD" -print -quit)"
 [ -n "$P" ] || die "expanded pkg has no $PAYLOAD"
+for entry in 'Pi Agent.command' 'Pi Agent Repair.command'; do
+  launcher="${P%"$PAYLOAD"}/Applications/$entry"
+  [ -n "$(find "$launcher" -perm -o+rx -print)" ] || die "launcher is missing or unreadable: $entry"
+done
 unreadable="$(find "$P" ! -perm -o+r -print | head -3 | sed "s#^$P/##" | tr '\n' ' ')"
 [ -z "$unreadable" ] || die "payload entries are not readable by the user the postinstall hands the install to (builder umask $(umask)): $unreadable"
 [ -n "$(find "$P/install.sh" -perm -o+x -print)" ] || die "payload install.sh is not executable by the user the postinstall hands the install to"
@@ -294,6 +321,11 @@ if [ -n "$NOTARY_KEY" ]; then
   xcrun stapler validate "$PKG"
   spctl -a -vv -t install "$PKG"
   say "notarized and stapled (submission $sub_id)"
+fi
+
+if [ "$RELEASE" = 1 ]; then
+  "$HERE/scripts/verify-macos-pkg.sh" "$PKG"
+  say 'release gate passed (publication is a separate approval)'
 fi
 
 say "$PKG ($(du -h "$PKG" | cut -f1))"
