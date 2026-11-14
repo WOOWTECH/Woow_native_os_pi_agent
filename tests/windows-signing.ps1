@@ -52,6 +52,24 @@ try {
         [IO.File]::WriteAllText($fixture, $safeBody, (New-Object Text.UTF8Encoding($true)))
         if ($kind -ne 'unsigned') { Sign-Fixture $fixture $(if ($kind -eq 'wrong-publisher') { $certs[1] } else { $certs[0] }) }
         if ($kind -eq 'tampered') { [IO.File]::AppendAllText($fixture, "`r`n# modified") }
+        # Exercise the EXE runtime guard independently of the build-time guard.
+        # Deliberately compile invalid embedded payloads directly; none leave this runner.
+        if ($kind -ne 'valid') {
+            $source = [IO.File]::ReadAllText("$root/windows/Launcher.cs").Replace('@@PUBLISHER@@', 'WOOW TECH CO., LTD.')
+            $cs = Join-Path $dir 'negative.cs'
+            [IO.File]::WriteAllText($cs, $source)
+            $badExe = Join-Path $dir 'negative.exe'
+            $csc = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+            & $csc /nologo /target:exe /platform:anycpu "/out:$badExe" "/resource:$fixture,install-wsl.ps1" $cs
+            Assert-PaTest ($LASTEXITCODE -eq 0) 'negative launcher fixture compiles'
+            # Suppress only the expected child error stream; assertions still fail normally.
+            $oldPreference = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            & $badExe -Message test 2>$null
+            $rejectedCode = $LASTEXITCODE
+            $ErrorActionPreference = $oldPreference
+            Assert-PaTest ($rejectedCode -ne 0) "EXE runtime rejects $kind embedded script"
+        }
         foreach ($mode in 'command', 'resume') {
             $global:PaFixtureExecuted = $false
             $code = if ($mode -eq 'command') { Get-PaOneLiner -Url 'https://example.invalid/installer.ps1' } else { New-PaResumeStub -Splat @{} -Kind url -Source 'https://example.invalid/installer.ps1' }
