@@ -356,9 +356,11 @@ build 26300.9457(26H2),3 個 vCPU、10 GB 記憶體,沒有 TPM 與 Secure Boot;�
 ## 給工程師
 
 - 新的雙擊入口是 `windows/Launcher.cs`；`scripts/build-windows-launcher.ps1` 把已簽章的 `install-wsl.ps1` 嵌入 EXE。編譯時與執行時都驗證 Windows 信任鏈及 `WOOW TECH CO., LTD.`，執行時鎖住腳本避免驗證後被改寫。EXE 也必須簽章。
-- `release.yml` 的 `windows-sign` 等待版本、網址與 bundle 雜湊蓋好後才簽 PowerShell 腳本，再簽 EXE；發佈只取 `wsl-signed`，不會誤取未簽章的 `wsl-bundle`。兩次簽章都檢查時間戳與發行者。每版通常消耗兩次 eSigner 簽章，重試另計。
-- 此 repo 必須設定 `ESIGNER_STOREPASS`（`帳號|密碼`）、`ESIGNER_CREDENTIAL_ID`、`ESIGNER_TOTP_SECRET`（Base64）。Secret 必須單行；不要放進 git。`WIN_PUBLISHER_DN` 不需要：此安裝程式固定驗證公司的名稱。
-- 手動執行 `release`，版本填 `0.3.0-rc.7`、勾選 `windows_only`，可只產生簽章測試成品；不會建立 GitHub Release。新版本發佈仍需另行核准。
+- 簽章由 `WOOWTECH/woowtech-smart` 的 `Desktop Release`（`platform=pi-agent`、`publish=false`）處理。指定完整 commit 與版本，在沒有金鑰的 runner 建 bundle，再由該 repo 的固定腳本簽 PS1 與 EXE；每版通常兩次簽章，重試另計。
+- 此 repo **不需要 eSigner Secrets**。金鑰留在 woowtech-smart；不讀回、不複製。`scripts/windows-signer.json` 固定簽章服務版本，服務更新必須先審查並更新此設定。
+- 在已推送且乾淨的分支，使用已登入兩個 repo 的 GitHub CLI，執行 `python3 scripts/request-windows-signing.py`。它依序觸發簽章、等成功，再觸發 Pi Agent 的 `release`（`windows_only=true`、`signed_run_id`）；不會建立 GitHub Release。若簽章服務原本停用，結束後恢復停用。
+- `release.yml` 的 `windows-sign` 取回已簽檔案，檢查指定服務 commit、成功的工作流程、來源 commit、版本、全部檔案雜湊、Windows 信任鏈、時間戳及公司名稱，並比較重新建置的 bundle 與腳本本文。全部通過才試跑 EXE `-DryRun` 並上傳 `wsl-signed`。缺檔或不相符即停止。
+- 正式發佈需另行核准：先為要打 tag 的同一 commit 完成上述流程，再將簽章 run ID 填入 repository variable `WINDOWS_SIGNED_RUN_ID`，才推 tag。成品保留 14 天，過期須重新簽章；不同 commit 的成品不能沿用。
 - `tests/windows-signing.ps1` 在拋棄式 Windows runner 用測試憑證檢查編譯、參數、退出碼及下載／續裝入口對未簽章、修改過、其他發行者的拒絕；正式 SSL.com 簽章與實體電腦驗證需另外執行。
 - 舊雙擊檔的範本是 `windows/install-pi-agent.cmd.in`,發佈時蓋上網址、轉成 CRLF,變成 `Install-Pi-Agent.cmd`。參數會傳給安裝程式,但值不能有空白。
 - 發佈:先改好 `VERSION` 和上面安裝指令的網址再打標籤。正式版(`v1.2.3`)的指令要用 `releases/latest/download/install-wsl.ps1`;預覽版(`v1.2.3-rc.1`)要寫明版本,因為 `latest` 不會指到預覽版。

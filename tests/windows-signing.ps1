@@ -77,6 +77,33 @@ try {
             Assert-PaTest ($global:PaFixtureExecuted -eq ($kind -eq 'valid')) "$mode executes only a valid company-signed script ($kind)"
         }
     }
+    # Cross-repository provenance must fail before any installer can execute.
+    $signedDir = Join-Path $dir 'signed'
+    $unsignedDir = Join-Path $dir 'unsigned'
+    New-Item -ItemType Directory $signedDir, $unsignedDir | Out-Null
+    $version = (Get-Content "$root/VERSION" -Raw).Trim()
+    $config = Get-Content "$root/scripts/windows-signer.json" -Raw | ConvertFrom-Json
+    $names = @('install-wsl.ps1', 'Install-Pi-Agent.exe', 'Install-Pi-Agent.cmd', "pi-agent-installer-$version.tar.gz", "pi-agent-installer-$version.tar.gz.sha256")
+    foreach ($scenario in 'source', 'run', 'hash', 'bundle', 'unsigned') {
+        $hashes = @{}
+        foreach ($name in $names) {
+            Set-Content (Join-Path $signedDir $name) 'fixture'
+            Set-Content (Join-Path $unsignedDir $name) 'fixture'
+            $hashes[$name] = (Get-FileHash (Join-Path $signedDir $name)).Hash.ToLowerInvariant()
+        }
+        $manifest = @{ repository='WOOWTECH/Woow_native_os_pi_agent'; source_sha=('a' * 40); version=$version; run_id='123'; signer_sha=$config.sha; files=$hashes }
+        switch ($scenario) {
+            'source' { $manifest.source_sha = 'b' * 40; $expectedError = 'Signed artifact does not belong*' }
+            'run' { $manifest.run_id = '456'; $expectedError = 'Signed artifact does not belong*' }
+            'hash' { Set-Content (Join-Path $signedDir 'Install-Pi-Agent.exe') 'changed'; $expectedError = 'Signed artifact hash mismatch*' }
+            'bundle' { Set-Content (Join-Path $unsignedDir 'Install-Pi-Agent.cmd') 'changed'; $expectedError = 'Bundle differs*' }
+            'unsigned' { $expectedError = 'Invalid signature*' }
+        }
+        $manifest | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $signedDir 'signing-manifest.json')
+        $reason = ''
+        try { & "$root/scripts/verify-windows-artifact.ps1" -SignedDir $signedDir -UnsignedDir $unsignedDir -SourceSha ('a' * 40) -RunId '123' } catch { $reason = $_.Exception.Message }
+        Assert-PaTest ($reason -like $expectedError) "artifact verifier rejects $scenario ($reason)"
+    }
     # The published guide must use the same guard. This test does not access the network.
     $doc = [IO.File]::ReadAllText("$root/docs/WSL2.md")
     $match = [regex]::Match($doc, '(?s)<!-- signed-install-command -->\s*```powershell\s*(.*?)\s*```')

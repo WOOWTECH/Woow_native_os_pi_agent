@@ -28,6 +28,9 @@ on:
       version:
         description: Version to stamp when run manually, e.g. 0.1.0
         required: true
+      signed_run_id:
+        description: Successful woowtech-smart signing run ID for this exact commit
+        type: string
       windows_only:
         description: Build and sign only the Windows installer (no release publication)
         type: boolean
@@ -90,41 +93,45 @@ jobs:
   windows-sign:
     needs: wsl-bundle
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    env:
+      SIGNED_RUN_ID: ${{ inputs.signed_run_id || vars.WINDOWS_SIGNED_RUN_ID }}
     steps:
       - uses: actions/checkout@v4
+      - name: Validate signing service run
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:SIGNED_RUN_ID -notmatch '^[1-9][0-9]*$') { throw 'First run scripts/request-windows-signing.py for this commit; supply signed_run_id or WINDOWS_SIGNED_RUN_ID' }
+          $config = Get-Content scripts/windows-signer.json -Raw | ConvertFrom-Json
+          $run = gh api "repos/WOOWTECH/woowtech-smart/actions/runs/$env:SIGNED_RUN_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.conclusion -ne 'success' -or $run.event -ne 'workflow_dispatch' -or $run.path -ne '.github/workflows/desktop-release.yml' -or $run.head_sha -cne $config.sha -or $run.head_repository.full_name -cne 'WOOWTECH/woowtech-smart') { throw 'Unexpected signing workflow, source or result' }
       - uses: actions/download-artifact@v4
         with:
           name: wsl-bundle
-          path: dist-wsl
-      - uses: actions/setup-java@v4
+          path: unsigned-wsl
+      - uses: actions/download-artifact@v4
         with:
-          distribution: temurin
-          java-version: '21'
-      - name: Fetch pinned jsign
+          name: pi-agent-windows-signed
+          repository: WOOWTECH/woowtech-smart
+          run-id: ${{ env.SIGNED_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: dist-wsl
+      - name: Verify provenance, exact bundle and signatures before running
         shell: pwsh
         run: |
-          $jar = Join-Path $env:RUNNER_TEMP 'jsign-7.5.jar'
-          Invoke-WebRequest 'https://github.com/ebourg/jsign/releases/download/7.5/jsign-7.5.jar' -OutFile $jar
-          if ((Get-FileHash $jar -Algorithm SHA256).Hash -ne '602a51c3545a6dc4fb99bd2ea7152b26d1345916d0c93ddfbd5936cb735af91c') { throw 'Unexpected jsign hash' }
-          Add-Content $env:GITHUB_ENV "JSIGN_JAR=$jar"
-      - name: Sign script, embed it in the launcher, and sign launcher
-        shell: powershell
-        env:
-          ESIGNER_STOREPASS: ${{ secrets.ESIGNER_STOREPASS }}
-          ESIGNER_CREDENTIAL_ID: ${{ secrets.ESIGNER_CREDENTIAL_ID }}
-          ESIGNER_TOTP_SECRET: ${{ secrets.ESIGNER_TOTP_SECRET }}
-        run: |
-          ./scripts/sign-windows.ps1 -Path dist-wsl/install-wsl.ps1
-          ./scripts/build-windows-launcher.ps1 -Installer dist-wsl/install-wsl.ps1 -Output dist-wsl/Install-Pi-Agent.exe
-          ./scripts/sign-windows.ps1 -Path dist-wsl/Install-Pi-Agent.exe
-          # No WSL mutations. This checks the actual signed launcher's embedded-script path.
+          ./scripts/verify-windows-artifact.ps1 -SignedDir dist-wsl -UnsignedDir unsigned-wsl -SourceSha $env:GITHUB_SHA -RunId $env:SIGNED_RUN_ID
           & ./dist-wsl/Install-Pi-Agent.exe -DryRun
           if ($LASTEXITCODE -ne 0) { throw 'Signed launcher dry run failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: wsl-signed
           path: dist-wsl/*
+          if-no-files-found: error
           retention-days: 14
 
   release:
