@@ -4,8 +4,14 @@ set -euo pipefail
 [ "$#" = 1 ] && [ -f "$1" ] || { echo 'usage: verify-macos-pkg.sh artifact.pkg' >&2; exit 64; }
 [ "$(uname -s)" = Darwin ] || { echo 'macOS is required for signature/trust validation' >&2; exit 1; }
 PKG="$1"
-SIG="$(pkgutil --check-signature "$PKG")"
-printf '%s\n' "$SIG"
+if SIG="$(pkgutil --check-signature "$PKG" 2>&1)"; then
+  printf '%s\n' "$SIG"
+else
+  rc=$?
+  printf '%s\n' "$SIG" >&2
+  printf 'ERROR: package signature verification failed (exit %s): %s\n' "$rc" "$PKG" >&2
+  exit "$rc"
+fi
 printf '%s\n' "$SIG" | grep -q 'Developer ID Installer:'
 xcrun stapler validate "$PKG"
 spctl --assess --verbose=2 --type install "$PKG"

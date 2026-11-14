@@ -220,7 +220,7 @@ if [ -n "$SIGN_APP" ]; then
     say "signing keychain added to the search list for codesign (restored on exit)"
   fi
   # Developer ID + hardened runtime + secure timestamp: what notarization asks of
-  # every Mach-O in a package. Replaces the linker's ad-hoc signature.
+  # every Mach-O in a package. Replaces any existing signature.
   while IFS= read -r -d '' f; do
     file -b "$f" | grep -q 'Mach-O' || continue
     say "codesign ${f#"$ROOT"}"
@@ -228,7 +228,7 @@ if [ -n "$SIGN_APP" ]; then
     as_real_home codesign --verify --strict --verbose=2 "$f"
   done < <(find "$ROOT$PAYLOAD/tools" -type f -print0)
 else
-  say "tools/ keeps the linker's ad-hoc signature (pass --sign-app for distribution)"
+  say "tools/ signing was not requested; existing signature state is unchanged (pass --sign-app for distribution)"
 fi
 
 cat > "$SCRIPTS/postinstall" <<'POST'

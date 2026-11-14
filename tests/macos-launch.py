@@ -243,11 +243,16 @@ class GateTests(unittest.TestCase):
             scripts = {
                 'uname': 'echo Darwin',
                 'pkgutil': '''if [ "$1" = --check-signature ]; then
-  echo 'Developer ID Installer: Test'; exit "${FAIL_SIGNATURE:-0}"
+  if [ "${FAIL_SIGNATURE:-0}" != 0 ]; then
+    echo 'Status: no signature'
+    echo 'pkgutil: unsigned fixture diagnostic' >&2
+    exit "$FAIL_SIGNATURE"
+  fi
+  echo 'Developer ID Installer: Test'; exit 0
 fi
 mkdir -p "$3/component/Payload/usr/local/lib/woow-pi-agent/tools/bin"
 touch "$3/component/Payload/usr/local/lib/woow-pi-agent/tools/bin/tmux"''',
-                'xcrun': 'exit "${FAIL_STAPLE:-0}"',
+                'xcrun': 'echo STAPLER_REACHED; exit "${FAIL_STAPLE:-0}"',
                 'spctl': 'exit "${FAIL_GATEKEEPER:-0}"',
                 'codesign': '''[ "${FAIL_CODESIGN:-0}" = 0 ] || exit 1
 echo 'Authority=Developer ID Application: Test'
@@ -263,8 +268,14 @@ echo 'Timestamp=Nov 14, 2026'
             for fail in (None, 'FAIL_SIGNATURE', 'FAIL_STAPLE', 'FAIL_GATEKEEPER', 'FAIL_CODESIGN'):
                 with self.subTest(fail=fail):
                     r = subprocess.run(['/bin/bash', str(REPO / 'scripts/verify-macos-pkg.sh'), str(pkg)],
-                                       env={**env, **({fail: '1'} if fail else {})}, capture_output=True, text=True)
+                                       env={**env, **({fail: '7' if fail == 'FAIL_SIGNATURE' else '1'} if fail else {})}, capture_output=True, text=True)
                     self.assertEqual(r.returncode == 0, fail is None, r.stderr)
+                    if fail == 'FAIL_SIGNATURE':
+                        self.assertEqual(r.returncode, 7)
+                        self.assertIn('Status: no signature', r.stderr)
+                        self.assertIn('pkgutil: unsigned fixture diagnostic', r.stderr)
+                        self.assertIn(f'package signature verification failed (exit 7): {pkg}', r.stderr)
+                        self.assertNotIn('STAPLER_REACHED', r.stdout + r.stderr)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
