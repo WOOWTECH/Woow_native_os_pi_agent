@@ -7,13 +7,16 @@ $temp = Join-Path ([IO.Path]::GetTempPath()) ('pa-ui-tests-' + [guid]::NewGuid()
 New-Item -ItemType Directory $temp | Out-Null
 try {
     $source = Join-Path $temp 'Launcher.cs'
+    # Framework csc must receive native paths, not mixed-separator repo paths.
+    $testSource = Join-Path $temp 'Launcher.Tests.cs'
+    [IO.File]::WriteAllText($testSource, [IO.File]::ReadAllText("$root/windows/tests/Launcher.Tests.cs"))
     [IO.File]::WriteAllText($source, [IO.File]::ReadAllText("$root/windows/Launcher.cs").Replace('@@PUBLISHER@@', 'WOOW TECH CO., LTD.'))
     $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     if (-not (Test-Path $compiler)) { $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe' }
     $target = if ($Output) { $Output } else { Join-Path $temp 'Launcher.Tests.exe' }
     $resource = @()
     if ($Installer) { $resource = @("/resource:$Installer,install-wsl.ps1") }
-    & $compiler /nologo /target:exe /platform:anycpu /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /main:LauncherTests "/out:$target" @resource $source "$root/windows/tests/Launcher.Tests.cs"
+    & $compiler /nologo /target:exe /platform:anycpu /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /main:LauncherTests "/out:$target" @resource $source $testSource
     if ($LASTEXITCODE -ne 0) { throw 'Launcher tests compilation failed' }
     & $target
     if ($LASTEXITCODE -ne 0) { throw 'Launcher UI tests failed' }
