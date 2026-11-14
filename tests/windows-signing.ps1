@@ -49,6 +49,8 @@ exit 17
     Assert-PaTest ($LASTEXITCODE -eq 17) 'launcher preserves installer exit code'
     Assert-PaTest (([IO.File]::ReadAllText($env:PA_TEST_MARKER)) -ceq $message) 'launcher preserves argument values without interpreting them'
 
+    $testSource = Join-Path $dir 'Launcher.Tests.cs'
+    [IO.File]::WriteAllText($testSource, [IO.File]::ReadAllText("$root/windows/tests/Launcher.Tests.cs"))
     $uiTest = Join-Path $dir 'Launcher.Tests.exe'
     & "$root/tests/windows-launcher-ui.ps1" -Installer $fixture -Output $uiTest
     $guiOutput = & $uiTest --run-installer -Message $message -Yes
@@ -96,7 +98,7 @@ exit 17
             $rejectedCode = $LASTEXITCODE
             $ErrorActionPreference = $oldPreference
             Assert-PaTest ($rejectedCode -ne 0) "EXE runtime rejects $kind embedded script"
-            & $csc /nologo /target:exe /platform:anycpu /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /main:LauncherTests "/out:$badExe" "/resource:$fixture,install-wsl.ps1" $cs "$root/windows/tests/Launcher.Tests.cs"
+            & $csc /nologo /target:exe /platform:anycpu /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /main:LauncherTests "/out:$badExe" "/resource:$fixture,install-wsl.ps1" $cs $testSource
             Assert-PaTest ($LASTEXITCODE -eq 0) 'negative GUI worker fixture compiles'
             $null = & $badExe --run-installer -Message test
             Assert-PaTest ($LASTEXITCODE -ne 0) "GUI worker rejects $kind embedded script"
