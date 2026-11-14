@@ -49,13 +49,23 @@ internal static class Launcher
         // The user explicitly starts the installation in the form. -Yes never
         // consents to reboot in install-wsl.ps1. NonInteractive fails unexpected
         // prompts instead of leaving an invisible Read-Host waiting forever.
-        if (!forwarded.Exists(a => String.Equals(a, "-Yes", StringComparison.OrdinalIgnoreCase)))
-            forwarded.Add("-Yes");
-        using (var form = new InstallerForm(forwarded.ToArray()))
+        using (var form = new InstallerForm(PrepareGuiArguments(forwarded.ToArray())))
         {
             Application.Run(form);
             return form.ExitCode;
         }
+    }
+
+    internal static string[] PrepareGuiArguments(string[] args)
+    {
+        var forwarded = new List<string>(args);
+        // PowerShell binds -Y and -Ye to -Yes; adding the long name again is
+        // a duplicate parameter error. Preserve the user's spelling and values.
+        if (!forwarded.Exists(a => String.Equals(a, "-Y", StringComparison.OrdinalIgnoreCase) ||
+                                   String.Equals(a, "-Ye", StringComparison.OrdinalIgnoreCase) ||
+                                   String.Equals(a, "-Yes", StringComparison.OrdinalIgnoreCase)))
+            forwarded.Add("-Yes");
+        return forwarded.ToArray();
     }
 
     internal static int RunInstaller(string[] args, Action<string> output)
@@ -90,8 +100,15 @@ internal static class Launcher
                 command += "; exit $LASTEXITCODE } catch { Write-Error $_; exit 1 }";
                 string shell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
                     @"WindowsPowerShell\v1.0\powershell.exe");
-                var start = new ProcessStartInfo(shell, (output == null ? "" : "-NonInteractive ") + "-NoProfile -OutputFormat Text -ExecutionPolicy Bypass -EncodedCommand " +
-                    Convert.ToBase64String(Encoding.Unicode.GetBytes(command)));
+                string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
+                // Windows PowerShell serializes redirected stderr as CLIXML for
+                // -EncodedCommand, even with -OutputFormat Text. A text -Command
+                // bootstrap avoids that special mode. Only base64 is interpolated;
+                // native arguments still pass through Literal and the same guard.
+                string invocation = output == null ? "-EncodedCommand " + encoded :
+                    "-Command \"& ([ScriptBlock]::Create([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('" + encoded + "'))))\"";
+                var start = new ProcessStartInfo(shell, (output == null ? "" : "-NonInteractive ") +
+                    "-NoProfile -OutputFormat Text -ExecutionPolicy Bypass " + invocation);
                 // Bypass avoids a separate TrustedPublisher prompt. Our explicit check above is mandatory.
                 start.UseShellExecute = false;
                 // PowerShell 7 passes its own module path to native children. The

@@ -24,8 +24,17 @@ internal static class LauncherTests
         {
             var forwarded = new string[args.Length - 1];
             Array.Copy(args, 1, forwarded, 0, forwarded.Length);
-            return Launcher.RunInstaller(forwarded, Console.WriteLine);
+            return Launcher.RunInstaller(Launcher.PrepareGuiArguments(forwarded), Console.WriteLine);
         }
+        foreach (string yes in new[] { "-Y", "-Ye", "-Yes", "-y", "-yE", "-YES" })
+        {
+            string[] original = new[] { "-BundlePath", @"C:\QA assets\candidate.tar.gz", yes };
+            string[] actual = Launcher.PrepareGuiArguments(original);
+            Check(String.Join("|", actual) == String.Join("|", original), "GUI preserves " + yes + " without duplicate Yes");
+        }
+        string[] added = Launcher.PrepareGuiArguments(new[] { "-DryRun" });
+        Check(added.Length == 2 && added[0] == "-DryRun" && added[1] == "-Yes", "GUI adds Yes when absent");
+        Check(Launcher.PrepareGuiArguments(new string[0])[0] == "-Yes", "default GUI adds Yes");
         Check(InstallerForm.ValidLocalUrl("http://localhost:43210/") == "http://localhost:43210/", "nondefault port is preserved");
         foreach (string url in new[] { "https://localhost:43210/", "http://example.com:43210/", "file:///C:/test", "http://localhost:80/", "http://user@localhost:43210/", "http://localhost:43210/?x=1", "http://localhost:43210/path", "broken" })
             Check(InstallerForm.ValidLocalUrl(url) == null, "reject unexpected URL: " + url);
