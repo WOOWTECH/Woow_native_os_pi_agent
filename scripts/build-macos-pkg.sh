@@ -96,12 +96,6 @@ if [ -n "$NOTARY_KEY$NOTARY_KEY_ID$NOTARY_ISSUER" ]; then
 fi
 [ -z "$KEYCHAIN" ] || [ -f "$KEYCHAIN" ] || die "no such keychain: $KEYCHAIN"
 
-TOOLS="${TOOLS:-$HERE/dist/tools-macos-$ARCH}"
-[ -x "$TOOLS/bin/tmux" ] \
-  || die "no bundled tmux at $TOOLS/bin/tmux -- run scripts/build-macos-tmux.sh (or pass --tools)"
-file -b "$TOOLS/bin/tmux" | grep -q "Mach-O 64-bit executable $HOSTARCH" \
-  || die "$TOOLS/bin/tmux is not a $HOSTARCH executable: $(file -b "$TOOLS/bin/tmux")"
-
 # Version, in order of trust: explicit env, the VERSION file, then git. The
 # payload is unpacked outside a git checkout when CI or a build host uses it, and
 # silently stamping 0.0.0 produces a pkg that looks releasable and is not.
@@ -110,6 +104,18 @@ VERSION="${PI_AGENT_VERSION:-}"
 [ -n "$VERSION" ] || VERSION="$(git -C "$HERE" describe --tags --abbrev=0 2>/dev/null || true)"
 [ -n "$VERSION" ] || die "cannot determine version: set PI_AGENT_VERSION or add a VERSION file"
 VERSION="${VERSION#v}"
+# Package versions support SemVer core + prerelease, without build metadata.
+# Reject path/XML characters and numeric identifiers with leading zeroes.
+NUM='(0|[1-9][0-9]*)'
+PRE="($NUM|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+printf '%s' "$VERSION" | grep -Eq "^$NUM\.$NUM\.$NUM(-$PRE(\.$PRE)*)?$" \
+  || die 'version must be SemVer major.minor.patch[-prerelease], without build metadata'
+
+TOOLS="${TOOLS:-$HERE/dist/tools-macos-$ARCH}"
+[ -x "$TOOLS/bin/tmux" ] \
+  || die "no bundled tmux at $TOOLS/bin/tmux -- run scripts/build-macos-tmux.sh (or pass --tools)"
+file -b "$TOOLS/bin/tmux" | grep -q "Mach-O 64-bit executable $HOSTARCH" \
+  || die "$TOOLS/bin/tmux is not a $HOSTARCH executable: $(file -b "$TOOLS/bin/tmux")"
 
 # Expanded as ${KC_ARGS[@]+"${KC_ARGS[@]}"}: bash 3.2 (macOS /bin/bash) treats
 # an empty array as unbound under set -u.
@@ -153,6 +159,8 @@ mkdir -p "$ROOT$PAYLOAD" "$SCRIPTS"
 # once left out this way, and the omnigent stage skipped itself).
 tar cf - -C "$HERE" install.sh lib rootfs scripts tests docs README.md vendor VERSION \
   | tar xf - -C "$ROOT$PAYLOAD"
+# The resolved package version is authoritative inside the installed payload too.
+printf '%s\n' "$VERSION" > "$ROOT$PAYLOAD/VERSION"
 mkdir -p "$ROOT$PAYLOAD/tools"
 cp -Rp "$TOOLS/." "$ROOT$PAYLOAD/tools/"
 for f in install.sh lib/pins.sh vendor/omnigent-requirements.lock VERSION \
@@ -275,6 +283,12 @@ X="$WORK/expanded"
 pkgutil --expand-full "$PKG" "$X" >/dev/null
 P="$(find "$X" -type d -path "*/Payload$PAYLOAD" -print -quit)"
 [ -n "$P" ] || die "expanded pkg has no $PAYLOAD"
+[ "$(cat "$P/VERSION")" = "$VERSION" ] || die 'payload VERSION differs from package version'
+# Read back Apple's parsed component metadata, not just our filename.
+PACKAGE_INFO="${P%/Payload*}/PackageInfo"
+[ -f "$PACKAGE_INFO" ] || die 'expanded component has no PackageInfo'
+RECORDED_VERSION="$(/usr/bin/xmllint --xpath 'string(/pkg-info/@version)' "$PACKAGE_INFO")"
+[ "$RECORDED_VERSION" = "$VERSION" ] || die "pkgutil component version differs: $RECORDED_VERSION"
 for entry in 'Pi Agent.command' 'Pi Agent Repair.command'; do
   launcher="${P%"$PAYLOAD"}/Applications/$entry"
   [ -n "$(find "$launcher" -perm -o+rx -print)" ] || die "launcher is missing or unreadable: $entry"

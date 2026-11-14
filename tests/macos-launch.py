@@ -133,6 +133,19 @@ echo 'stage service' ''')
         self.assertNotEqual(self.run_launcher().returncode, 0)
         self.assertFalse(self.install.exists())
 
+    def test_package_version_validation_before_native_tools(self):
+        for version, valid in [('0.3.0-rc.8', True), ('v0.3.0-rc.8', True),
+                               ('1.2.3', True), ('01.2.3', False),
+                               ('1.2.3-rc.08', False), ('1.2', False),
+                               ('1.2.3+build', False), ('../bad', False)]:
+            with self.subTest(version=version):
+                r = subprocess.run(['/bin/bash', str(REPO / 'scripts/build-macos-pkg.sh'),
+                                    '--artifact-url', 'https://example.invalid/piweb-macos-arm64.tar.gz',
+                                    '--artifact-sha256', 'a' * 64, '--tools', '/nonexistent/pi-agent-test'],
+                                   env={**os.environ, 'PI_AGENT_VERSION': version}, capture_output=True, text=True)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn('no bundled tmux' if valid else 'version must be SemVer', r.stderr)
+
     def test_release_gate_rejects_unsigned_before_tools(self):
         r = subprocess.run(['/bin/bash', str(REPO / 'scripts/build-macos-pkg.sh'), '--release'], text=True, capture_output=True)
         self.assertNotEqual(r.returncode, 0)
