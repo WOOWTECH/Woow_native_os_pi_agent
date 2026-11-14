@@ -57,7 +57,15 @@ exit 17
     Assert-PaTest ($LASTEXITCODE -eq 17) 'GUI worker preserves installer exit code and fixed-byte lock'
     Assert-PaTest (($guiOutput -join "`n").Contains('fixture-output:' + $message)) 'GUI worker drains stdout and preserves arguments'
     Assert-PaTest (($guiOutput -join "`n").Contains('fixture-stderr')) 'GUI worker drains stderr'
+    Assert-PaTest (-not ($guiOutput -join "`n").Contains('#< CLIXML')) 'GUI worker emits plain text rather than serialized error records'
     Assert-PaTest (([IO.File]::ReadAllText($env:PA_TEST_MARKER)) -ceq $message) 'GUI worker executes signed fixture with exact argument value'
+    foreach ($yes in '-Y', '-Ye', '-y', '-yE') {
+        $abbreviationMessage = "GUI abbreviation $yes"
+        $abbreviationOutput = & $uiTest --run-installer -Message $abbreviationMessage $yes
+        Assert-PaTest ($LASTEXITCODE -eq 17) "GUI accepts $yes without duplicate switch binding"
+        Assert-PaTest (([IO.File]::ReadAllText($env:PA_TEST_MARKER)) -ceq $abbreviationMessage) "GUI preserves arguments with $yes"
+    }
+
 
     # Reproduce invocation from pwsh: its core modules cannot load in Windows PowerShell.
     $savedModulePath = $env:PSModulePath
