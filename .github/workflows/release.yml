@@ -189,14 +189,22 @@ jobs:
           $m = [regex]::Match($doc, '(?s)<!-- signed-install-command -->\s*```powershell\s*(.*?)\s*```')
           if (-not $m.Success) { Write-Output '::error::no install command in docs/WSL2.md'; exit 1 }
           Write-Output $m.Groups[1].Value
-          & ([ScriptBlock]::Create($m.Groups[1].Value.Replace('& $p', '& $p -Yes -NoAutostart')))
-          $code = $LASTEXITCODE
+          $code = 1
+          try {
+            & ([ScriptBlock]::Create($m.Groups[1].Value.Replace('& $p', '& $p -Yes -NoAutostart')))
+            $code = $LASTEXITCODE
+          } catch { Write-Output ('::error::Verified install command failed: ' + $_.Exception.Message) }
           # The file people double-click, from the release, over that install. stdin is NUL here, so its
           # pause returns at once. Nothing can press a key or see a window on a runner.
           $cmdFile = Join-Path (Get-Location).Path 'Install-Pi-Agent.exe'
           Invoke-WebRequest -UseBasicParsing -OutFile $cmdFile ('https://github.com/' + $env:GITHUB_REPOSITORY + '/releases/download/' + $env:GITHUB_REF_NAME + '/Install-Pi-Agent.exe')
-          & $cmdFile -Yes -NoAutostart 2>&1 | Out-Null
-          $cmdCode = $LASTEXITCODE
+          $held = [IO.File]::Open($cmdFile, 'Open', 'Read', 'Read')
+          try {
+            $sig = Get-AuthenticodeSignature -LiteralPath $cmdFile
+            if ($sig.Status -ne 'Valid' -or -not $sig.TimeStamperCertificate -or $sig.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false) -cne 'WOOW TECH CO., LTD.') { throw 'Downloaded EXE signature is invalid' }
+            & $cmdFile -Yes -NoAutostart 2>&1 | Out-Null
+            $cmdCode = $LASTEXITCODE
+          } finally { $held.Dispose() }
           $marker = (wsl.exe -d PiAgent --exec /bin/cat /etc/pi-agent-distro | Out-String)
           $want = 'installer=' + ($env:GITHUB_REF_NAME -replace '^v', '')
           $ok = ($code -eq 0) -and ($cmdCode -eq 0) -and $marker.Contains($want)
