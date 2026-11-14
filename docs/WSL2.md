@@ -31,32 +31,24 @@ Linux 主機,所以 Pi Agent、Claude Code、Codex 三個代理的行為跟 Linu
 
 ## 安裝
 
-在 PowerShell(不必是系統管理員)貼上:
+以下是下一個已簽章候選版 `v0.3.0-rc.7` 的安裝方式，**尚未發佈**；rc.6 及更舊版本的檔案未簽章，不能通過這個檢查。不要把下面網址改成舊版本。
 
+下載發佈頁的 `Install-Pi-Agent.exe` 並雙擊。Windows 顯示的簽署者應為 **WOOW TECH CO., LTD.**。
+程式內含已簽章的安裝腳本，會先驗證簽章與發行者再執行。簽章不保證新檔案立即累積 SmartScreen 信譽，也不會覆蓋公司的安全原則。
+
+要從 PowerShell 安裝（不必是系統管理員），使用這段先驗證再執行的指令：
+
+<!-- signed-install-command -->
 ```powershell
-$u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3.0-rc.6/install-wsl.ps1'
-& ([ScriptBlock]::Create(([Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing $u).RawContentStream.ToArray())).TrimStart([char]0xFEFF)))
+$u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3.0-rc.7/install-wsl.ps1'
+$p=Join-Path ([IO.Path]::GetTempPath()) (([guid]::NewGuid().ToString('N'))+'.ps1'); $h=$null; try { Invoke-WebRequest -UseBasicParsing -ErrorAction Stop -Uri $u -OutFile $p; $h=[IO.File]::Open($p,'Open','Read','Read'); $s=Get-AuthenticodeSignature -LiteralPath $p; if ($s.Status -ne 'Valid' -or $s.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false) -cne 'WOOW TECH CO., LTD.') { throw 'Installer signature or publisher is invalid' }; & $p  } finally { if ($h) { $h.Dispose() }; Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
 ```
 
-這樣寫(而不是 `irm … | iex`)是因為 Windows PowerShell 5.1 會依回應標頭猜編碼,可能把中文訊息讀成亂碼;
-這裡明確用 UTF-8 解碼。
+腳本以 UTF-8 BOM 發佈；下載時保留原始位元組，驗證 Windows 信任鏈與公司名稱後才執行。
+舊的 `Install-Pi-Agent.cmd` 入口仍保留，也會驗證下載腳本，但 `.cmd` 本身無法加上同樣的內嵌簽章。
+驗證失敗時停止安裝，請重新下載正確版本，不要移除驗證步驟。
 
-**不想貼指令的話,也可以雙擊:** 到發佈頁下載 `Install-Pi-Agent.cmd`,雙擊它。它做的事和上面那兩行一樣,跑完視窗會停著讓你看結果,按任意鍵才關。
-這個檔案沒有程式碼簽章,所以會跳警告。它是純文字,可以先用記事本打開看。以下是在 Windows 10 和 Windows 11 上實際看到的畫面,兩邊的字一樣:
-
-1. 下載時,Edge 問「Install-Pi-Agent.cmd 可能會危害您的裝置。是否仍要保留?」:按「保留」。Chrome 沒有問,直接下載完成(Chrome 157,全新的設定檔)。
-2. 雙擊時,Windows 問「無法確認發行者,您確定要執行這個軟體?」:按「執行」。
-
-有些電腦跳的可能是「Windows 已保護您的電腦」(這個畫面還沒有實際看過):按「其他資訊」→「仍要執行」。
-
-**如果跳的是「智慧型應用程式控制已封鎖可能不安全的檔案」**,只有「確定」可以按,這個檔案就執行不了。新電腦可能開著這個功能(Smart App Control)。有兩個辦法,都試過可行:
-
-- 改用上面那兩行指令。
-- 在檔案上按右鍵 →「內容」→ 勾選「解除封鎖」→「確定」,再雙擊一次。
-
-現在是預覽版,所以網址寫明版本:GitHub 的 `releases/latest` 不會指到預覽版。發佈頁在 [v0.3.0-rc.6](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/tag/v0.3.0-rc.6)。
-
-可以在最後面加選項:
+在 EXE 後面、或 PowerShell 指令中的 `& $p` 後面加選項：
 
 | 選項 | 意思 |
 |---|---|

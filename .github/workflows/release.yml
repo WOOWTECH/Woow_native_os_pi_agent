@@ -82,13 +82,56 @@ jobs:
           name: wsl-bundle
           path: dist-wsl/*
 
+  windows-sign:
+    needs: wsl-bundle
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: wsl-bundle
+          path: dist-wsl
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Fetch pinned jsign
+        shell: pwsh
+        run: |
+          $jar = Join-Path $env:RUNNER_TEMP 'jsign-7.5.jar'
+          Invoke-WebRequest 'https://github.com/ebourg/jsign/releases/download/7.5/jsign-7.5.jar' -OutFile $jar
+          if ((Get-FileHash $jar -Algorithm SHA256).Hash -ne '602a51c3545a6dc4fb99bd2ea7152b26d1345916d0c93ddfbd5936cb735af91c') { throw 'Unexpected jsign hash' }
+          Add-Content $env:GITHUB_ENV "JSIGN_JAR=$jar"
+      - name: Sign script, embed it in the launcher, and sign launcher
+        shell: powershell
+        env:
+          ESIGNER_STOREPASS: ${{ secrets.ESIGNER_STOREPASS }}
+          ESIGNER_CREDENTIAL_ID: ${{ secrets.ESIGNER_CREDENTIAL_ID }}
+          ESIGNER_TOTP_SECRET: ${{ secrets.ESIGNER_TOTP_SECRET }}
+        run: |
+          ./scripts/sign-windows.ps1 -Path dist-wsl/install-wsl.ps1
+          ./scripts/build-windows-launcher.ps1 -Installer dist-wsl/install-wsl.ps1 -Output dist-wsl/Install-Pi-Agent.exe
+          ./scripts/sign-windows.ps1 -Path dist-wsl/Install-Pi-Agent.exe
+          # No WSL mutations. This checks the actual signed launcher's embedded-script path.
+          & ./dist-wsl/Install-Pi-Agent.exe -DryRun
+          if ($LASTEXITCODE -ne 0) { throw 'Signed launcher dry run failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wsl-signed
+          path: dist-wsl/*
+          retention-days: 14
+
   release:
-    needs: [artifact, wsl-bundle]
+    needs: [artifact, windows-sign]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/download-artifact@v4
-        with: { path: dist, merge-multiple: true }
+        with:
+          pattern: '{macos-arm64,linux-*,wsl-signed}'
+          path: dist
+          merge-multiple: true
       - name: Attach to the release
         uses: softprops/action-gh-release@v2
         with:
@@ -100,6 +143,7 @@ jobs:
             dist/*.sha256
             dist/install-wsl.ps1
             dist/Install-Pi-Agent.cmd
+            dist/Install-Pi-Agent.exe
           body: |
             Built by CI from ${{ github.ref_name }}.
             ${{ contains(github.ref_name, '-') && '**Preview: not the latest release.** Read the status at the top of the guide linked below first.' || '' }}
@@ -109,16 +153,12 @@ jobs:
 
                 PI_AGENT_PIWEB_ARTIFACT=<url> ./install.sh
 
-            Windows (WSL2): `install-wsl.ps1` sets up a dedicated WSL2 Linux and
-            installs Pi Agent in it; `pi-agent-installer-*.tar.gz` is what it unpacks
-            there. In PowerShell:
-
-                $u = 'https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install-wsl.ps1'
-                & ([ScriptBlock]::Create(([Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing $u).RawContentStream.ToArray())).TrimStart([char]0xFEFF)))
-
-            Or download `Install-Pi-Agent.cmd` from this page and double-click it. It does the same, and it is
-            plain text you can read first. It is not code-signed, so the browser and Windows warn about it: Keep, then Run.
-            If Smart App Control blocks it, use the command above, or tick Unblock in the file's Properties.
+            Windows (WSL2): download `Install-Pi-Agent.exe` and double-click it.
+            The launcher and its embedded `install-wsl.ps1` are signed by WOOW TECH CO., LTD.
+            The launcher verifies the script before execution. Signing does not guarantee
+            that SmartScreen or an organization's policies will allow a new installer.
+            `Install-Pi-Agent.cmd` remains a legacy text entry point; it verifies the
+            downloaded script but the CMD file itself cannot carry this signature.
 
             Options, what it changes and how to remove it:
             https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/docs/WSL2.md
@@ -141,16 +181,16 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $doc = [IO.File]::ReadAllText((Join-Path (Get-Location).Path 'docs\WSL2.md'))
-          $m = [regex]::Match($doc, '(?m)^\$u = ''.*/install-wsl\.ps1''\r?\n& \(\[ScriptBlock\]::Create\(.*$')
+          $m = [regex]::Match($doc, '(?s)<!-- signed-install-command -->\s*```powershell\s*(.*?)\s*```')
           if (-not $m.Success) { Write-Output '::error::no install command in docs/WSL2.md'; exit 1 }
-          Write-Output $m.Value
-          & ([ScriptBlock]::Create($m.Value.TrimEnd() + ' -Yes -NoAutostart'))
+          Write-Output $m.Groups[1].Value
+          & ([ScriptBlock]::Create($m.Groups[1].Value.Replace('& $p', '& $p -Yes -NoAutostart')))
           $code = $LASTEXITCODE
           # The file people double-click, from the release, over that install. stdin is NUL here, so its
           # pause returns at once. Nothing can press a key or see a window on a runner.
-          $cmdFile = Join-Path (Get-Location).Path 'Install-Pi-Agent.cmd'
-          Invoke-WebRequest -UseBasicParsing -OutFile $cmdFile ('https://github.com/' + $env:GITHUB_REPOSITORY + '/releases/download/' + $env:GITHUB_REF_NAME + '/Install-Pi-Agent.cmd')
-          & cmd.exe /c "`"$cmdFile`" -Yes -NoAutostart < NUL" 2>&1 | Out-Null
+          $cmdFile = Join-Path (Get-Location).Path 'Install-Pi-Agent.exe'
+          Invoke-WebRequest -UseBasicParsing -OutFile $cmdFile ('https://github.com/' + $env:GITHUB_REPOSITORY + '/releases/download/' + $env:GITHUB_REF_NAME + '/Install-Pi-Agent.exe')
+          & $cmdFile -Yes -NoAutostart 2>&1 | Out-Null
           $cmdCode = $LASTEXITCODE
           $marker = (wsl.exe -d PiAgent --exec /bin/cat /etc/pi-agent-distro | Out-String)
           $want = 'installer=' + ($env:GITHUB_REF_NAME -replace '^v', '')
