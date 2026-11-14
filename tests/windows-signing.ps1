@@ -39,6 +39,15 @@ try {
     Assert-PaTest ($LASTEXITCODE -eq 17) 'launcher preserves installer exit code'
     Assert-PaTest (([IO.File]::ReadAllText($env:PA_TEST_MARKER)) -ceq $message) 'launcher preserves argument values without interpreting them'
 
+    # Reproduce invocation from pwsh: its core modules cannot load in Windows PowerShell.
+    $savedModulePath = $env:PSModulePath
+    try {
+        $env:PSModulePath = Join-Path $env:ProgramFiles 'PowerShell/7/Modules'
+        & $exe -Message 'from-pwsh'
+        Assert-PaTest ($LASTEXITCODE -eq 17) 'launcher isolates Windows PowerShell from inherited PS7 modules'
+        Assert-PaTest (([IO.File]::ReadAllText($env:PA_TEST_MARKER)) -ceq 'from-pwsh') 'installer executes with inherited PS7 module path'
+    } finally { $env:PSModulePath = $savedModulePath }
+
     # Test the generated download command and the reboot-resume stub with real signatures.
     $env:PI_AGENT_WSL_TEST = '1'
     $installer = Join-Path $dir 'source.ps1'

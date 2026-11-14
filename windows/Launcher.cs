@@ -45,6 +45,9 @@ internal static class Launcher
                     Convert.ToBase64String(Encoding.Unicode.GetBytes(command)));
                 // Bypass avoids a separate TrustedPublisher prompt. Our explicit check above is mandatory.
                 start.UseShellExecute = false;
+                // PowerShell 7 passes its own module path to native children. The
+                // installer uses Windows PowerShell inbox modules, not PS7 assemblies.
+                start.EnvironmentVariables["PSModulePath"] = Path.Combine(Path.GetDirectoryName(shell), "Modules");
                 using (Process process = Process.Start(start)) { process.WaitForExit(); code = process.ExitCode; }
             }
         }
