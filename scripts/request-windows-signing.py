@@ -4,6 +4,7 @@
 Requires Python 3 and a GitHub CLI login with Actions write access to both repos.
 No signing credential is read, exported, or copied by this command.
 """
+import argparse
 import datetime
 import json
 from pathlib import Path
@@ -61,6 +62,9 @@ def wait(repo, run_id):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--verify-install", action="store_true", help="Run full signed installer lifecycle on disposable Windows WSL2 CI")
+    options = parser.parse_args()
     config = json.loads((ROOT / 'scripts/windows-signer.json').read_text())
     version = (ROOT / 'VERSION').read_text().strip()
     sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -89,6 +93,7 @@ def main():
     print(f'Signing run: {signing}; source: {sha}', flush=True)
     verification = dispatch(TARGET, 'release.yml', ref, sha, {
         'version': version, 'windows_only': 'true', 'signed_run_id': str(signing),
+        'verify_windows_install': str(options.verify_install).lower(),
     })
     wait(TARGET, verification)
     print(f'Verified artifact: https://github.com/{TARGET}/actions/runs/{verification}', flush=True)

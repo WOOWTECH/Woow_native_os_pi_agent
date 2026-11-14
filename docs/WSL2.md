@@ -1,5 +1,7 @@
 # Pi Agent on Windows 11 (WSL2)
 
+> **`v0.3.0-rc.8` 候選：** 雙擊 EXE 會顯示圖形化安裝、階段進度、紀錄和重試；保留 WSL2。未公開發佈，建置／實測結果以候選 CI 為準。
+
 > **`v0.3.0-rc.7`：Windows 簽章預覽版。** 新增已簽章的 EXE 與 PS1；正式簽章、成品驗證與 EXE `-DryRun` 已通過。完整 WSL2 CI 的安裝、互通、保活、重跑及解除安裝也已通過（[執行紀錄](https://github.com/WOOWTECH/Woow_native_os_pi_agent/actions/runs/43545382063)）。新 EXE 的實體 Windows 完整安裝仍需另驗；以下 rc.6 以前的實測紀錄不代表新入口已在實體電腦驗過。發佈資產見 [rc.7](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/tag/v0.3.0-rc.7)。
 >
 > **前版狀態:預覽版(`v0.3.0-rc.6`;Windows 部分與 rc.3 相同,另加 2026-11-10 在 Allwinner H618 4 GB 板上找到的修正,見 `docs/RELEASE-0.3.0-rc.6.md`)。** 比 rc.2 多了 2026-11-05 在 Windows 11 上試出來的幾個修正(登入時多出一個關不得的終端機視窗、電腦還沒裝 WSL 時畫面靜止 2 分鐘、WSL 啟動逾時、把自己的 Linux 誤判成別人的)。裝過 rc.1 或 rc.2 的電腦,重跑同樣的安裝就會換成新的。
@@ -33,7 +35,7 @@ Linux 主機,所以 Pi Agent、Claude Code、Codex 三個代理的行為跟 Linu
 
 ## 安裝
 
-以下是已簽章預覽版 `v0.3.0-rc.7` 的安裝方式；rc.6 及更舊版本的檔案未簽章，不能通過這個檢查。不要把下面網址改成舊版本。
+以下是候選版 `v0.3.0-rc.8` 發佈後的安裝方式（目前尚未公開，請勿執行下載段落）；rc.6 及更舊版本的檔案未簽章，不能通過這個檢查。不要把下面網址改成舊版本。
 
 下載發佈頁的 `Install-Pi-Agent.exe` 並雙擊。Windows 顯示的簽署者應為 **WOOW TECH CO., LTD.**。
 程式內含已簽章的安裝腳本，會先驗證簽章與發行者再執行。簽章不保證新檔案立即累積 SmartScreen 信譽，也不會覆蓋公司的安全原則。
@@ -42,7 +44,7 @@ Linux 主機,所以 Pi Agent、Claude Code、Codex 三個代理的行為跟 Linu
 
 <!-- signed-install-command -->
 ```powershell
-$u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3.0-rc.7/install-wsl.ps1'
+$u = 'https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.3.0-rc.8/install-wsl.ps1'
 $p=Join-Path ([IO.Path]::GetTempPath()) (([guid]::NewGuid().ToString('N'))+'.ps1'); $h=$null; try { Invoke-WebRequest -UseBasicParsing -ErrorAction Stop -Uri $u -OutFile $p; $h=[IO.File]::Open($p,'Open','Read','Read'); $s=Get-AuthenticodeSignature -LiteralPath $p; if ($s.Status -ne 'Valid' -or $s.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false) -cne 'WOOW TECH CO., LTD.') { throw 'Installer signature or publisher is invalid' }; & $p  } finally { if ($h) { $h.Dispose() }; Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
 ```
 
