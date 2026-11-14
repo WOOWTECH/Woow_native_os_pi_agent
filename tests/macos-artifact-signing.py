@@ -170,7 +170,7 @@ else:
         calls = [c for c in self.calls() if c[0] == 'security']
         self.assertEqual(calls[-1], ['security', 'list-keychains', '-d', 'user', '-s',
                                     '/tmp/Original Keychain', '/tmp/login.keychain-db'])
-        self.assertIn(str(keychain), calls[1])
+        self.assertIn(str(keychain.resolve()), calls[1])
         self.assertFalse(self.out.exists())
 
     def test_non_native_mutation_is_rejected(self):
