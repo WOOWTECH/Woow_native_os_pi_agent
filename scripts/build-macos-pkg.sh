@@ -105,6 +105,12 @@ if [ -n "$ART_FILE" ]; then
   ART_FILE="$(cd "$(dirname "$ART_FILE")" && pwd)/$ART_NAME"
   [ "$(shasum -a 256 "$ART_FILE" | awk '{print $1}')" = "$ART_SHA" ] || die 'local artifact sha256 mismatch'
 fi
+# Embedded release artifacts must already be signed; never mutate the caller's pin.
+# Verify before package construction, tool signing, or an expensive Apple submission.
+if [ "$RELEASE" = 1 ] && [ -n "$ART_FILE" ]; then
+  "$HERE/scripts/sign-macos-piweb-artifact.sh" --verify-only \
+    --artifact-file "$ART_FILE" --artifact-sha256 "$ART_SHA" --sign-app "$SIGN_APP"
+fi
 if [ -n "$NOTARY_KEY$NOTARY_KEY_ID$NOTARY_ISSUER" ]; then
   [ -n "$NOTARY_KEY" ] && [ -n "$NOTARY_KEY_ID" ] && [ -n "$NOTARY_ISSUER" ] \
     || die "notarization needs all of --notary-key, --notary-key-id and --notary-issuer"

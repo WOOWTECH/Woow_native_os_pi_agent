@@ -728,3 +728,11 @@ an explicit `PI_AGENT_HOME` to avoid selecting the default location.
 For exact build inputs, formal signing gates and the required Mac evidence, see
 [PKG candidate acceptance](MACOS-PKG-ACCEPTANCE.md). Linux tests use command
 stand-ins and do not establish Finder, Apple trust, or native runtime support.
+
+
+Embedded formal PKGs also require the pi-web native files to be Developer ID
+signed before packaging. Use `scripts/sign-macos-piweb-artifact.sh` with the
+original SHA, then pass its **new output SHA** to the builder; see the
+[actual notarization failure and signing runbook](MACOS-PKG-ACCEPTANCE.md#sign-an-embedded-pi-web-artifact-build-host-only-python-396-compatible).
+The helper is for build hosts only and supports CLT Python 3.9.6 with isolated
+`-I` execution. End-user installation does not invoke it.

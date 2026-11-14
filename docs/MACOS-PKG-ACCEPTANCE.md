@@ -72,15 +72,93 @@ source manifests so stale URL/file selectors cannot win.
 
 This makes **pi-web** self-contained, not the entire installer: Node, plugins,
 CLIs and Python dependencies still need internet. The archive contains native
-modules; our unpacked Mach-O inventory and tmux signature check do not verify
-those nested binaries. The existing `--release` gate remains mandatory and Apple
-must accept the complete embedded package. Until native notarization succeeds,
-file-mode output is an engineering candidate, not a distributable signed result.
+modules. Apple's real notarization of the unsigned embedded arm64 tree failed:
+submission `c19875c2-1737-493b-b096-ec805e5e7cf9`, status **Invalid**, reported
+libvips/sharp/next-swc missing Developer ID signatures and secure timestamps.
+The package's own signature and signed tmux do not fix unsigned nested binaries.
+**Use the signing step below before an embedded formal build.** The release
+builder now verifies every embedded native file before package building/signing
+or submitting to Apple. It does not silently sign or replace the supplied SHA.
+
+### Sign an embedded pi-web artifact (build host only, Python 3.9.6 compatible)
+
+Use a dedicated build directory with enough room for the input snapshot, expanded
+runtime and new tarball. The helper needs Apple's `codesign`, `lipo`, `file`,
+Python 3.9+ and network access for secure timestamps. It does not install Python,
+import certificates or unlock keychains. `/usr/bin/python3` from CLT 3.9.6 is
+supported; the wrapper runs it with `-I`. An existing managed interpreter can be
+selected with `PI_AGENT_BUILD_PYTHON=/absolute/path/to/python3`. End-user setup
+never runs this helper and does not gain a Python/CLT requirement.
+
+```bash
+ARCH=arm64  # use x64 for the native Intel build
+INPUT="$PWD/dist/piweb-0.10.0-macos-$ARCH.tar.gz"
+INPUT_SHA="$(awk '{print $1}' "$INPUT.sha256")"
+SIGNED="$PWD/dist/piweb-0.10.0-signed-macos-$ARCH.tar.gz"
+: "${SIGN_APP:?existing Developer ID Application: Name (TEAMID)}"
+PI_AGENT_BUILD_PYTHON=/usr/bin/python3 scripts/sign-macos-piweb-artifact.sh \
+  --artifact-file "$INPUT" --artifact-sha256 "$INPUT_SHA" \
+  --out "$SIGNED" --sign-app "$SIGN_APP"
+# Add --keychain "$SIGNING_KEYCHAIN" only for an existing non-default keychain.
+# Equivalent direct interpreter invocation:
+# /usr/bin/python3 -I scripts/macos/piweb-artifact-signing.py <same arguments>
+SIGNED_SHA="$(awk '{print $1}' "$SIGNED.sha256")"
+scripts/sign-macos-piweb-artifact.sh --verify-only \
+  --artifact-file "$SIGNED" --artifact-sha256 "$SIGNED_SHA" --sign-app "$SIGN_APP"
+```
+
+The source archive remains unchanged. The helper creates a private snapshot,
+verifies its explicit SHA before unpacking, and rejects absolute/traversal paths,
+duplicate entries, special files, escaping link targets and writes through links.
+It retains source content (including `.git/HEAD`, refs, package and lock files)
+and internal relative symlinks. AppleDouble `._*` / `__MACOSX` bookkeeping and
+archive xattrs/ownership are not carried forward; stale resource-fork metadata
+must not be restored over freshly signed binaries. Hardlink members are safely
+materialized as separate regular files.
+
+All regular files are scanned by Mach-O magic and `file` classification, including
+files without extensions or executable bits, executables such as esbuild when
+present, dylibs and `.node` files. Every Mach-O is signed with Developer ID
+Application, `--options runtime --timestamp`, then checked with strict
+all-architecture verification. `lipo` enumerates every slice; each slice must
+show the expected Developer ID authority, runtime flag and secure timestamp.
+Included prebuilds for other architectures are signed too. No `--deep` shortcut
+or fixed filename allowlist is used. No entitlements are added. These signing
+options follow [Apple’s distribution-signing guidance](https://developer.apple.com/documentation/xcode/creating-distribution-signed-code-for-the-mac).
+
+If `--keychain` is supplied, commands run under the account's real HOME and the
+existing keychain is temporarily added to the user search list; the exact list
+(including paths with spaces) is restored in `finally` on success or command
+failure. The build lane should still treat forced process termination as an
+interruption requiring a check of its keychain search list.
+
+Outputs are a **new** architecture-named tarball, `.sha256`, and `.signing.json`
+with input/output hashes, public signing identity and the complete native file
+inventory. Existing outputs are refused. The report asserts that all non-native
+file bytes/modes and symlink targets stayed unchanged. Never reuse INPUT_SHA for
+the signed output: signing and repacking necessarily produce a new digest.
+No key material or keychain contents are written to the report or repository.
+
+For formal embedded builds, substitute these parameters into the signing command
+below:
+
+```bash
+# Keep all the --release / --sign-app / --sign / --notary-* options below.
+# Replace its source arguments with:
+# --artifact-file "$SIGNED" --artifact-sha256 "$SIGNED_SHA" --arch "$ARCH"
+```
+
+The builder's read-only preflight fails on unsigned/ad-hoc native objects,
+missing runtime/timestamp, invalid strict signatures or unexpected Developer ID.
+It verifies the caller's explicit digest and never alters it. Successful local
+checks do not replace Apple's accepted notarization, staple validation or actual
+Mac runtime tests. The signed artifact is a private candidate until those pass.
 
 ### Existing rc7 arm64 URL (no new staging)
 
 The existing public rc7 arm64 asset is compatible with this branch's pi-web
-inputs. On 2026-11-14 the actual 146,432,408-byte tarball was downloaded and its
+inputs in URL mode; for embedding in a formal package it must first be signed
+and repacked as above. On 2026-11-14 the actual 146,432,408-byte tarball was downloaded and its
 SHA matched the published sidecar. Its packaged `.git/HEAD` is the exact source
 pin, package version is 0.10.0, required settings routes are present, and
 node-pty's darwin-arm64 `pty.node` has the arm64 Mach-O CPU type.
@@ -141,7 +219,9 @@ For embedded mode, replace `--artifact-url "$ARTIFACT_URL"` above with
 tools. All signing and notarization parameters and gates are the same.
 
 `--release` fails before build if either Developer ID identity or any notary
-parameter is missing. It then requires accepted notarization and a valid staple.
+parameter is missing. In embedded mode it also rejects unsigned native files
+before package construction or submitting to Apple. It then requires accepted
+notarization and a valid staple.
 The independent verifier checks package Installer identity, staple, Gatekeeper,
 and bundled tmux's strict signature, Developer ID Application authority,
 hardened runtime and timestamp. Nonzero means **do not hand off as releasable**;
@@ -213,8 +293,34 @@ out of commits. Public publication remains a separate user confirmation.
 
 ## Linux implementation checks
 
+`python3 tests/macos-artifact-signing.py`: 10 hermetic tests covering real tar
+roundtrips, all-native/all-slice signing stubs, wrong SHA, unsigned rejection,
+missing trust properties, non-native mutation, unsafe archive graphs, output
+collision/relabel rejection, keychain restoration and Python 3.9 grammar.
 `python3 tests/macos-launch.py`: 19 hermetic tests, including command-stub trust
 failure cases. `bash -n` on the changed shell scripts and `git diff --check`.
 `bash tests/build-macos-pkg.sh` explicitly skips on Linux; it is not a native
 build pass. Native Apple verification, Finder behavior, CLT-free fresh installs,
 architecture/OS acceptance and real engine sessions remain Mac-lane dependencies.
+
+
+## Mac lane evidence for the notarization fix
+
+1. Start from the explicit input SHA and record Python version (`/usr/bin/python3
+   --version`). Run the helper with existing signing material, retaining its log,
+   `.signing.json`, original SHA and new SHA. Do not reuse the prior failed PKG.
+2. For the reviewed rc7 arm64 input, Linux's real archive scan found 9 Mach-O files:
+   two pi-tui darwin-platform prebuilds, sharp, libvips, next-swc, and node-pty's
+   pty/spawn-helper pairs for arm64 and x64. Other builds may have more, including
+   esbuild; do not pin the verification to nine. Confirm the entire inventory is
+   signed and source commit `6fcd7d44981ab51a21d6cd6eb06d361d0e3d3068` is preserved.
+3. Exercise `--verify-only` with the original unsigned archive: it must fail;
+   repeat with the signed output and its new SHA: it must pass. A builder
+   `--release --artifact-file` of the unsigned input must stop before submission.
+4. Build rc.8 using the **signed** artifact and new hash, then obtain a new Apple
+   submission with Accepted status. Retain the notary log and final verifier
+   result. Check native sharp/image processing, Next/SWC, node-pty and any bundled
+   executable at runtime; a signing pass alone does not prove they execute.
+
+The remote Mac lane is coordinated by the user/coordinator; no signing or Apple
+submission was performed by the Linux implementation agent.
