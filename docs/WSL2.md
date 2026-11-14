@@ -355,6 +355,8 @@ build 26300.9457(26H2),3 個 vCPU、10 GB 記憶體,沒有 TPM 與 Secure Boot;�
 
 ## 給工程師
 
+- 未公開的圖形安裝候選實作、`-Gui` 本機候選驗收方式與 Signer 編譯依賴，見 [`WINDOWS-INSTALLER-GUI.md`](WINDOWS-INSTALLER-GUI.md)；不代表現有 rc.7 發佈資產已包含 GUI。
+
 - 新的雙擊入口是 `windows/Launcher.cs`；`scripts/build-windows-launcher.ps1` 把已簽章的 `install-wsl.ps1` 嵌入 EXE。編譯時與執行時都驗證 Windows 信任鏈及 `WOOW TECH CO., LTD.`，執行時鎖住腳本避免驗證後被改寫。EXE 也必須簽章。
 - 簽章由 `WOOWTECH/woowtech-smart` 的 `Desktop Release`（`platform=pi-agent`、`publish=false`）處理。指定完整 commit 與版本，在沒有金鑰的 runner 建 bundle，再由該 repo 的固定腳本簽 PS1 與 EXE；每版通常兩次簽章，重試另計。
 - 此 repo **不需要 eSigner Secrets**。金鑰留在 woowtech-smart；不讀回、不複製。`scripts/windows-signer.json` 固定簽章服務的 `pi-agent-signer-v1` tag 與完整 commit，服務更新必須先審查並更新此設定。
