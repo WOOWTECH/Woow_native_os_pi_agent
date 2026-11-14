@@ -75,3 +75,6 @@ try {
     Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item Env:PI_AGENT_WSL_TEST, Env:PI_AGENT_WSL_NOEXIT, Env:PA_TEST_MARKER -ErrorAction SilentlyContinue
 }
+
+# The fixture deliberately exits 17; do not return that native exit code to Actions.
+exit 0

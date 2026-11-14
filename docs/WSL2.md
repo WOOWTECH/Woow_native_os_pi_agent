@@ -1,6 +1,8 @@
 # Pi Agent on Windows 11 (WSL2)
 
-> **狀態:預覽版(`v0.3.0-rc.6`;Windows 部分與 rc.3 相同,另加 2026-11-10 在 Allwinner H618 4 GB 板上找到的修正,見 `docs/RELEASE-0.3.0-rc.6.md`)。** 比 rc.2 多了 2026-11-05 在 Windows 11 上試出來的幾個修正(登入時多出一個關不得的終端機視窗、電腦還沒裝 WSL 時畫面靜止 2 分鐘、WSL 啟動逾時、把自己的 Linux 誤判成別人的)。裝過 rc.1 或 rc.2 的電腦,重跑同樣的安裝就會換成新的。
+> **此分支狀態：`v0.3.0-rc.7` 簽章候選版，尚未發佈。** 以下是已發佈 `v0.3.0-rc.6` 的實測紀錄，不能視為新簽章入口已在實體電腦驗過。
+>
+> **前版狀態:預覽版(`v0.3.0-rc.6`;Windows 部分與 rc.3 相同,另加 2026-11-10 在 Allwinner H618 4 GB 板上找到的修正,見 `docs/RELEASE-0.3.0-rc.6.md`)。** 比 rc.2 多了 2026-11-05 在 Windows 11 上試出來的幾個修正(登入時多出一個關不得的終端機視窗、電腦還沒裝 WSL 時畫面靜止 2 分鐘、WSL 啟動逾時、把自己的 Linux 誤判成別人的)。裝過 rc.1 或 rc.2 的電腦,重跑同樣的安裝就會換成新的。
 > 驗證到哪裡(每一項的細節在最後的「驗證到哪裡」):
 >
 > - **GitHub 的 Windows Server 2025 雲端機**:完整跑通(自我檢查 24 項全過、保活、重跑、兩種解除安裝),也從真網址裝過發佈版。
@@ -353,7 +355,12 @@ build 26300.9457(26H2),3 個 vCPU、10 GB 記憶體,沒有 TPM 與 Secure Boot;�
 
 ## 給工程師
 
-- 雙擊檔的範本是 `windows/install-pi-agent.cmd.in`,發佈時蓋上網址、轉成 CRLF,變成 `Install-Pi-Agent.cmd`。參數會傳給安裝程式,但值不能有空白。
+- 新的雙擊入口是 `windows/Launcher.cs`；`scripts/build-windows-launcher.ps1` 把已簽章的 `install-wsl.ps1` 嵌入 EXE。編譯時與執行時都驗證 Windows 信任鏈及 `WOOW TECH CO., LTD.`，執行時鎖住腳本避免驗證後被改寫。EXE 也必須簽章。
+- `release.yml` 的 `windows-sign` 等待版本、網址與 bundle 雜湊蓋好後才簽 PowerShell 腳本，再簽 EXE；發佈只取 `wsl-signed`，不會誤取未簽章的 `wsl-bundle`。兩次簽章都檢查時間戳與發行者。每版通常消耗兩次 eSigner 簽章，重試另計。
+- 此 repo 必須設定 `ESIGNER_STOREPASS`（`帳號|密碼`）、`ESIGNER_CREDENTIAL_ID`、`ESIGNER_TOTP_SECRET`（Base64）。Secret 必須單行；不要放進 git。`WIN_PUBLISHER_DN` 不需要：此安裝程式固定驗證公司的名稱。
+- 手動執行 `release`，版本填 `0.3.0-rc.7`、勾選 `windows_only`，可只產生簽章測試成品；不會建立 GitHub Release。新版本發佈仍需另行核准。
+- `tests/windows-signing.ps1` 在拋棄式 Windows runner 用測試憑證檢查編譯、參數、退出碼及下載／續裝入口對未簽章、修改過、其他發行者的拒絕；正式 SSL.com 簽章與實體電腦驗證需另外執行。
+- 舊雙擊檔的範本是 `windows/install-pi-agent.cmd.in`,發佈時蓋上網址、轉成 CRLF,變成 `Install-Pi-Agent.cmd`。參數會傳給安裝程式,但值不能有空白。
 - 發佈:先改好 `VERSION` 和上面安裝指令的網址再打標籤。正式版(`v1.2.3`)的指令要用 `releases/latest/download/install-wsl.ps1`;預覽版(`v1.2.3-rc.1`)要寫明版本,因為 `latest` 不會指到預覽版。
   不一致的話 `scripts/build-wsl-bundle.sh` 會拒絕發佈。`release.yml` 會把有 `-` 的標籤標成預覽版,發佈後再用 GitHub 的 Windows 機從真網址跑一次這條指令(`wsl-verify`)。
 - 從原始碼試:`bash scripts/build-wsl-bundle.sh dist dev`,再 `pwsh windows/install-wsl.ps1 -BundlePath dist/pi-agent-installer-dev.tar.gz -PiWebArtifact <網址>`。

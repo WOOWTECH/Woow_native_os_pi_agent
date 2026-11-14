@@ -28,12 +28,17 @@ on:
       version:
         description: Version to stamp when run manually, e.g. 0.1.0
         required: true
+      windows_only:
+        description: Build and sign only the Windows installer (no release publication)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   artifact:
+    if: ${{ !inputs.windows_only }}
     strategy:
       fail-fast: false
       matrix:

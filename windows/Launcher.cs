@@ -41,7 +41,7 @@ internal static class Launcher
                 command += "; exit $LASTEXITCODE } catch { Write-Error $_; exit 1 }";
                 string shell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
                     @"WindowsPowerShell\v1.0\powershell.exe");
-                var start = new ProcessStartInfo(shell, "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " +
+                var start = new ProcessStartInfo(shell, "-NoProfile -OutputFormat Text -ExecutionPolicy Bypass -EncodedCommand " +
                     Convert.ToBase64String(Encoding.Unicode.GetBytes(command)));
                 // Bypass avoids a separate TrustedPublisher prompt. Our explicit check above is mandatory.
                 start.UseShellExecute = false;
