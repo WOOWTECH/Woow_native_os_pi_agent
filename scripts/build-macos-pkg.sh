@@ -4,6 +4,8 @@
 #   scripts/build-macos-pkg.sh \
 #       --artifact-url    https://github.com/.../piweb-<ver>-macos-arm64.tar.gz \
 #       --artifact-sha256 <64 hex> \
+#       OR --artifact-file /path/piweb-<ver>-macos-<arch>.tar.gz
+#       [--arch arm64|x64]        assert artifact target (default: derive from filename)
 #       [--release]               require Developer ID signing + accepted notarization
 #       [--tools <dir>]           default dist/tools-macos-<arch>  (scripts/build-macos-tmux.sh)
 #       [--out <dir>]             default dist
@@ -17,14 +19,11 @@
 # WHAT IS IN IT
 #
 # The installer (install.sh, lib/, rootfs/, vendor/, VERSION, docs), the bundled
-# tools/ (tmux, built from source -- see build-macos-tmux.sh), and two one-line
-# files pinning the prebuilt pi-web tree by URL and sha256. The tree itself is
-# NOT embedded: postinstall downloads it, and install.sh verifies it against the
-# pinned checksum. That keeps the pkg small, and it keeps the payload free of
-# executable code apart from tools/bin/tmux -- the notary service inspects every
-# binary in a package, and an embedded 140 MB tarball full of native modules is
-# exactly what it would have to unpack. The build checks the result: tools/bin/
-# tmux must be the only Mach-O anywhere in the expanded payload.
+# tools/ (tmux), and a pinned pi-web source. URL mode keeps the tree external;
+# --artifact-file embeds the exact tarball and checks its explicit SHA both here
+# and in the per-user setup helper. Only tmux is an unpacked Mach-O; the embedded
+# archive contains native modules and is NOT covered by that inventory assertion.
+# Apple notarization must accept the complete package in either mode.
 #
 # WHY postinstall DROPS PRIVILEGES
 #
@@ -45,14 +44,16 @@ umask 022
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 die()  { printf '[build-macos-pkg] ERROR: %s\n' "$*" >&2; exit 1; }
 say()  { printf '[build-macos-pkg] %s\n' "$*"; }
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
 
-ART_URL="" ART_SHA="" TOOLS="" OUT="$HERE/dist"
+ART_URL="" ART_FILE="" ART_NAME="" TARGET_ARCH="" ART_SHA="" TOOLS="" OUT="$HERE/dist"
 SIGN_APP="" SIGN_PKG="" KEYCHAIN="" RELEASE=0
 NOTARY_KEY="" NOTARY_KEY_ID="" NOTARY_ISSUER=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --release)         RELEASE=1; shift ;;
+    --artifact-file)   ART_FILE="${2:-}"; shift 2 ;;
+    --arch)            TARGET_ARCH="${2:-}"; shift 2 ;;
     --artifact-url)    ART_URL="${2:-}"; shift 2 ;;
     --artifact-sha256) ART_SHA="${2:-}"; shift 2 ;;
     --tools)           TOOLS="${2:-}"; shift 2 ;;
@@ -77,17 +78,33 @@ if [ "$RELEASE" = 1 ]; then
 fi
 
 # --- validate inputs ----------------------------------------------------------
-# The URL ends up in the payload and in install.sh's environment. Restrict it to
-# a plain https path (no query string, no quotes, no spaces) naming a macOS
-# artifact, and take the architecture from that name.
-printf '%s' "$ART_URL" | grep -Eq '^https://[A-Za-z0-9._~/%+-]+-macos-(arm64|x64)\.tar\.gz$' \
-  || die "--artifact-url must be an https URL ending in -macos-arm64.tar.gz or -macos-x64.tar.gz"
+[ -z "$ART_URL" ] || [ -z "$ART_FILE" ] || die 'choose exactly one of --artifact-url or --artifact-file'
+[ -n "$ART_URL$ART_FILE" ] || die 'one of --artifact-url or --artifact-file is required'
+[ "${#ART_SHA}" = 64 ] || die '--artifact-sha256 must be 64 lowercase hex characters'
 printf '%s' "$ART_SHA" | grep -Eq '^[0-9a-f]{64}$' \
   || die "--artifact-sha256 must be 64 lowercase hex characters"
-case "$ART_URL" in
-  *-macos-arm64.tar.gz) ARCH=arm64;  HOSTARCH=arm64  ;;
-  *-macos-x64.tar.gz)   ARCH=x64;    HOSTARCH=x86_64 ;;
+if [ -n "$ART_FILE" ]; then
+  ART_NAME="$(basename "$ART_FILE")"
+  case "$ART_NAME" in *[!A-Za-z0-9._+-]*) die 'invalid --artifact-file filename characters' ;; esac
+  printf '%s' "$ART_NAME" | grep -Eq '^piweb-[A-Za-z0-9._+-]+-macos-(arm64|x64)\.tar\.gz$' \
+    || die '--artifact-file filename must be piweb-<version>-macos-arm64.tar.gz or piweb-<version>-macos-x64.tar.gz'
+  SOURCE_NAME="$ART_NAME"
+else
+  printf '%s' "$ART_URL" | grep -Eq '^https://[A-Za-z0-9._~/%+-]+-macos-(arm64|x64)\.tar\.gz$' \
+    || die "--artifact-url must be an https URL ending in -macos-arm64.tar.gz or -macos-x64.tar.gz"
+  SOURCE_NAME="$ART_URL"
+fi
+case "$SOURCE_NAME" in
+  *-macos-arm64.tar.gz) ARCH=arm64; HOSTARCH=arm64 ;;
+  *-macos-x64.tar.gz) ARCH=x64; HOSTARCH=x86_64 ;;
 esac
+case "$TARGET_ARCH" in ''|arm64|x64) ;; *) die '--arch must be arm64 or x64' ;; esac
+[ -z "$TARGET_ARCH" ] || [ "$ARCH" = "$TARGET_ARCH" ] || die "artifact architecture $ARCH does not match --arch $TARGET_ARCH"
+if [ -n "$ART_FILE" ]; then
+  [ -f "$ART_FILE" ] || die "no such artifact file: $ART_FILE"
+  ART_FILE="$(cd "$(dirname "$ART_FILE")" && pwd)/$ART_NAME"
+  [ "$(shasum -a 256 "$ART_FILE" | awk '{print $1}')" = "$ART_SHA" ] || die 'local artifact sha256 mismatch'
+fi
 if [ -n "$NOTARY_KEY$NOTARY_KEY_ID$NOTARY_ISSUER" ]; then
   [ -n "$NOTARY_KEY" ] && [ -n "$NOTARY_KEY_ID" ] && [ -n "$NOTARY_ISSUER" ] \
     || die "notarization needs all of --notary-key, --notary-key-id and --notary-issuer"
@@ -106,6 +123,7 @@ VERSION="${PI_AGENT_VERSION:-}"
 VERSION="${VERSION#v}"
 # Package versions support SemVer core + prerelease, without build metadata.
 # Reject path/XML characters and numeric identifiers with leading zeroes.
+case "$VERSION" in *[!0-9A-Za-z.-]*) die 'version must be SemVer major.minor.patch[-prerelease], without build metadata' ;; esac
 NUM='(0|[1-9][0-9]*)'
 PRE="($NUM|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
 printf '%s' "$VERSION" | grep -Eq "^$NUM\.$NUM\.$NUM(-$PRE(\.$PRE)*)?$" \
@@ -179,6 +197,14 @@ Terminal shows startup progress. Internet is required for first setup.</p>
 Setup logs: ~/.local/share/pi-agent/logs/macos-setup.log (or your existing custom install directory).
 Installer log: /var/log/woow-pi-agent-install.log.</p></body></html>
 HTML
+# Write both selectors, including the empty one, so a mode switch overwrites
+# stale manifests from an earlier installed package.
+printf '%s\n' "$ART_NAME" > "$ROOT$PAYLOAD/piweb-artifact-file"
+if [ -n "$ART_FILE" ]; then
+  mkdir -p "$ROOT$PAYLOAD/artifacts"
+  cp "$ART_FILE" "$ROOT$PAYLOAD/artifacts/$ART_NAME"
+  [ "$(shasum -a 256 "$ROOT$PAYLOAD/artifacts/$ART_NAME" | awk '{print $1}')" = "$ART_SHA" ] || die 'staged artifact sha256 mismatch'
+fi
 printf '%s\n' "$ART_URL" > "$ROOT$PAYLOAD/piweb-artifact-url"
 printf '%s\n' "$ART_SHA" > "$ROOT$PAYLOAD/piweb-artifact-sha256"
 # Explicit, whatever the umask was (a second line of defence; the check after expansion is the third): owner
@@ -226,14 +252,8 @@ if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
   echo "cannot resolve the home directory of $USER_NAME"; exit 1
 fi
 
-# Pinned when the pkg was built: the prebuilt pi-web tree for this architecture.
-# Passed to install.sh through the environment, never through a shell string.
-URL="$(head -n1 "$PAYLOAD/piweb-artifact-url")"
-SHA="$(head -n1 "$PAYLOAD/piweb-artifact-sha256")"
-case "$URL" in https://*) ;; *) echo "bad artifact URL in payload: $URL"; exit 1 ;; esac
-printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{64}$' || { echo "bad artifact sha256 in payload"; exit 1; }
+# The user helper validates the selected URL/local artifact and checksum.
 echo "installing for $USER_NAME (uid $USER_UID) in $USER_HOME"
-echo "pi-web artifact: $URL  sha256 $SHA"
 
 # launchctl asuser: the user's GUI session, which is what gives the install their
 # login Keychain (Claude Code) and lets the service stage load a LaunchAgent.
@@ -241,8 +261,6 @@ echo "pi-web artifact: $URL  sha256 $SHA"
 # without them install.sh would run with root's home and install there.
 launchctl asuser "$USER_UID" sudo -H -u "$USER_NAME" /usr/bin/env \
   HOME="$USER_HOME" \
-  PI_AGENT_PIWEB_ARTIFACT="$URL" \
-  PI_AGENT_PIWEB_ARTIFACT_SHA256="$SHA" \
   /bin/bash "$PAYLOAD/scripts/macos/pi-agent-launch.sh" --install
 rc=$?
 echo "install.sh exit=$rc"
@@ -306,8 +324,12 @@ done < <(find "$X" -type f -print0)
   || die "tools/bin/tmux must be the only Mach-O in the payload; found: $(printf '%s' "$machos" | tr '\n' ' ')"
 [ "$(head -n1 "$P/piweb-artifact-url")" = "$ART_URL" ]    || die "artifact URL did not survive packaging"
 [ "$(head -n1 "$P/piweb-artifact-sha256")" = "$ART_SHA" ] || die "artifact sha256 did not survive packaging"
+[ "$(head -n1 "$P/piweb-artifact-file")" = "$ART_NAME" ] || die 'artifact filename did not survive packaging'
+if [ -n "$ART_FILE" ]; then
+  [ "$(shasum -a 256 "$P/artifacts/$ART_NAME" | awk '{print $1}')" = "$ART_SHA" ] || die 'packaged artifact sha256 mismatch'
+fi
 [ -f "$P/vendor/omnigent-requirements.lock" ]             || die "vendor/ did not survive packaging"
-say "payload verified: tools/bin/tmux is the only Mach-O; artifact pin and vendor/ present"
+say "payload verified: tools/bin/tmux is the only unpacked Mach-O; artifact pin and vendor/ present"
 
 # --- sign and notarize --------------------------------------------------------
 if [ -n "$SIGN_PKG" ]; then

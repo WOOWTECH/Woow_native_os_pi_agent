@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Hermetic launcher tests: fake macOS commands, real Bash/Perl lock; no user state."""
 import os
+import hashlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -23,13 +24,14 @@ class LaunchTests(unittest.TestCase):
         self.runner = self.payload / 'scripts/macos/pi-agent-launch.sh'
         self.runner.write_text((REPO / 'scripts/macos/pi-agent-launch.sh').read_text().replace('/usr/libexec/PlistBuddy', str(self.bin / 'PlistBuddy').replace(' ', '\\ ')))
         shutil.copy(REPO / 'rootfs/bin/flock', self.payload / 'rootfs/bin/flock')
-        self.script(self.bin / 'uname', 'echo Darwin')
+        self.script(self.bin / 'uname', '[ "$1" = -m ] && echo arm64 || echo Darwin')
         self.script(self.bin / 'launchctl', 'exit 0')
         self.script(self.bin / 'id', 'echo 501')
         self.script(self.bin / 'curl', 'exit "${CURL_RC:-0}"')
         self.script(self.bin / 'open', 'printf "%s\\n" "$*" >> "$HOME/opened"')
-        self.script(self.bin / 'PlistBuddy', 'cat "$HOME/existing-path"')
+        self.script(self.bin / 'PlistBuddy', 'case "$2" in *PI_WEB_PORT) cat "$HOME/existing-port" ;; *) cat "$HOME/existing-path" ;; esac')
         self.script(self.payload / 'install.sh', '''echo 'stage preflight'
+printf '%s\\n' "$PI_AGENT_PIWEB_ARTIFACT" > "$HOME/artifact-used"
 printf '%s|%s|%s\\n' "$PI_AGENT_HOME" "$PI_WEB_PORT" "$PI_AGENT_PIWEB_ARTIFACT_SHA256" >> "$HOME/installs"
 [ "${FAIL_SETUP:-0}" = 0 ] || exit 23
 mkdir -p "$PI_AGENT_HOME/bin"
@@ -58,7 +60,11 @@ echo 'stage service' ''')
         self.assertFalse((self.install / '.macos-pkg-incomplete').exists())
 
     def test_postinstall_does_not_open_browser(self):
-        self.assertEqual(self.run_launcher('--install').returncode, 0)
+        for fail in ('1', '0'):
+            r = subprocess.run(['/bin/bash', str(self.runner), '--install'],
+                               env={**self.env, 'FAIL_SETUP': fail}, stdin=subprocess.DEVNULL,
+                               capture_output=True, text=True, timeout=10)
+            self.assertEqual(r.returncode, 1 if fail == '1' else 0, r.stderr)
         self.assertFalse((self.home / 'opened').exists())
 
     def test_failure_remains_retryable_and_keeps_data(self):
@@ -112,6 +118,80 @@ echo 'stage service' ''')
             self.assertEqual(proc.returncode, 0, (out, err))
         self.assertEqual(len((self.home / 'installs').read_text().splitlines()), 1)
 
+    def local_artifact(self, name='piweb-test-macos-arm64.tar.gz'):
+        (self.payload / 'artifacts').mkdir(exist_ok=True)
+        artifact = self.payload / 'artifacts' / name
+        artifact.write_bytes(b'fixture artifact bytes')
+        (self.payload / 'piweb-artifact-url').write_text('')
+        (self.payload / 'piweb-artifact-file').write_text(name + '\n')
+        (self.payload / 'piweb-artifact-sha256').write_text(hashlib.sha256(artifact.read_bytes()).hexdigest() + '\n')
+        return artifact
+
+    def test_local_artifact_passes_verified_path_to_installer(self):
+        artifact = self.local_artifact()
+        r = self.run_launcher('--install')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((self.home / 'artifact-used').read_text().strip(), str(artifact))
+        self.assertIn('Verifying embedded', r.stdout)
+
+    def test_local_artifact_tamper_rejected_before_installer(self):
+        artifact = self.local_artifact()
+        artifact.write_bytes(b'tampered')
+        r = self.run_launcher('--install')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('sha256 mismatch', r.stderr)
+        self.assertFalse((self.home / 'installs').exists())
+
+    def test_local_artifact_wrong_arch_rejected_before_installer(self):
+        self.local_artifact('piweb-test-macos-x64.tar.gz')
+        r = self.run_launcher('--install')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('architecture does not match', r.stderr)
+        self.assertFalse((self.home / 'installs').exists())
+
+    def test_local_artifact_selector_rejects_traversal(self):
+        self.local_artifact()
+        (self.payload / 'piweb-artifact-file').write_text('../piweb-test-macos-arm64.tar.gz')
+        r = self.run_launcher('--install')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('Invalid embedded artifact filename', r.stderr)
+        self.assertFalse((self.home / 'installs').exists())
+
+    def test_builder_local_sha_and_arch_checks_before_copy(self):
+        artifact = self.local_artifact()
+        sha = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        base = ['/bin/bash', str(REPO / 'scripts/build-macos-pkg.sh'), '--artifact-file', str(artifact),
+                '--tools', '/nonexistent/pi-agent-test', '--out', str(self.root / 'out')]
+        cases = [(['--artifact-sha256', sha], 'no bundled tmux'),
+                 (['--artifact-sha256', '0' * 64], 'local artifact sha256 mismatch'),
+                 (['--artifact-sha256', sha, '--arch', 'x64'], 'does not match --arch'),
+                 ([], '--artifact-sha256 must be'),
+                 (['--artifact-sha256', sha, '--artifact-url', 'https://example.invalid/piweb-macos-arm64.tar.gz'], 'choose exactly one')]
+        for args, message in cases:
+            with self.subTest(args=args):
+                r = subprocess.run(base + args, capture_output=True, text=True)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn(message, r.stderr)
+                self.assertFalse((self.root / 'out').exists())
+        wrong = artifact.with_name('piweb-test-linux-arm64.tar.gz')
+        artifact.rename(wrong)
+        base[3] = str(wrong)
+        r = subprocess.run(base + ['--artifact-sha256', sha], capture_output=True, text=True)
+        self.assertIn('--artifact-file filename must be', r.stderr)
+
+    def test_existing_plist_port_without_port_file(self):
+        custom = self.home / 'Custom install'
+        custom.mkdir()
+        plist = self.home / 'Library/LaunchAgents/io.woowtech.pi-agent.plist'
+        plist.parent.mkdir(parents=True)
+        plist.write_text('existing identity')
+        (self.home / 'existing-path').write_text(str(custom))
+        (self.home / 'existing-port').write_text('30223')
+        r = self.run_launcher('--repair')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(f'{custom}|30223|', (self.home / 'installs').read_text())
+        self.assertEqual((self.home / 'opened').read_text().strip(), 'http://127.0.0.1:30223')
+
     def test_unready_service_reports_repair_without_opening_browser(self):
         self.assertEqual(self.run_launcher('--install').returncode, 0)
         self.runner.write_text(self.runner.read_text().replace('SECONDS + 120', 'SECONDS + 0'))
@@ -137,7 +217,7 @@ echo 'stage service' ''')
         for version, valid in [('0.3.0-rc.8', True), ('v0.3.0-rc.8', True),
                                ('1.2.3', True), ('01.2.3', False),
                                ('1.2.3-rc.08', False), ('1.2', False),
-                               ('1.2.3+build', False), ('../bad', False)]:
+                               ('1.2.3+build', False), ('1.2.3\ninvalid', False), ('../bad', False)]:
             with self.subTest(version=version):
                 r = subprocess.run(['/bin/bash', str(REPO / 'scripts/build-macos-pkg.sh'),
                                     '--artifact-url', 'https://example.invalid/piweb-macos-arm64.tar.gz',

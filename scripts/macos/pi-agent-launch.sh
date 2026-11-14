@@ -8,6 +8,7 @@ case "$MODE" in --open|--install|--repair) ;; *) echo 'usage: pi-agent-launch.sh
 [ "$(id -u)" != 0 ] || { echo 'Run as the logged-in user, without sudo.' >&2; exit 1; }
 umask 077
 # Respect the existing launchd install location rather than creating a second identity.
+PLIST_PORT=""
 PLIST="$HOME/Library/LaunchAgents/io.woowtech.pi-agent.plist"
 if [ -f "$PLIST" ]; then
   EXISTING="$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:PI_AGENT_HOME' "$PLIST")" || {
@@ -17,6 +18,7 @@ if [ -f "$PLIST" ]; then
     echo "PI_AGENT_HOME differs from $PLIST; leaving both untouched." >&2; exit 1;
   }
   PI_AGENT_HOME="$EXISTING"
+  PLIST_PORT="$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:PI_WEB_PORT' "$PLIST" 2>/dev/null || true)"
 fi
 export PI_AGENT_HOME="${PI_AGENT_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/pi-agent}"
 case "$PI_AGENT_HOME" in /*) ;; *) echo 'PI_AGENT_HOME must be absolute' >&2; exit 1 ;; esac
@@ -29,6 +31,7 @@ if [ "${2:-}" != --locked ]; then
 fi
 PORT=30141
 if [ -f "$PI_AGENT_HOME/pi-web-port" ]; then PORT="$(cat "$PI_AGENT_HOME/pi-web-port")"; fi
+[ -z "$PLIST_PORT" ] || PORT="$PLIST_PORT"
 case "$PORT" in ''|*[!0-9]*) echo 'Invalid saved pi-web-port; leaving configuration untouched.' >&2; exit 1 ;; esac
 [ "${#PORT}" -le 5 ] && [ "$PORT" -gt 0 ] && [ "$PORT" -le 65535 ] || exit 1
 export PI_WEB_PORT="$PORT"
@@ -37,10 +40,29 @@ STAMP="$PI_AGENT_HOME/.macos-pkg-complete"
 # A failed upgrade must remain retryable even if an older control script exists.
 if [ "$MODE" != --open ] || [ ! -x "$CTL" ] || [ -f "$PI_AGENT_HOME/.macos-pkg-incomplete" ]; then
   touch "$PI_AGENT_HOME/.macos-pkg-incomplete"
-  export PI_AGENT_PIWEB_ARTIFACT="$(head -n1 "$PAYLOAD/piweb-artifact-url")"
+  ART_URL="$(head -n1 "$PAYLOAD/piweb-artifact-url")"
+  ART_NAME="$(head -n1 "$PAYLOAD/piweb-artifact-file" 2>/dev/null || true)"
   export PI_AGENT_PIWEB_ARTIFACT_SHA256="$(head -n1 "$PAYLOAD/piweb-artifact-sha256")"
-  printf '%s' "$PI_AGENT_PIWEB_ARTIFACT" | grep -Eq '^https://[A-Za-z0-9._~/%+-]+-macos-(arm64|x64)\.tar\.gz$'
-  printf '%s' "$PI_AGENT_PIWEB_ARTIFACT_SHA256" | grep -Eq '^[0-9a-f]{64}$'
+  [ "${#PI_AGENT_PIWEB_ARTIFACT_SHA256}" = 64 ] || { echo 'Invalid artifact SHA256' >&2; exit 1; }
+  printf '%s' "$PI_AGENT_PIWEB_ARTIFACT_SHA256" | grep -Eq '^[0-9a-f]{64}$' || { echo 'Invalid artifact SHA256' >&2; exit 1; }
+  if [ -n "$ART_NAME" ]; then
+    case "$ART_NAME" in *[!A-Za-z0-9._+-]*) echo 'Invalid embedded artifact filename' >&2; exit 1 ;; esac
+    [ -z "$ART_URL" ] || { echo 'Ambiguous artifact manifests' >&2; exit 1; }
+    printf '%s' "$ART_NAME" | grep -Eq '^piweb-[A-Za-z0-9._+-]+-macos-(arm64|x64)\.tar\.gz$' || { echo 'Invalid embedded artifact filename' >&2; exit 1; }
+    case "$(uname -m)" in arm64) ARCH=arm64 ;; x86_64) ARCH=x64 ;; *) echo 'Unsupported Mac architecture' >&2; exit 1 ;; esac
+    case "$ART_NAME" in *-macos-"$ARCH".tar.gz) ;; *) echo 'Embedded artifact architecture does not match this Mac' >&2; exit 1 ;; esac
+    export PI_AGENT_PIWEB_ARTIFACT="$PAYLOAD/artifacts/$ART_NAME"
+    [ -f "$PI_AGENT_PIWEB_ARTIFACT" ] && [ ! -L "$PI_AGENT_PIWEB_ARTIFACT" ] || { echo 'Embedded artifact missing or symlinked' >&2; exit 1; }
+    # install.sh's local-file branch does NOT verify SHA: never enter it until
+    # this root-owned package payload matches the explicitly pinned digest.
+    echo 'Verifying embedded pi-web artifact ...'
+    [ "$(shasum -a 256 "$PI_AGENT_PIWEB_ARTIFACT" | awk '{print $1}')" = "$PI_AGENT_PIWEB_ARTIFACT_SHA256" ] || {
+      echo 'Embedded artifact sha256 mismatch; reinstall a verified package.' >&2; exit 1;
+    }
+  else
+    printf '%s' "$ART_URL" | grep -Eq '^https://[A-Za-z0-9._~/%+-]+-macos-(arm64|x64)\.tar\.gz$' || { echo 'Invalid artifact URL' >&2; exit 1; }
+    export PI_AGENT_PIWEB_ARTIFACT="$ART_URL"
+  fi
   echo "Pi Agent setup: downloads require internet. Stage output follows; log: $LOG"
   # pipefail preserves install failure, including tee/disk failures.
   if (cd "$HOME" && /bin/bash "$PAYLOAD/install.sh") 2>&1 | tee -a "$LOG"; then
