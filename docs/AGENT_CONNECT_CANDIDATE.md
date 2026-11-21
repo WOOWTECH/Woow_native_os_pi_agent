@@ -9,7 +9,7 @@ coordinated consumer updates and the normal release gates.
 
 | Input | Candidate version | SHA-256 |
 | --- | --- | --- |
-| `@woowtech/pi-agent-shared-runtime` | 0.1.5 | `eb6e2056c5523307331f40e1c3a61d552315ef743abfda42a44f7228d6f86a96` |
+| `@woowtech/pi-agent-shared-runtime` | 0.1.5 | `f59b204a681f147b843199ffec9845723176916dee979ee78c4cf82b7dd1f3ea` |
 | `@woowtech/pi-paseo` (Agent Connect) | 0.1.17 | `ef08edfa18cd3f71d8e50cc22329ee7c143632e04338f16c7188ae848f5c8170` |
 | `@woowtech/pi-omnigent-plugin` | 0.3.33 | `8e3b55379e7850bc54896175a03c7611ee9d0080a21b8281441ac906b0a26fc9` |
 | Combined Pi Web 0.10 adapter | 0.3.33 | `dc6cf4eb7531445e1a9246a35c6383a60c6769f1e71ac1aa4e1aae9fae3128a7` |
@@ -46,13 +46,6 @@ before upgrading from the former directory-lock implementation to SQLite locks,
 then restart sessions to load new resource configuration. No native transcripts
 are imported automatically.
 
-Validation is source-only: the exact archive was installed with production
-npm options into a scratch native install; actual shipped helper tests pass for
-fresh, disabled and removed choices. HA legacy sync and wrapper regressions
-still pass. The shared package's distribution suite covers legacy MCP ownership,
-user skills and common memory paths. Real macOS, Ubuntu, Windows/WSL2 and HA
-Supervisor/provider acceptance remain pending; k3s/PaaS acceptance is separate.
-
 Native session-home mode preserves the actual HOME and selected Pi credential
 root. The Pi wrapper seeds the runtime into an alternate Pi settings root only
 when both canonical and alternate choices allow it, then adds an owned MCP
@@ -61,22 +54,37 @@ MCP definitions and conflicting user bridge names. Disabling/removing either
 selection removes only the bridge still matching its ownership record. Existing
 sessions need restart; this candidate does not rewrite native conversation data.
 
-Final source verification (2026-11-21): shipped shared helpers16/16 (including
-13 adopted-root/wrapper cases), existing provider wrappers19/19, Pi session-HOME
-12/12, asset fetch15/15. Exact final runtime archive installed with `shared` and
-`wire` in an owned scratch root; the shipped session helper matches its source.
-Bash/Node syntax, workflow YAML and diff whitespace checks pass. This host uses
-Linux/Node22 and Pi SDK1.0; macOS/WSL and signed installer gates are still pending.
+## Extension-free resource scans and current validation
 
-## Candidate refresh after live acceptance
+Shared source `8009ba9c77148b8d329d3660cca31c4da91e435c` is frozen as the
+`f59b204a681f147b843199ffec9845723176916dee979ee78c4cf82b7dd1f3ea` archive
+listed above. Consumers copy these exact bytes without repacking. The source
+receipt reports 61/61 tests and audit zero; its previous archive's image and SDK
+results do not establish acceptance of this replacement.
 
-The shared runtime now excludes its own generated skill aliases before the SDK
-selects authoritative package sources. Repeated synchronization keeps enabled
-skills present, while removal, disablement and project overrides remain effective.
-The frozen archive passes nine resource authority/boundary regressions against
-both the native SDK 1.0 graph and HA's exact SDK 1.1 graph. Native helper and
-alternate-agent-directory tests pass 16/16; the HA helper passes 3/3. These tests
-are also required by each distribution's CI.
+`loadResources` resolves authoritative skills without importing package, global
+or project extensions. The explicit bridge runtime loads only its MCP adapter.
+Resource scans and `run-cli` leave normal provider children with their original
+extension flags. Distribution helpers additionally scope bridge mode to the
+short-lived helper, preserving the actual Pi CLI environment and credentials.
+
+Fresh local frozen-archive checks pass 21/21 on native SDK1.0 and HA SDK1.1:
+resource authority/boundary (9), extension scans/boot/watcher/provider child
+control (10), bridge isolation (1), and a real stdio MCP call (1). Shipped native
+helper/wrapper tests pass 18/18; HA helpers pass 4/4. These are SDK fixture and
+resource tests, not authenticated provider/model conversations.
+
+Native CI requires this 21-case suite using its pinned Pi Web dependency graph.
+HA CI requires the same suite on its production SDK1.1 graph; both amd64 and
+aarch64 final-image builds also run it with networking disabled, alongside the
+shipped-helper tests. Replacement-archive CI results must be checked on the
+current draft head; earlier green runs for `55564c5`/`ff08ddf` used the old shared
+archive and are historical evidence only.
+
+Actual macOS, Ubuntu, Windows/WSL2 and HA Supervisor/provider acceptance remain
+pending. HA addon version is unchanged: a successful no-version-change upgrade
+comparison does not exercise a Supervisor upgrade. The current HA connector's
+`/addons` call returned `Unknown command`, so installed-addon access is unconfirmed.
 
 Agent Connect now uses persistent SQLite guards on macOS; Linux retains flock.
 Actual Apple Silicon (Node 22.23.4) and Intel (Node 22.19.0) CI passed OS-lock,

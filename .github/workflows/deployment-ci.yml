@@ -34,7 +34,7 @@ jobs:
           git -C "$RUNNER_TEMP/pi-web-sdk" checkout --detach -q FETCH_HEAD
           test "$(git -C "$RUNNER_TEMP/pi-web-sdk" rev-parse HEAD)" = "$PIN_PI_WEB_REF"
           npm ci --prefix "$RUNNER_TEMP/pi-web-sdk" --omit=dev --ignore-scripts --no-audit --no-fund
-          PI_SHARED_SDK_ROOT="$RUNNER_TEMP/pi-web-sdk" node --test "$RUNNER_TEMP/shared-runtime/tests/resource-authority.test.mjs" "$RUNNER_TEMP/shared-runtime/tests/resource-boundary.test.mjs"
+          PI_SHARED_SDK_ROOT="$RUNNER_TEMP/pi-web-sdk" node --test "$RUNNER_TEMP/shared-runtime/tests/resource-authority.test.mjs" "$RUNNER_TEMP/shared-runtime/tests/resource-boundary.test.mjs" "$RUNNER_TEMP/shared-runtime/tests/extension-scan.test.mjs" "$RUNNER_TEMP/shared-runtime/tests/bridge.test.mjs" "$RUNNER_TEMP/shared-runtime/tests/mcp-adapter.test.mjs"
           NATIVE_DISTRIBUTION=1 SHARED_RUNTIME_TEST_BUNDLE="$RUNNER_TEMP/shared-runtime" PI_SHARED_SDK_ROOT="$RUNNER_TEMP/pi-web-sdk" node --test tests/shared-distribution.test.mjs tests/shared-session.test.mjs tests/shared-sync-only.test.mjs
           node --check rootfs/bin/pi-agent-shared-session.mjs
       - name: Pinned plugin patch composition and installer lifecycle

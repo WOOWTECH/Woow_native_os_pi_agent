@@ -21,7 +21,7 @@ PIN_GETPASEO_CLI_VERSION=0.11.2
 
 # Unpublished coordinated candidate, vendored with this source branch.
 PIN_SHARED_RUNTIME_VERSION=0.1.5
-PIN_SHARED_RUNTIME_SHA256=eb6e2056c5523307331f40e1c3a61d552315ef743abfda42a44f7228d6f86a96
+PIN_SHARED_RUNTIME_SHA256=f59b204a681f147b843199ffec9845723176916dee979ee78c4cf82b7dd1f3ea
 PIN_SHARED_RUNTIME_TGZ="file://$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/candidate-packages/woowtech-pi-agent-shared-runtime-${PIN_SHARED_RUNTIME_VERSION}.tgz"
 
 PIN_OMNIGENT_VERSION=0.16.0
