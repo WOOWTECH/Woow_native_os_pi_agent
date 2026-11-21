@@ -36,3 +36,5 @@ jobs:
           name: native-mac-installer-${{ matrix.arch }}
           path: ${{ runner.temp }}/native-mac-evidence
           if-no-files-found: error
+      - name: Native pkg payload preservation (unsigned, no installation)
+        run: bash tests/build-macos-pkg.sh

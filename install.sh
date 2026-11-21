@@ -291,8 +291,16 @@ piweb_from_artifact() {
   esac
 
   log "installing prebuilt pi-web (no build, no toolchain)"
-  rm -rf "$PA_PIWEB_DIR"; mkdir -p "$PA_PIWEB_DIR"
-  tar xzf "$tarball" -C "$PA_PIWEB_DIR"
+  # Check the candidate before replacing an existing installation. A published
+  # checksum alone cannot detect a tree from an older native/plugin release.
+  local staged="$PA_TMP_DIR/piweb-artifact-staged"
+  rm -rf "$staged"; mkdir -p "$staged"
+  tar xzf "$tarball" -C "$staged"
+  PA_NODE "$HERE/lib/artifact-manifest.mjs" verify "$staged" "$HERE" "$want_os" "$ARCH" \
+    "$PIN_PI_WEB_VERSION" "$PIN_PI_WEB_REF" "$PIN_OMNIGENT_UI_SHA256" \
+    || die "prebuilt Pi Web release binding failed; existing pi-web retained"
+  rm -rf "$PA_PIWEB_DIR"
+  mv "$staged" "$PA_PIWEB_DIR"
   [ "$tarball" = "$PA_TMP_DIR/piweb-artifact.tar.gz" ] && rm -f "$tarball"
 
   # The same assertion the source build makes: the settings routes must exist,
@@ -355,6 +363,9 @@ stage_piweb() {
   rm -rf "$PA_PIWEB_DIR"; mkdir -p "$PA_PIWEB_DIR/lib/node_modules/@agegr" "$PA_PIWEB_DIR/bin"
   mv "$src" "$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web"
   ln -sf "../lib/node_modules/@agegr/pi-web/bin/pi-web.js" "$PA_PIWEB_DIR/bin/pi-web"
+  local artifact_os="$OS"; [ "$artifact_os" = wsl ] && artifact_os=linux
+  PA_NODE "$HERE/lib/artifact-manifest.mjs" write "$PA_PIWEB_DIR" "$HERE" "$artifact_os" "$ARCH" \
+    "$PIN_PI_WEB_VERSION" "$PIN_PI_WEB_REF" "$PIN_OMNIGENT_UI_SHA256"
   piweb_postbuild
 }
 

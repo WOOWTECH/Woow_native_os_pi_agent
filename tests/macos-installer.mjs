@@ -133,6 +133,15 @@ try {
     receipt.stages.at(-1).status = 'passed'; save();
   }
   const node = path.join(install, 'node/bin/node');
+  // Exercise the normal release-artifact path using this exact built graph.
+  const artifacts = path.join(scratch, 'release-artifacts');
+  run('/bin/bash', ['scripts/build-piweb-artifact.sh', artifacts], { output: true });
+  const artifact = path.join(artifacts, `piweb-${pins.PIN_PI_WEB_VERSION}-macos-${process.arch}.tar.gz`);
+  env.PI_AGENT_PIWEB_ARTIFACT = artifact;
+  run('/bin/bash', ['install.sh', 'piweb'], { output: true });
+  delete env.PI_AGENT_PIWEB_ARTIFACT;
+  receipt.releaseArtifact = { sha256: sha(artifact),
+    manifest: read(path.join(install, 'piweb/pi-agent-artifact.json')), installed: true };
   assert.equal(run(node, ['--version']), `v${pins.PIN_NODE_VERSION}`);
   const sdk = path.join(install, 'piweb/lib/node_modules/@agegr/pi-web');
   assert.equal(read(path.join(sdk, 'package.json')).version, pins.PIN_PI_WEB_VERSION);

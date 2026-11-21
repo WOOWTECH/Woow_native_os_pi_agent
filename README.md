@@ -11,6 +11,10 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 
 ## Status
 
+The historical host observations below predate the 0.2.8 candidate. Current CI
+uses scoped runner installs; actual user Mac/provider, Windows WSL2 and HAOS
+acceptance require separate host evidence.
+
 | OS | State |
 |---|---|
 | **Linux** (Ubuntu/Debian; dnf-based best-effort) | ✅ installed + running + browser-verified · 24/24 smoke |
@@ -22,29 +26,38 @@ then runs them under a per-OS service (systemd / launchd), as a normal user.
 
 ### macOS — download and double-click
 
-- Apple silicon: [WoowPiAgent-0.2.7-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.7/WoowPiAgent-0.2.7-macos-arm64.pkg)
-- Intel: [WoowPiAgent-0.2.7-macos-x64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.7/WoowPiAgent-0.2.7-macos-x64.pkg)
+- Apple silicon: [WoowPiAgent-0.2.8-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.8/WoowPiAgent-0.2.8-macos-arm64.pkg)
+- Intel: [WoowPiAgent-0.2.8-macos-x64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.8/WoowPiAgent-0.2.8-macos-x64.pkg)
 
-Each is signed with a Developer ID and notarized, so Gatekeeper opens it without
-a warning, and each installs only on its own kind of Mac. It fetches the rest of
-the stack while it installs.
+0.2.8 is being prepared; these URLs become usable only after publication. Public
+packages must carry Developer ID signatures and accepted notarization. CI
+unsigned packages are review candidates, not ordinary-user downloads.
 
-### Linux — prebuilt pi-web (recommended)
+### Ubuntu / Windows WSL2 — prebuilt pi-web (recommended)
 
 The slow part of an install is building pi-web from source: ~15 minutes and a
 full toolchain. Releases ship that tree prebuilt per platform, so no compiler is
 needed and the build disappears entirely.
 
 ```bash
-git clone https://github.com/WOOWTECH/Woow_native_os_pi_agent
+git clone --branch v0.2.8 --depth 1 https://github.com/WOOWTECH/Woow_native_os_pi_agent
 cd Woow_native_os_pi_agent
-PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.7/piweb-0.10.0-linux-x64.tar.gz \
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.8/piweb-0.10.0-linux-x64.tar.gz \
   ./install.sh
 ```
+
+Run the same commands inside your existing Ubuntu WSL2 distribution on Windows.
+This release uses that Linux route; the separate signed Windows EXE preview
+channel is not a prerequisite. The v0.2.8 URLs remain pending publication.
 
 The installer verifies the asset's published `.sha256` and refuses one built for
 another platform (a Mac without the pkg uses `piweb-0.10.0-macos-arm64.tar.gz`,
 or `piweb-0.10.0-macos-x64.tar.gz` on an Intel Mac).
+A release receipt inside the tree must also match the native version, platform,
+Pi Web source, combined adapter and all three frozen package hashes. An older
+asset fails before replacing an existing installation. The three packages are
+bundled with the source and pkg; npm publication is not required.
+
 Unpacking takes **4s on Linux / 6s on macOS** (measured after deleting the built
 tree); from a URL you also pay the download, 180 MB (Linux) / 136 MB (macOS). A
 local file path works too.
@@ -138,9 +151,12 @@ scripts/build-macos-pkg.sh \
     [--notary-key AuthKey_….p8 --notary-key-id … --notary-issuer …]
 ```
 
-`.github/workflows/release.yml` builds and attaches the prebuilt pi-web trees on
-a `v*` tag. The `.pkg` is **not** built in CI: it is signed and notarized on the
-maintainer's Mac, where the Developer ID certificates are.
+`.github/workflows/release.yml` prepares version-bound Pi Web trees, unsigned
+macOS packages and exact copies of the frozen archives as GitHub Actions
+artifacts. It has no public-release upload step. Review the aggregate receipt
+and complete signing/notarization before separately authorizing publication.
+The existing Windows signer in `WOOWTECH/woowtech-smart` is a separate lane; it
+does not sign macOS pkg files. See [release preparation](docs/RELEASE-PREPARATION.md).
 
 The `.pkg` is under a megabyte. It carries the installer and the bundled tools,
 and it **pins** the prebuilt pi-web tree by URL and sha256 rather than embedding
