@@ -1,0 +1,76 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { expectedManifest, receiptName, verifyManifest, writeManifest } from '../lib/artifact-manifest.mjs';
+
+const repo = path.resolve(import.meta.dirname, '..');
+const pins = Object.fromEntries(execFileSync('bash', ['-c',
+  '. "$1/lib/pins.sh"; printf "%s\\n" "$PIN_PI_WEB_VERSION" "$PIN_PI_WEB_REF" "$PIN_OMNIGENT_UI_SHA256"', '_', repo],
+{ encoding: 'utf8' }).trim().split('\n').map((value, i) => [['version', 'ref', 'adapter'][i], value]));
+const expected = () => expectedManifest(repo, 'linux', 'x64', pins.version, pins.ref, pins.adapter);
+function fixture(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'native-artifact-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const tree = path.join(dir, 'tree'), pkg = path.join(tree, 'lib/node_modules/@agegr/pi-web');
+  fs.mkdirSync(pkg, { recursive: true });
+  fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ version: pins.version }));
+  for (const name of ['.next/BUILD_ID', '.next/server/app/omnigent/page.js', '.next/server/app/paseo/setup/page.js']) {
+    fs.mkdirSync(path.dirname(path.join(pkg, name)), { recursive: true });
+    fs.writeFileSync(path.join(pkg, name), 'fixture');
+  }
+  const manifest = expected();
+  const save = () => fs.writeFileSync(path.join(tree, receiptName), JSON.stringify(manifest));
+  save(); return { dir, tree, pkg, manifest, save };
+}
+test('matching release, platform and exact frozen archives are accepted', t => {
+  const f = fixture(t); verifyManifest(f.tree, expected());
+});
+for (const [name, mutate] of [
+  ['old native version', m => { m.version = '0.2.7'; }],
+  ['wrong architecture', m => { m.arch = 'arm64'; }],
+  ['wrong platform', m => { m.os = 'macos'; }],
+  ['stale combined adapter', m => { m.adapterSha256 = '0'.repeat(64); }],
+  ['stale Pi Web source', m => { m.piWebRef = '0'.repeat(40); }],
+  ['changed packaged bytes', m => { m.packages[0].sha256 = '0'.repeat(64); }],
+  ['missing shared package', m => { m.packages.pop(); }],
+]) test(`rejects ${name}`, t => {
+  const f = fixture(t); mutate(f.manifest); f.save();
+  assert.throws(() => verifyManifest(f.tree, expected()), /does not match/);
+});
+test('legacy artifact without provenance cannot satisfy the current release', t => {
+  const f = fixture(t); fs.unlinkSync(path.join(f.tree, receiptName));
+  assert.throws(() => verifyManifest(f.tree, expected()), /ENOENT/);
+});
+test('a receipt cannot hide missing compiled Agent Connect routes', t => {
+  const f = fixture(t); fs.unlinkSync(path.join(f.pkg, '.next/server/app/paseo/setup/page.js'));
+  assert.throws(() => verifyManifest(f.tree, expected()), /ENOENT/);
+});
+test('source writer binds the actual checked-out source commit', t => {
+  const f = fixture(t);
+  const git = args => execFileSync('git', ['-C', f.pkg, ...args], { encoding: 'utf8' }).trim();
+  git(['init', '-q']); git(['add', '.']);
+  git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture']);
+  assert.throws(() => writeManifest(f.tree, expected()), /source build ref/);
+  f.manifest.piWebRef = git(['rev-parse', 'HEAD']);
+  writeManifest(f.tree, f.manifest); verifyManifest(f.tree, f.manifest);
+});
+test('real installer rejects an old tree without deleting the existing installation', t => {
+  const f = fixture(t), install = path.join(f.dir, 'install');
+  fs.mkdirSync(path.join(install, 'node/bin'), { recursive: true });
+  fs.symlinkSync(process.execPath, path.join(install, 'node/bin/node'));
+  fs.mkdirSync(path.join(install, 'piweb'), { recursive: true });
+  const retained = path.join(install, 'piweb/existing.txt'); fs.writeFileSync(retained, 'retain');
+  f.manifest.version = '0.2.7'; f.save();
+  const archive = path.join(f.dir, 'piweb-stale-linux-x64.tar.gz');
+  execFileSync('tar', ['czf', archive, '-C', f.tree, '.']);
+  const result = spawnSync('bash', [path.join(repo, 'install.sh'), 'piweb'], {
+    cwd: repo, encoding: 'utf8', env: { HOME: f.dir, PATH: process.env.PATH,
+      PI_AGENT_HOME: install, PI_AGENT_PIWEB_ARTIFACT: archive },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /release binding failed/);
+  assert.equal(fs.readFileSync(retained, 'utf8'), 'retain');
+});

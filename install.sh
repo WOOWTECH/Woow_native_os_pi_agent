@@ -8,7 +8,7 @@
 #   ./install.sh <stage>...      # run only the named stage(s), in order
 #   PI_AGENT_HOME=/custom ./install.sh
 #
-# Stages: preflight node fetch piweb clis paseo omnigent wire service
+# Stages: preflight node fetch piweb clis shared paseo omnigent wire service
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -187,6 +187,33 @@ stage_fetch() {
   log "fetch OK (plugins verified, settings patch verified)"
 }
 
+# -------------------------------------------------------------------- shared ---
+# The bundle is immutable application code, not a user package installation.
+# npm postinstall is disabled: registration happens under the provider HOME at boot.
+stage_shared() {
+  log "stage shared — shared runtime $PIN_SHARED_RUNTIME_VERSION"
+  local archive="$PA_TMP_DIR/shared-runtime.tgz" staged="$PI_AGENT_HOME/.shared-runtime-new" previous="$PI_AGENT_HOME/.shared-runtime-old"
+  mkdir -p "$PA_TMP_DIR"
+  fetch_verify "$PIN_SHARED_RUNTIME_TGZ" "$PIN_SHARED_RUNTIME_SHA256" "$archive"
+  [ ! -e "$staged" ] && [ ! -e "$previous" ] || die "unfinished shared-runtime update; inspect .shared-runtime-new/.shared-runtime-old first"
+  mkdir -p "$staged"
+  tar xzf "$archive" --strip-components=1 -C "$staged"
+  PA_NODE -e 'const p=require(process.argv[1]); if(p.name!=="@woowtech/pi-agent-shared-runtime"||p.version!==process.argv[2]) throw Error("unexpected shared runtime")' "$staged/package.json" "$PIN_SHARED_RUNTIME_VERSION"
+  PA_NPM ci --prefix "$staged" --omit=dev --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+  [ -f "$staged/src/distribution.mjs" ] || die "shared distribution adapter missing"
+  # Provider launchers can filter the environment. Keep SDK discovery local to
+  # this install even when PI_SHARED_SDK_ROOT is not inherited by an MCP child.
+  local sdk="$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent"
+  [ -f "$sdk/package.json" ] || die "install the pinned Pi Web stage before shared runtime"
+  mkdir -p "$staged/node_modules/@earendil-works"
+  ln -s "$sdk" "$staged/node_modules/@earendil-works/pi-coding-agent"
+  [ ! -e "$PA_SHARED_RUNTIME_DIR" ] || mv "$PA_SHARED_RUNTIME_DIR" "$previous"
+  mv "$staged" "$PA_SHARED_RUNTIME_DIR"
+  rm -rf "$previous"
+  rm -f "$archive"
+  log "shared runtime installed; existing package choices are preserved at startup"
+}
+
 # -------------------------------------------------------------------- piweb ---
 # Build pi-web from the pinned source commit with the Omnigent/Paseo settings
 # patch applied, then apply the CJK path-corruption patch. This is the heaviest
@@ -264,8 +291,16 @@ piweb_from_artifact() {
   esac
 
   log "installing prebuilt pi-web (no build, no toolchain)"
-  rm -rf "$PA_PIWEB_DIR"; mkdir -p "$PA_PIWEB_DIR"
-  tar xzf "$tarball" -C "$PA_PIWEB_DIR"
+  # Check the candidate before replacing an existing installation. A published
+  # checksum alone cannot detect a tree from an older native/plugin release.
+  local staged="$PA_TMP_DIR/piweb-artifact-staged"
+  rm -rf "$staged"; mkdir -p "$staged"
+  tar xzf "$tarball" -C "$staged"
+  PA_NODE "$HERE/lib/artifact-manifest.mjs" verify "$staged" "$HERE" "$want_os" "$ARCH" \
+    "$PIN_PI_WEB_VERSION" "$PIN_PI_WEB_REF" "$PIN_OMNIGENT_UI_SHA256" \
+    || die "prebuilt Pi Web release binding failed; existing pi-web retained"
+  rm -rf "$PA_PIWEB_DIR"
+  mv "$staged" "$PA_PIWEB_DIR"
   [ "$tarball" = "$PA_TMP_DIR/piweb-artifact.tar.gz" ] && rm -f "$tarball"
 
   # The same assertion the source build makes: the settings routes must exist,
@@ -328,6 +363,9 @@ stage_piweb() {
   rm -rf "$PA_PIWEB_DIR"; mkdir -p "$PA_PIWEB_DIR/lib/node_modules/@agegr" "$PA_PIWEB_DIR/bin"
   mv "$src" "$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web"
   ln -sf "../lib/node_modules/@agegr/pi-web/bin/pi-web.js" "$PA_PIWEB_DIR/bin/pi-web"
+  local artifact_os="$OS"; [ "$artifact_os" = wsl ] && artifact_os=linux
+  PA_NODE "$HERE/lib/artifact-manifest.mjs" write "$PA_PIWEB_DIR" "$HERE" "$artifact_os" "$ARCH" \
+    "$PIN_PI_WEB_VERSION" "$PIN_PI_WEB_REF" "$PIN_OMNIGENT_UI_SHA256"
   piweb_postbuild
 }
 
@@ -450,7 +488,7 @@ stage_omnigent() {
 stage_wire() {
   log "stage wire — install scripts + symlinks"
   mkdirs
-  for f in pi-agent-resume.py pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-session-home pi-agent-session-home-macos pi-agent-host-name pi-agent-host-name.mjs pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs omnigent-plugin-session-home-patch.mjs omnigent-plugin-host-name-guard-patch.mjs omnigent-plugin-model-options-hook-patch.mjs; do
+  for f in pi-agent-resume.py pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-session-home pi-agent-session-home-macos pi-agent-host-name pi-agent-host-name.mjs pi-agent-litellm pi-agent-share-state.mjs pi-agent-shared-session.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs omnigent-plugin-session-home-patch.mjs omnigent-plugin-host-name-guard-patch.mjs omnigent-plugin-model-options-hook-patch.mjs; do
     [ -f "$HERE/rootfs/bin/$f" ] && install -m 0755 "$HERE/rootfs/bin/$f" "$PA_BIN_DIR/$f"
   done
   # Host name: the plugin patch (also applied by `fetch`; a no-op when already
@@ -560,7 +598,7 @@ WRAP
   # Only this one directory is shared, and it is the user's own keychain on
   # their own machine -- the rest of the scoping (data, sessions, .omnigent
   # host identity, shared skills/MCP) is untouched.
-  if [ "$OS" = macos ]; then
+  if [ "$OS" = macos ] && [ "${PI_AGENT_LINK_KEYCHAIN:-1}" != 0 ]; then
     local real_home; real_home="$(eval echo "~$(id -un)")"
     if [ -n "$real_home" ] && [ -d "$real_home/Library/Keychains" ] && [ "$real_home" != "$PI_AGENT_HOME" ]; then
       mkdir -p "$PA_HOME_DIR/Library"
@@ -627,12 +665,14 @@ EOF
         warn "no systemd --user; start manually with: PI_AGENT_HOME=$PI_AGENT_HOME $PA_BIN_DIR/pi-agent start"
       fi ;;
     macos)
-      local plist="$HOME/Library/LaunchAgents/io.woowtech.pi-agent.plist"; mkdir -p "$(dirname "$plist")"
+      local label="${PI_AGENT_LAUNCHD_LABEL:-io.woowtech.pi-agent}"
+      case "$label" in ""|*[!a-zA-Z0-9._-]*) die "invalid PI_AGENT_LAUNCHD_LABEL" ;; esac
+      local plist="$HOME/Library/LaunchAgents/$label.plist"; mkdir -p "$(dirname "$plist")"
       cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>Label</key><string>io.woowtech.pi-agent</string>
+  <key>Label</key><string>$label</string>
   <key>ProgramArguments</key><array><string>$PA_BIN_DIR/pi-web-start.sh</string></array>
   <key>EnvironmentVariables</key><dict><key>PI_AGENT_HOME</key><string>$PI_AGENT_HOME</string><key>PI_WEB_PORT</key><string>$PIN_PI_WEB_PORT</string></dict>
   <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
@@ -640,14 +680,20 @@ EOF
   <key>StandardErrorPath</key><string>$PA_LOG_DIR/pi-web.log</string>
 </dict></plist>
 EOF
-      launchctl unload "$plist" 2>/dev/null || true
-      launchctl load -w "$plist"
+      if [ "${PI_AGENT_LAUNCHD_EPHEMERAL:-0}" = 1 ]; then
+        # Owned temporary jobs: no launchd persistent enable/disable database.
+        # A missing GUI domain is an error, never a successful manual fallback.
+        launchctl bootstrap "gui/$(id -u)" "$plist"
+      else
+        launchctl unload "$plist" 2>/dev/null || true
+        launchctl load -w "$plist"
+      fi
       log "launchd agent loaded" ;;
   esac
   log "pi-web will serve http://127.0.0.1:$PIN_PI_WEB_PORT"
 }
 
-ALL_STAGES=(preflight node fetch piweb clis paseo omnigent wire service)
+ALL_STAGES=(preflight node fetch piweb clis shared paseo omnigent wire service)
 run_stage() { "stage_$1"; }
 
 main() {

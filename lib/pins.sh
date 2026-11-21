@@ -9,15 +9,20 @@ PIN_PI_WEB_VERSION=0.10.0
 PIN_PI_WEB_REF=6fcd7d44981ab51a21d6cd6eb06d361d0e3d3068
 PIN_PI_WEB_REPO=https://github.com/agegr/pi-web.git
 
-PIN_OMNIGENT_PLUGIN_VERSION=0.3.32
-PIN_OMNIGENT_PLUGIN_SHA256=00c555a20c3c99e980fac9f5361a757ae4f318a2fb0954e8ca898729a88239b2
-PIN_OMNIGENT_UI_SHA256=b204fcae4f33d841810a212b71ab757d2d2956fb6e431e2ea7997980c469ef19
-PIN_OMNIGENT_PLUGIN_TGZ="https://github.com/WOOWTECH/pi-omnigent-plugin/releases/download/v${PIN_OMNIGENT_PLUGIN_VERSION}/woowtech-pi-omnigent-plugin-${PIN_OMNIGENT_PLUGIN_VERSION}.tgz"
+PIN_OMNIGENT_PLUGIN_VERSION=0.3.34
+PIN_OMNIGENT_PLUGIN_SHA256=e9e80783881f8a036cbf922d2f50fad860dac3bd23e170dda768ab3c56107945
+PIN_OMNIGENT_UI_SHA256=f5c909b3fe6f544e11a4eed46c7e217a490f89c5e4ec356c9906e3908d9f6c30
+PIN_OMNIGENT_PLUGIN_TGZ="file://$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/candidate-packages/woowtech-pi-omnigent-plugin-${PIN_OMNIGENT_PLUGIN_VERSION}.tgz"
 
-PIN_PASEO_PLUGIN_VERSION=0.1.15
-PIN_PASEO_PLUGIN_SHA256=1a8fd99a503d544a6bd324b93d080ed46dd0bb94cefbff863580580d9c72d4f5
-PIN_PASEO_PLUGIN_TGZ="https://github.com/WOOWTECH/pi-paseo-plugin/releases/download/v${PIN_PASEO_PLUGIN_VERSION}/woowtech-pi-paseo-${PIN_PASEO_PLUGIN_VERSION}.tgz"
+PIN_PASEO_PLUGIN_VERSION=0.1.20
+PIN_PASEO_PLUGIN_SHA256=1574c1bd1d0023c7b536c9feb773e1cdded929104d79cfb05b1deda5846203f8
+PIN_PASEO_PLUGIN_TGZ="file://$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/candidate-packages/woowtech-pi-paseo-${PIN_PASEO_PLUGIN_VERSION}.tgz"
 PIN_GETPASEO_CLI_VERSION=0.11.2
+
+# Unpublished coordinated candidate, vendored with this source branch.
+PIN_SHARED_RUNTIME_VERSION=0.1.6
+PIN_SHARED_RUNTIME_SHA256=0914069fb0cf83f258cf81034bb16573f6e4242e8779cea47b4a5e841f98a937
+PIN_SHARED_RUNTIME_TGZ="file://$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/candidate-packages/woowtech-pi-agent-shared-runtime-${PIN_SHARED_RUNTIME_VERSION}.tgz"
 
 PIN_OMNIGENT_VERSION=0.16.0
 PIN_UV_VERSION=0.12.10                        # must match the omnigent plugin's own pin (src/installer.mjs)

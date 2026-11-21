@@ -33,7 +33,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const EXPECTED_VERSIONS = ['0.3.31', '0.3.32'];
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34'];
 
 // src/installer.mjs: the re-discovery right after the plugin's own `uv tool install omnigent`.
 const HOOK_MARKER = 'model-options-hook (Woow native installer)';

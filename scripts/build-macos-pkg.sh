@@ -181,13 +181,13 @@ mkdir -p "$ROOT$PAYLOAD" "$SCRIPTS"
 # The installer itself, not a copy of anyone's install. No 2>/dev/null: a
 # missing entry must stop the build, not quietly ship without it (vendor/ was
 # once left out this way, and the omnigent stage skipped itself).
-tar cf - -C "$HERE" install.sh lib rootfs scripts tests docs README.md vendor VERSION \
+tar cf - -C "$HERE" install.sh lib rootfs scripts tests docs README.md vendor candidate-packages VERSION \
   | tar xf - -C "$ROOT$PAYLOAD"
 # The resolved package version is authoritative inside the installed payload too.
 printf '%s\n' "$VERSION" > "$ROOT$PAYLOAD/VERSION"
 mkdir -p "$ROOT$PAYLOAD/tools"
 cp -Rp "$TOOLS/." "$ROOT$PAYLOAD/tools/"
-for f in install.sh lib/pins.sh vendor/omnigent-requirements.lock VERSION \
+for f in install.sh lib/pins.sh vendor/omnigent-requirements.lock candidate-packages/woowtech-pi-agent-shared-runtime-0.1.6.tgz VERSION \
          rootfs/bin/flock rootfs/bin/pi-agent-env.sh tools/bin/tmux; do
   [ -e "$ROOT$PAYLOAD/$f" ] || die "payload is missing $f"
 done

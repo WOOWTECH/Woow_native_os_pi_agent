@@ -33,6 +33,8 @@ OS="$(pa_os)"; ARCH="$(pa_arch)"
 
 TREE="$PA_PIWEB_DIR"
 [ -d "$TREE/lib/node_modules/@agegr/pi-web/.next" ] || die "no built pi-web at $TREE — run ./install.sh piweb first"
+PA_NODE "$HERE/lib/artifact-manifest.mjs" verify "$TREE" "$HERE" "$OS" "$ARCH" \
+  "$PIN_PI_WEB_VERSION" "$PIN_PI_WEB_REF" "$PIN_OMNIGENT_UI_SHA256"
 
 # Refuse to ship a tree whose build cache was left in: it is ~600 MB of dead
 # weight and the installer strips it, so its presence means a stale build.

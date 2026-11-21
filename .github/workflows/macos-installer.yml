@@ -1,0 +1,40 @@
+name: macOS full native installer
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  installer:
+    name: Full installer / ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+      - name: Complete scoped install and credential-free lifecycle
+        env:
+          NATIVE_MAC_ARCH: ${{ matrix.arch }}
+          NATIVE_MAC_EVIDENCE: ${{ runner.temp }}/native-mac-evidence
+        run: node tests/macos-installer.mjs
+      - name: Retain nonsecret installer receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-mac-installer-${{ matrix.arch }}
+          path: ${{ runner.temp }}/native-mac-evidence
+          if-no-files-found: error
+      - name: Native pkg payload preservation (unsigned, no installation)
+        run: bash tests/build-macos-pkg.sh

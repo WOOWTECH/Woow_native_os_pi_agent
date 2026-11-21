@@ -101,6 +101,16 @@ case "$out" in
   *) no "a download that keeps failing stops the install and says how to use a copy" "$out" ;;
 esac
 
+echo "== local candidate paths with spaces"
+REMOTE_URL="$URL"; mkdir -p "$W/source with spaces"; cp "$W/good" "$W/source with spaces/candidate.tgz"
+URL="file://$W/source with spaces/candidate.tgz"
+out="$(fv "$DEST")"
+case "$out" in *rc=0) [ "$(curl_ran)" = no ] && [ "$(sha "$DEST")" = "$GOOD_SHA" ] && ok "local candidate path is copied and verified without curl" || no "local candidate path is copied and verified without curl" ;; *) no "local candidate path is copied and verified without curl" "$out" ;; esac
+cp "$W/bad" "$W/source with spaces/candidate.tgz"
+out="$(fv "$DEST")"
+case "$out" in *"sha256 mismatch"*rc=[1-9]*) ok "local candidate still fails on changed bytes" ;; *) no "local candidate still fails on changed bytes" "$out" ;; esac
+URL="$REMOTE_URL"
+
 echo "== C. install.sh fetch, every download failing"
 NODE="${PA_TEST_NODE:-$(command -v node || true)}"
 CACHE_DIR="${PA_TEST_CACHE:-${TMPDIR:-/tmp}/pi-agent-test-cache}"; mkdir -p "$CACHE_DIR"
@@ -133,8 +143,14 @@ else
     ok "with the two pinned tarballs in PI_AGENT_ASSET_CACHE, fetch installs both plugins and downloads nothing"
   else no "with the two pinned tarballs in PI_AGENT_ASSET_CACHE, fetch installs both plugins and downloads nothing" "rc=$rc curl ran: $(curl_ran); $(tail -3 "$W/fetch.log" | tr '\n' ' ' | cut -c1-300)"; fi
   stage; rc=$?
-  if [ "$rc" != 0 ] && grep -q "download failed" "$W/fetch.log"; then ok "(control) without it the same fetch stops: download failed"
-  else no "(control) without it the same fetch stops: download failed" "rc=$rc $(tail -2 "$W/fetch.log" | tr '\n' ' ' | cut -c1-300)"; fi
+  case "$PIN_OMNIGENT_PLUGIN_TGZ:$PIN_PASEO_PLUGIN_TGZ" in
+    file://*:file://*)
+      if [ "$rc" = 0 ] && [ "$(curl_ran)" = no ]; then ok "vendored candidate works without a separate asset cache"
+      else no "vendored candidate works without a separate asset cache" "rc=$rc"; fi ;;
+    *)
+      if [ "$rc" != 0 ] && grep -q "download failed" "$W/fetch.log"; then ok "(control) without it the same fetch stops: download failed"
+      else no "(control) without it the same fetch stops: download failed" "rc=$rc"; fi ;;
+  esac
 fi
 
 echo
