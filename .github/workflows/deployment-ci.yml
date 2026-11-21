@@ -28,11 +28,17 @@ jobs:
           tar -xzf "candidate-packages/woowtech-pi-agent-shared-runtime-$PIN_SHARED_RUNTIME_VERSION.tgz" --strip-components=1 -C "$RUNNER_TEMP/shared-runtime"
           npm ci --prefix "$RUNNER_TEMP/shared-runtime" --omit=dev --legacy-peer-deps --ignore-scripts --no-audit --no-fund
           node --test "$RUNNER_TEMP/shared-runtime/tests/distribution.test.mjs"
-          # Resolve the same immutable Pi Web SDK graph as the native installer.
+          # Resolve the same immutable Pi Web + combined-adapter graph as install.sh.
+          # The candidate adapter upgrades the original SDK1.0 to SDK1.4.
           git init -q "$RUNNER_TEMP/pi-web-sdk"
           git -C "$RUNNER_TEMP/pi-web-sdk" fetch --depth=1 "$PIN_PI_WEB_REPO" "$PIN_PI_WEB_REF"
           git -C "$RUNNER_TEMP/pi-web-sdk" checkout --detach -q FETCH_HEAD
           test "$(git -C "$RUNNER_TEMP/pi-web-sdk" rev-parse HEAD)" = "$PIN_PI_WEB_REF"
+          echo "$PIN_OMNIGENT_PLUGIN_SHA256  candidate-packages/woowtech-pi-omnigent-plugin-$PIN_OMNIGENT_PLUGIN_VERSION.tgz" | sha256sum --check --strict
+          tar -xOf "candidate-packages/woowtech-pi-omnigent-plugin-$PIN_OMNIGENT_PLUGIN_VERSION.tgz" package/integrations/pi-web/combined.adapter.patch > "$RUNNER_TEMP/combined.adapter.patch"
+          echo "$PIN_OMNIGENT_UI_SHA256  $RUNNER_TEMP/combined.adapter.patch" | sha256sum --check --strict
+          git -C "$RUNNER_TEMP/pi-web-sdk" apply --check "$RUNNER_TEMP/combined.adapter.patch"
+          git -C "$RUNNER_TEMP/pi-web-sdk" apply "$RUNNER_TEMP/combined.adapter.patch"
           npm ci --prefix "$RUNNER_TEMP/pi-web-sdk" --omit=dev --ignore-scripts --no-audit --no-fund
           PI_SHARED_SDK_ROOT="$RUNNER_TEMP/pi-web-sdk" node --test "$RUNNER_TEMP/shared-runtime/tests/resource-authority.test.mjs" "$RUNNER_TEMP/shared-runtime/tests/resource-boundary.test.mjs" "$RUNNER_TEMP/shared-runtime/tests/extension-scan.test.mjs" "$RUNNER_TEMP/shared-runtime/tests/bridge.test.mjs" "$RUNNER_TEMP/shared-runtime/tests/mcp-adapter.test.mjs"
           NATIVE_DISTRIBUTION=1 SHARED_RUNTIME_TEST_BUNDLE="$RUNNER_TEMP/shared-runtime" PI_SHARED_SDK_ROOT="$RUNNER_TEMP/pi-web-sdk" node --test tests/shared-distribution.test.mjs tests/shared-session.test.mjs tests/shared-sync-only.test.mjs

@@ -86,7 +86,11 @@ try {
   run(node, ['-e', 'const p=require(process.argv[1]);const t=p.spawn("/bin/echo",["pty-ok"],{env:process.env});let out="";t.onData(s=>out+=s);t.onExit(()=>{if(!out.includes("pty-ok"))process.exitCode=1});', path.join(sdk, 'node_modules/node-pty')]);
   receipt.checks.nativePty = true;
   receipt.versions = { node: pins.PIN_NODE_VERSION, piweb: pins.PIN_PI_WEB_VERSION };
-  for (const [name, expected] of [['claude', pins.PIN_CLAUDE_VERSION], ['codex', pins.PIN_CODEX_VERSION], ['pi', read(path.join(sdk, 'node_modules/@earendil-works/pi-coding-agent/package.json')).version]]) {
+  const expectedPi = read(path.join(sdk, 'package.json')).dependencies['@earendil-works/pi-coding-agent'];
+  assert.match(expectedPi, /^\d+\.\d+\.\d+$/);
+  assert.equal(read(path.join(sdk, 'node_modules/@earendil-works/pi-coding-agent/package.json')).version, expectedPi);
+  receipt.sdkGraph = { expectedPi, lockSha256: sha(path.join(sdk, 'package-lock.json')), combinedAdapterSha256: pins.PIN_OMNIGENT_UI_SHA256 };
+  for (const [name, expected] of [['claude', pins.PIN_CLAUDE_VERSION], ['codex', pins.PIN_CODEX_VERSION], ['pi', expectedPi]]) {
     const actual = run(bin(name), ['--version']).match(/\d+\.\d+\.\d+/)?.[0];
     assert.equal(actual, expected, `${name} installed wrapper`); receipt.versions[name] = actual;
   }
@@ -100,7 +104,7 @@ try {
   for (const [file, marker] of [['common.mjs', 'flock-path-fallback'], ['installer.mjs', "['linux', 'darwin'].includes(platform)"], ['installer.mjs', 'uv-constraints'], ['omnigent.py', 'no-proc-no-verdict']]) {
     assert.ok(fs.readFileSync(path.join(install, 'plugins/pi-omnigent-plugin/src', file), 'utf8').includes(marker), marker);
   }
-  run(bin('flock'), ['-n', '-E', '75', path.join(scratch, 'flock-check'), '/bin/true']);
+  run(bin('flock'), ['-n', '-E', '75', path.join(scratch, 'flock-check'), '/bin/sh', '-c', 'exit 0']);
   receipt.checks.darwinWiring = true;
   assert.equal(fs.existsSync(path.join(install, 'home/Library/Keychains')), false);
   const settings = read(path.join(install, 'data/settings.json'));
