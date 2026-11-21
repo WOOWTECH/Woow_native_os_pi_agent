@@ -32,13 +32,19 @@ const env = { HOME: account, PATH: '/usr/bin:/bin:/usr/sbin:/sbin', TMPDIR: path
   npm_config_cache: path.join(scratch, 'npm-cache'), UV_CACHE_DIR: path.join(scratch, 'uv-cache'),
   DISABLE_AUTOUPDATER: '1', PI_TELEMETRY: '0', PI_SKIP_VERSION_CHECK: '1' };
 function run(command, args = [], { output = false, timeout = 600000 } = {}) {
+  const began = Date.now();
   const result = spawnSync(command, args, { cwd: repo, env, encoding: 'utf8', timeout, maxBuffer: 64 * 1024 * 1024 });
   if (output) fs.appendFileSync(path.join(evidence, 'installer.log'), (result.stdout || '') + (result.stderr || ''));
   if (result.status !== 0) {
     // Installed daemons/status may contain pairing data: keep their output private.
     let code = result.error?.code || 'COMMAND_FAILED';
     if (path.basename(command) === 'pi-paseo') {
-      try { const reported = JSON.parse(result.stderr).code; if (/^[A-Z_]{1,64}$/.test(reported)) code = reported; } catch {}
+      // Node's SQLite warning can precede the CLI's already-redacted JSON.
+      for (const line of (result.stderr || '').split('\n')) {
+        try { const reported = JSON.parse(line).code; if (/^[A-Z_]{1,64}$/.test(reported)) code = reported; } catch {}
+      }
+      receipt.commandFailure = { action: args[0], status: result.status, signal: result.signal, code, elapsedMs: Date.now() - began };
+      receipt.failureState = lifecycleSnapshot();
     }
     throw new Error(`${path.basename(command)} ${args[0] || ''}: exit ${result.status}, ${code}`);
   }
@@ -62,6 +68,32 @@ async function webUp() {
 }
 const bin = name => path.join(install, 'bin', name);
 let api, runtime, launchdAttempted = false;
+function lifecycleSnapshot() {
+  // Only enum values, process states and booleans; never copy config, identity,
+  // args, environment or daemon logs into public CI artifacts.
+  if (!runtime) return null;
+  const loc = runtime.locations();
+  const record = name => { try { return read(path.join(loc.stateDir, name)); } catch { return {}; } };
+  const state = record('state.json'), supervisor = record('supervisor.json');
+  const processState = pid => {
+    if (!Number.isInteger(pid) || pid <= 1) return 'absent';
+    const r = spawnSync('/bin/ps', ['-p', String(pid), '-o', 'stat='], { env, encoding: 'utf8' });
+    const value = (r.stdout || '').trim();
+    return r.status !== 0 ? 'absent' : /^[A-Za-z+<>-]{1,12}$/.test(value) ? value : 'unknown';
+  };
+  const runtimeLock = record('runtime.lock');
+  return { phase: /^[a-z_]{1,40}$/.test(state.phase) ? state.phase : null,
+    desiredEnabled: state.desiredEnabled === true,
+    registrationEnabled: record('host-registration.json').enabled === true,
+    supervisorProcess: processState(supervisor.pid), daemonProcess: processState(state.daemonPid),
+    runtimeLockPresent: fs.existsSync(path.join(loc.stateDir, 'runtime.lock')),
+    runtimeLockOwnerProcess: processState(runtimeLock.pid) };
+}
+function safeError(error) {
+  return { name: ['Error', 'RuntimeError', 'AssertionError'].includes(error?.name) ? error.name : 'Error',
+    code: /^[A-Z_]{1,64}$/.test(error?.code) ? error.code : 'UNKNOWN',
+    supervisorStillStopping: error?.message === 'Plugin supervisor is still stopping' };
+}
 async function started(description) {
   // Reachable can precede completion of activate(). Wait for its final health
   // receipt AND released runtime lock before testing normal stop/restart.
@@ -163,8 +195,7 @@ try {
     assert.equal(launcher.startup, 'ready'); assert.equal(launcher.command, bin(name));
   }
   receipt.checks.realProviderWrapperDiscovery = true;
-  receipt.preStop = { phase: status.phase, diagnosticCode: status.diagnosticCode,
-    runtimeLockPresent: fs.existsSync(path.join(loc.stateDir, 'runtime.lock')) };
+  receipt.preStop = { ...lifecycleSnapshot(), diagnosticCode: status.diagnosticCode };
   save();
   run(bin('pi-paseo'), ['stop']);
   await until(async () => !(await runtime.status()).daemon.running, 'Agent Connect stop');
@@ -191,14 +222,20 @@ try {
   receipt.error = { name: error.name, message: error.message }; process.exitCode = 1;
 } finally {
   let stopped = true;
-  if (api) { try { await api.lifecycle({ action: 'stop' }); assert.equal((await runtime.status()).daemon.running, false); } catch { stopped = false; } }
+  if (api) {
+    const began = Date.now();
+    try { await api.lifecycle({ action: 'stop' }); assert.equal((await runtime.status()).daemon.running, false); }
+    catch (error) { stopped = false; receipt.cleanupError = safeError(error); }
+    receipt.cleanupElapsedMs = Date.now() - began;
+    receipt.cleanupState = lifecycleSnapshot();
+  }
   if (launchdAttempted) {
     spawnSync('/bin/launchctl', ['bootout', `${receipt.launchd.domain}/${label}`], { env, encoding: 'utf8' });
     try {
       await until(async () => !(await webUp()), 'final PiWeb stop', 30000);
       const loaded = spawnSync('/bin/launchctl', ['print', `${receipt.launchd.domain}/${label}`], { env, encoding: 'utf8' });
       assert.notEqual(loaded.status, 0, 'owned launchd job must be absent after bootout');
-    } catch { stopped = false; }
+    } catch (error) { stopped = false; receipt.launchdCleanupError = safeError(error); }
   }
   receipt.checks.finalStop = stopped;
   if (!stopped) { receipt.success = false; process.exitCode = 1; }
