@@ -24,6 +24,7 @@ import sys
 import tempfile
 import threading
 import time
+from unittest.mock import patch
 from pathlib import Path
 
 PRISTINE, NODE, PATCH = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
@@ -135,9 +136,20 @@ def resume(mod, statuses, timeout=8):
     plugin = mod.Plugin({"configHome": str(config), "dataDir": str(config), "stateDir": str(work / "state"),
                          "workspace": str(workspace), "omnigentBin": str(binary), "server": URL, "action": "resume",
                          "resumeHostId": HOST_ID, "allowManagedHost": True, "timeoutSeconds": timeout}, auth=FakeAuth())
+    # This scenario is an ALREADY EXITED duplicate-host launcher. Without
+    # reaping, a fast /proc read may see the shell (or its zombie) and correctly
+    # report HOST_PROCESS_MISMATCH instead of HOST_PROCESS_MISSING. Synchronize
+    # only the owned fixture child; keep the plugin's real process checks intact.
+    real_popen = subprocess.Popen
+    def exited_launcher(*args, **kwargs):
+        child = real_popen(*args, **kwargs)
+        assert child.wait(timeout=5) == 1
+        return child
+
     result = code = None
     try:
-        result = plugin.resume()
+        with patch.object(mod.subprocess, "Popen", exited_launcher):
+            result = plugin.resume()
     except mod.PluginError as caught:
         code = caught.code
     finally:
