@@ -164,6 +164,14 @@ try {
   const settings = read(path.join(install, 'data/settings.json'));
   for (const plugin of ['pi-paseo-plugin', 'pi-omnigent-plugin']) assert.ok(settings.packages.includes(path.join(install, 'plugins', plugin)));
   assert.equal(sha(path.join(install, 'plugins/pi-omnigent-plugin/integrations/pi-web/combined.adapter.patch')), pins.PIN_OMNIGENT_UI_SHA256);
+  const combined = read(path.join(install, 'plugins/pi-omnigent-plugin/integrations/pi-web/combined.adapter-meta.json'));
+  assert.equal(combined.baseCommit, pins.PIN_PI_WEB_REF);
+  assert.equal(combined.piWebVersion, pins.PIN_PI_WEB_VERSION);
+  assert.equal(combined.patchSha256, pins.PIN_OMNIGENT_UI_SHA256);
+  assert.equal(combined.paseo.packageVersion, pins.PIN_PASEO_PLUGIN_VERSION);
+  assert.equal(combined.omnigent.packageVersion, pins.PIN_OMNIGENT_PLUGIN_VERSION);
+  assert.equal(combined.paseo.adapterPatchSha256, sha(path.join(install, 'plugins/pi-paseo-plugin/host/adapter.patch')));
+  receipt.checks.combinedCandidateMetadata = true;
   // Source only the installed native environment before importing the installed API.
   const scopedEnv = JSON.parse(run('/bin/bash', ['-c', '. "$PI_AGENT_HOME/bin/pi-agent-env.sh"; "$PI_AGENT_HOME/node/bin/node" -e "console.log(JSON.stringify(process.env))"']));
   for (const key of Object.keys(process.env)) delete process.env[key];
