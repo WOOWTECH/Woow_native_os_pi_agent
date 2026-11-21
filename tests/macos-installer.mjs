@@ -36,7 +36,11 @@ function run(command, args = [], { output = false, timeout = 600000 } = {}) {
   if (output) fs.appendFileSync(path.join(evidence, 'installer.log'), (result.stdout || '') + (result.stderr || ''));
   if (result.status !== 0) {
     // Installed daemons/status may contain pairing data: keep their output private.
-    throw new Error(`${path.basename(command)} ${args[0] || ''}: exit ${result.status}, ${result.error?.code || 'COMMAND_FAILED'}`);
+    let code = result.error?.code || 'COMMAND_FAILED';
+    if (path.basename(command) === 'pi-paseo') {
+      try { const reported = JSON.parse(result.stderr).code; if (/^[A-Z_]{1,64}$/.test(reported)) code = reported; } catch {}
+    }
+    throw new Error(`${path.basename(command)} ${args[0] || ''}: exit ${result.status}, ${code}`);
   }
   return (result.stdout || '').trim();
 }
@@ -58,6 +62,17 @@ async function webUp() {
 }
 const bin = name => path.join(install, 'bin', name);
 let api, runtime, launchdAttempted = false;
+async function started(description) {
+  // Reachable can precede completion of activate(). Wait for its final health
+  // receipt AND released runtime lock before testing normal stop/restart.
+  // This is not an interrupted-start/cancellation acceptance test.
+  await until(async () => {
+    const s = await api.status();
+    return s.phase === 'running' && s.daemon.running && s.daemon.reachable &&
+      s.state.lastDiagnostic?.daemonReachable === true &&
+      !fs.existsSync(path.join(runtime.locations().stateDir, 'runtime.lock'));
+  }, description, 180000);
+}
 try {
   receipt.source = run('/usr/bin/git', ['rev-parse', 'HEAD']); save();
   const pins = Object.fromEntries(run('/bin/bash', ['-c', '. lib/pins.sh; set | /usr/bin/grep ^PIN_']).split('\n').map(line => {
@@ -137,7 +152,7 @@ try {
     assert.equal(res.status, 200, route);
   }
   run(bin('pi-paseo'), ['start']);
-  await until(async () => { const s = await api.status(); return s.daemon.running && s.daemon.reachable; }, 'Agent Connect first start', 180000);
+  await started('Agent Connect activation completed');
   const loc = runtime.locations();
   const identity = () => ({ serverId: sha(path.join(loc.paseoHome, 'server-id')), keypair: sha(path.join(loc.paseoHome, 'daemon-keypair.json')) });
   const firstIdentity = identity();
@@ -148,6 +163,9 @@ try {
     assert.equal(launcher.startup, 'ready'); assert.equal(launcher.command, bin(name));
   }
   receipt.checks.realProviderWrapperDiscovery = true;
+  receipt.preStop = { phase: status.phase, diagnosticCode: status.diagnosticCode,
+    runtimeLockPresent: fs.existsSync(path.join(loc.stateDir, 'runtime.lock')) };
+  save();
   run(bin('pi-paseo'), ['stop']);
   await until(async () => !(await runtime.status()).daemon.running, 'Agent Connect stop');
   run(bin('pi-agent'), ['stop']);
@@ -155,7 +173,7 @@ try {
   receipt.checks.firstStop = true;
   run(bin('pi-agent'), ['start']); await until(webUp, 'PiWeb restart', 180000);
   run(bin('pi-paseo'), ['start']);
-  await until(async () => { const s = await api.status(); return s.daemon.running && s.daemon.reachable; }, 'Agent Connect restart', 180000);
+  await started('Agent Connect restart completed');
   assert.deepEqual(identity(), firstIdentity);
   receipt.checks.restartIdentity = true;
   // Run the frozen extension-free boundary against the SDK actually installed on Mac.
@@ -176,7 +194,11 @@ try {
   if (api) { try { await api.lifecycle({ action: 'stop' }); assert.equal((await runtime.status()).daemon.running, false); } catch { stopped = false; } }
   if (launchdAttempted) {
     spawnSync('/bin/launchctl', ['bootout', `${receipt.launchd.domain}/${label}`], { env, encoding: 'utf8' });
-    try { await until(async () => !(await webUp()), 'final PiWeb stop', 30000); } catch { stopped = false; }
+    try {
+      await until(async () => !(await webUp()), 'final PiWeb stop', 30000);
+      const loaded = spawnSync('/bin/launchctl', ['print', `${receipt.launchd.domain}/${label}`], { env, encoding: 'utf8' });
+      assert.notEqual(loaded.status, 0, 'owned launchd job must be absent after bootout');
+    } catch { stopped = false; }
   }
   receipt.checks.finalStop = stopped;
   if (!stopped) { receipt.success = false; process.exitCode = 1; }
