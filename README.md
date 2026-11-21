@@ -24,14 +24,38 @@ acceptance require separate host evidence.
 
 ## Install
 
-### macOS — download and double-click
+### macOS — source installer with prebuilt pi-web (recommended)
 
-- Apple silicon: [WoowPiAgent-0.2.8-macos-arm64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.8/WoowPiAgent-0.2.8-macos-arm64.pkg)
-- Intel: [WoowPiAgent-0.2.8-macos-x64.pkg](https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.8/WoowPiAgent-0.2.8-macos-x64.pkg)
+After the v0.2.8 release is published, check out its matching source:
 
-0.2.8 is being prepared; these URLs become usable only after publication. Public
-packages must carry Developer ID signatures and accepted notarization. CI
-unsigned packages are review candidates, not ordinary-user downloads.
+```bash
+git clone --branch v0.2.8 --depth 1 https://github.com/WOOWTECH/Woow_native_os_pi_agent
+cd Woow_native_os_pi_agent
+```
+
+Then run the command for your Mac. **Apple silicon (arm64):**
+
+```bash
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.8/piweb-0.10.0-macos-arm64.tar.gz \
+  ./install.sh
+```
+
+**Intel (x64):**
+
+```bash
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.8/piweb-0.10.0-macos-x64.tar.gz \
+  ./install.sh
+```
+
+The source installer needs Git; Omnigent's native Pi sessions also need tmux
+(see [Mac host requirements](docs/MACOS.md#host-requirements)). To build pi-web
+from source instead, omit `PI_AGENT_PIWEB_ARTIFACT` and install the Xcode Command
+Line Tools first. The prebuilt route verifies the published checksum and release
+receipt before installing.
+
+Signed, notarized `.pkg` downloads are a separate maintainer release and remain
+pending. The tag workflow publishes the source/prebuilt install assets above;
+unsigned CI `.pkg` candidates remain in Actions for review.
 
 ### Ubuntu / Windows WSL2 — prebuilt pi-web (recommended)
 
