@@ -2,7 +2,6 @@
 // subject: no substituted CLI/provider binaries, launchctl or uname fixtures.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { createHash } from 'node:crypto';
@@ -14,7 +13,9 @@ assert.equal(process.platform, 'darwin', 'actual macOS required');
 assert.equal(process.arch, process.env.NATIVE_MAC_ARCH);
 const evidence = path.resolve(process.env.NATIVE_MAC_EVIDENCE);
 fs.mkdirSync(evidence, { recursive: true });
-const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'native-mac-install-')));
+// Darwin's per-user TMPDIR is too long for tmux/daemon Unix-domain sockets.
+// mkdtemp still owns a private, unpredictable root; never use the user's HOME.
+const scratch = fs.realpathSync(fs.mkdtempSync('/private/tmp/native-ci-'));
 const account = path.join(scratch, 'account'), install = path.join(scratch, 'install');
 for (const dir of [account, install, path.join(scratch, 'tmp')]) fs.mkdirSync(dir, { mode: 0o700 });
 const label = `io.woowtech.pi-agent.ci-${process.pid}-${Date.now()}`;
