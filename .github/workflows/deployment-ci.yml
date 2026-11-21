@@ -44,5 +44,6 @@ jobs:
           bash tests/resume-no-proc.sh
           bash tests/host-name.sh
           bash tests/installer-rerun.sh
+          bash tests/macos-ci-isolation.sh
           bash tests/cli-wrappers.sh
           bash tests/pi-wrapper-session-home.sh

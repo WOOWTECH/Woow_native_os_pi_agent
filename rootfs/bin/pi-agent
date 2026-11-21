@@ -8,19 +8,26 @@ SELF="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
 export PI_AGENT_HOME
 PORT="${PI_WEB_PORT:-30141}"
 UNIT="pi-web"
-PLIST="io.woowtech.pi-agent"
+PLIST="${PI_AGENT_LAUNCHD_LABEL:-io.woowtech.pi-agent}"
+case "$PLIST" in ""|*[!a-zA-Z0-9._-]*) echo "invalid PI_AGENT_LAUNCHD_LABEL" >&2; exit 1 ;; esac
 
 sd() { command -v systemctl >/dev/null 2>&1 && systemctl --user "$@" 2>/dev/null; }
 is_mac() { [ "$(uname -s)" = "Darwin" ]; }
 
 case "${1:-}" in
   start)
-    if is_mac; then launchctl load -w "$HOME/Library/LaunchAgents/${PLIST}.plist" 2>/dev/null || true
+    if is_mac; then
+      if [ "${PI_AGENT_LAUNCHD_EPHEMERAL:-0}" = 1 ]; then
+        launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/${PLIST}.plist"
+      else launchctl load -w "$HOME/Library/LaunchAgents/${PLIST}.plist" 2>/dev/null || true; fi
     elif sd start "$UNIT"; then :
     else nohup "$SELF/pi-web-start.sh" >>"$PI_AGENT_HOME/logs/pi-web.log" 2>&1 & echo "started (foreground fallback), log: $PI_AGENT_HOME/logs/pi-web.log"; fi
     echo "pi-agent: http://127.0.0.1:$PORT" ;;
   stop)
-    if is_mac; then launchctl unload "$HOME/Library/LaunchAgents/${PLIST}.plist" 2>/dev/null || true
+    if is_mac; then
+      if [ "${PI_AGENT_LAUNCHD_EPHEMERAL:-0}" = 1 ]; then
+        launchctl bootout "gui/$(id -u)/${PLIST}"
+      else launchctl unload "$HOME/Library/LaunchAgents/${PLIST}.plist" 2>/dev/null || true; fi
     elif sd stop "$UNIT"; then :
     else pkill -f "pi-web/bin/pi-web.js" 2>/dev/null || true; fi ;;
   restart) "$0" stop; "$0" start ;;

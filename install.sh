@@ -587,7 +587,7 @@ WRAP
   # Only this one directory is shared, and it is the user's own keychain on
   # their own machine -- the rest of the scoping (data, sessions, .omnigent
   # host identity, shared skills/MCP) is untouched.
-  if [ "$OS" = macos ]; then
+  if [ "$OS" = macos ] && [ "${PI_AGENT_LINK_KEYCHAIN:-1}" != 0 ]; then
     local real_home; real_home="$(eval echo "~$(id -un)")"
     if [ -n "$real_home" ] && [ -d "$real_home/Library/Keychains" ] && [ "$real_home" != "$PI_AGENT_HOME" ]; then
       mkdir -p "$PA_HOME_DIR/Library"
@@ -654,12 +654,14 @@ EOF
         warn "no systemd --user; start manually with: PI_AGENT_HOME=$PI_AGENT_HOME $PA_BIN_DIR/pi-agent start"
       fi ;;
     macos)
-      local plist="$HOME/Library/LaunchAgents/io.woowtech.pi-agent.plist"; mkdir -p "$(dirname "$plist")"
+      local label="${PI_AGENT_LAUNCHD_LABEL:-io.woowtech.pi-agent}"
+      case "$label" in ""|*[!a-zA-Z0-9._-]*) die "invalid PI_AGENT_LAUNCHD_LABEL" ;; esac
+      local plist="$HOME/Library/LaunchAgents/$label.plist"; mkdir -p "$(dirname "$plist")"
       cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>Label</key><string>io.woowtech.pi-agent</string>
+  <key>Label</key><string>$label</string>
   <key>ProgramArguments</key><array><string>$PA_BIN_DIR/pi-web-start.sh</string></array>
   <key>EnvironmentVariables</key><dict><key>PI_AGENT_HOME</key><string>$PI_AGENT_HOME</string><key>PI_WEB_PORT</key><string>$PIN_PI_WEB_PORT</string></dict>
   <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
@@ -667,8 +669,14 @@ EOF
   <key>StandardErrorPath</key><string>$PA_LOG_DIR/pi-web.log</string>
 </dict></plist>
 EOF
-      launchctl unload "$plist" 2>/dev/null || true
-      launchctl load -w "$plist"
+      if [ "${PI_AGENT_LAUNCHD_EPHEMERAL:-0}" = 1 ]; then
+        # Owned temporary jobs: no launchd persistent enable/disable database.
+        # A missing GUI domain is an error, never a successful manual fallback.
+        launchctl bootstrap "gui/$(id -u)" "$plist"
+      else
+        launchctl unload "$plist" 2>/dev/null || true
+        launchctl load -w "$plist"
+      fi
       log "launchd agent loaded" ;;
   esac
   log "pi-web will serve http://127.0.0.1:$PIN_PI_WEB_PORT"
