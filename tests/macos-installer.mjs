@@ -132,7 +132,7 @@ try {
   assert.match(run('/bin/launchctl', ['print', `${receipt.launchd.domain}/${label}`]), /state = running/);
   assert.ok(fs.existsSync(path.join(install, 'home/.local/bin/pi-web')), 'real Omnigent launcher installed');
   receipt.stages.at(-1).status = 'passed'; receipt.checks.piWebFirstStart = true; save();
-  for (const route of ['/omnigent', '/paseo/setup', '/api/paseo']) {
+  for (const route of ['/omnigent', '/paseo/setup', '/api/plugin-paseo']) {
     const res = await fetch(url + route, { signal: AbortSignal.timeout(30000) });
     assert.equal(res.status, 200, route);
   }
