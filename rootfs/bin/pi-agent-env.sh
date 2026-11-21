@@ -34,8 +34,11 @@ export PI_SKIP_VERSION_CHECK="${PI_SKIP_VERSION_CHECK:-1}"
 # as "off", so DISABLE_AUTOUPDATER=0 lets it update itself where that reaches.
 export DISABLE_AUTOUPDATER="${DISABLE_AUTOUPDATER:-1}"
 
-# Scoped Node + our wrappers first on PATH.
-export PATH="${PI_AGENT_HOME}/bin:${PI_AGENT_HOME}/node/bin:${PATH}"
+# Scoped Node + our wrappers first on PATH. The pinned Omnigent venv must
+# also be discoverable before its plugin has bootstrapped a private tool copy:
+# Agent Connect inspects the seeded .omnigent/config.yaml with Omnigent's own
+# adjacent Python, even for a fresh config with no gateway or credentials.
+export PATH="${PI_AGENT_HOME}/bin:${PI_AGENT_HOME}/node/bin:${PI_AGENT_HOME}/omnigent/venv/bin:${PATH}"
 
 # macOS only: Homebrew is not on PATH in a non-login shell or a launchd job, so
 # anything spawned from here cannot see it -- including `tmux`, which Omnigent's
