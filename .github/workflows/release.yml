@@ -60,6 +60,7 @@ jobs:
       - name: Shared runtime under the native Pi SDK
         run: |
           export SHARED_RUNTIME_TEST_BUNDLE="${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/shared-runtime"
+          "${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/node/bin/node" --test "$SHARED_RUNTIME_TEST_BUNDLE/tests/resource-authority.test.mjs" "$SHARED_RUNTIME_TEST_BUNDLE/tests/resource-boundary.test.mjs"
           NATIVE_DISTRIBUTION=1 "${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/node/bin/node" --test tests/shared-distribution.test.mjs tests/shared-session.test.mjs
 
       - name: Package artifact
