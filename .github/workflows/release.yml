@@ -45,6 +45,10 @@ jobs:
 
       - name: Shared runtime under the native Pi SDK
         run: |
+          # macOS exposes TMPDIR via /var -> /private/var. Keep fixture HOME
+          # paths physical so the frozen SDK authority assertions compare
+          # canonical paths, as the full installer gate already does.
+          export TMPDIR="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
           export SHARED_RUNTIME_TEST_BUNDLE="${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/shared-runtime"
           export PI_SHARED_SDK_ROOT="${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/piweb/lib/node_modules/@agegr/pi-web"
           # Includes real cold/warm headless MCP processes against this installed SDK.
