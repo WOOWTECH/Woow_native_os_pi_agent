@@ -153,15 +153,20 @@ scripts/build-macos-pkg.sh \
 
 `.github/workflows/release.yml` prepares version-bound Pi Web trees, unsigned
 macOS packages and exact copies of the frozen archives as GitHub Actions
-artifacts. It has no public-release upload step. Review the aggregate receipt
-and complete signing/notarization before separately authorizing publication.
+artifacts on manual dispatch. A version tag publishes the three prebuilt trees,
+checksums, unchanged frozen archives and a receipt binding the actual tag commit
+and source tree. Only that tag job has release-write permission. Review those
+artifacts before authorizing the tag; this install route is independent of
+maintainer signing/notarization for the separate macOS `.pkg`.
 The existing Windows signer in `WOOWTECH/woowtech-smart` is a separate lane; it
 does not sign macOS pkg files. See [release preparation](docs/RELEASE-PREPARATION.md).
 
-The `.pkg` is under a megabyte. It carries the installer and the bundled tools,
-and it **pins** the prebuilt pi-web tree by URL and sha256 rather than embedding
-it. Postinstall downloads the tree, and `install.sh` verifies it. The pkg build
-fails if anything other than `tools/bin/tmux` in the payload is a Mach-O binary.
+The URL-mode `.pkg` carries the installer, frozen plugin archives and bundled
+tools, and pins the prebuilt Pi Web tree by URL and sha256. Postinstall downloads
+and verifies that tree. The manual CI candidate instead uses `--artifact-file`
+to embed the tree and is larger. Its unsigned `.pkg` stays in Actions for review;
+it is excluded from tag release assets. Native modules inside an embedded tree
+require their own signing before a public `.pkg` is notarized.
 
 **The `.pkg` install needs neither Homebrew nor the Xcode Command Line Tools.**
 uv is a pinned standalone binary rather than a pip install. `flock` is a

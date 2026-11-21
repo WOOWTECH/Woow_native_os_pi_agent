@@ -13,9 +13,19 @@ use the existing pinned network downloads.
 
 `release.yml` validates VERSION against the requested version/tag, builds the
 three platform trees, verifies installed shared-runtime gates, and packages
-unsigned Mac candidates. Frozen tgz files are copied unchanged, never rebuilt
-with `npm pack`. Its aggregate Actions artifact includes SHA256s and source/run
-identity. It has read-only repository permission and does not publish anything.
+unsigned Mac candidates on manual dispatch. Frozen tgz files are copied unchanged,
+never rebuilt with `npm pack`. Its aggregate Actions artifact includes SHA256s,
+source commit/tree and run identity. Manual dispatch has read-only repository
+permission and does not publish anything.
+
+An explicitly pushed version tag retains the existing source/prebuilt install
+release route: all three platform trees, checksums, frozen tgz files and the
+exact tag-build receipt are attached to the GitHub Release. Only this conditional
+job has contents:write. It excludes unsigned `.pkg` files and does not wait for
+maintainer Mac signing. Authorizing the tag is the public-promotion boundary.
+The tag build records its actual commit and Git tree, not the earlier PR head.
+A merge commit may differ from the reviewed head while retaining the same tree;
+compare both identities, and review any tree change before authorizing the tag.
 
 The tree receipt binds the native version, OS/architecture, pinned Pi Web source,
 combined patch and all frozen package hashes. Packaging cannot restamp an older
@@ -39,7 +49,8 @@ No native Mac signing secrets or native self-hosted runner were visible in the
 2026-11-21 repository metadata check. Secret presence is not a credential test;
 organization-level access was not established. No secrets were read or copied.
 
-After exact artifact review, release owners must publish matching new source/tag
-and assets, then verify anonymous normal-install URLs and signatures. This task
+After exact artifact review, release owners may authorize the matching source/tag
+and prebuilt assets independently, then verify anonymous normal-install URLs.
+Signed `.pkg` preparation and signature verification remain separate. This task
 does not grant publication. CI does not establish actual user Mac provider,
 Windows host, or HA Supervisor upgrade acceptance.

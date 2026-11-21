@@ -1,6 +1,6 @@
-# Stage version-bound release candidates in GitHub Actions only.
-# Frozen plugin archives are copied byte-for-byte. Unsigned Mac pkg files are
-# for review; signing/notarization and public promotion remain separate gates.
+# Manual dispatch stages version-bound candidates without publishing.
+# An explicitly pushed version tag retains the supported prebuilt-tree release
+# route. Unsigned Mac pkg files stay in Actions; maintainers sign separately.
 name: release
 
 on:
@@ -67,7 +67,7 @@ jobs:
           tar czf "dist/tools-$label.tar.gz" -C dist "tools-$label"
           ( cd dist && shasum -a 256 "tools-$label.tar.gz" > "tools-$label.tar.gz.sha256" )
       - name: Build unsigned native package preserving frozen payloads
-        if: startsWith(matrix.label, 'macos-')
+        if: github.event_name == 'workflow_dispatch' && startsWith(matrix.label, 'macos-')
         run: |
           . lib/pins.sh
           label='${{ matrix.label }}'
@@ -97,19 +97,26 @@ jobs:
     needs: artifact
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with: { path: dist, merge-multiple: true }
       - name: Record exact candidate bytes for review
         shell: python
         run: |
-          import hashlib, json, os, pathlib
+          import hashlib, json, os, pathlib, subprocess
           root = pathlib.Path('dist')
           files = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
                    for p in sorted(root.rglob('*')) if p.is_file()}
           frozen = json.loads((root / 'frozen-packages.json').read_text())
           for row in frozen['artifacts']:
               assert files[row['file']] == row['sha256']
-          receipt = {'source': os.environ['GITHUB_SHA'], 'runId': os.environ['GITHUB_RUN_ID'],
+          source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert source == os.environ['GITHUB_SHA']
+          tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip()
+          receipt = {'source': source, 'sourceTree': tree, 'version': pathlib.Path('VERSION').read_text().strip(),
+                     'runId': os.environ['GITHUB_RUN_ID'],
                      'published': False, 'macPackagesSigned': False, 'files': files}
           (root / 'release-candidate.json').write_text(json.dumps(receipt, indent=2) + '\n')
       - uses: actions/upload-artifact@v4
@@ -117,3 +124,60 @@ jobs:
           name: native-reviewed-candidate-${{ github.sha }}
           path: dist
           if-no-files-found: error
+
+  release:
+    needs: review-candidate
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-reviewed-candidate-${{ github.sha }}
+          path: dist
+      - name: Bind public assets to the actual tag build
+        shell: python
+        run: |
+          import hashlib, json, os, pathlib
+          root = pathlib.Path('dist')
+          candidate = json.loads((root / 'release-candidate.json').read_text())
+          assert candidate['source'] == os.environ['GITHUB_SHA']
+          assert os.environ['GITHUB_REF_NAME'] == 'v' + candidate['version']
+          assert candidate['runId'] == os.environ['GITHUB_RUN_ID']
+          files = {}
+          for file in sorted(root.iterdir()):
+              if file.is_file() and (file.name.endswith(('.tar.gz', '.sha256', '.tgz')) or file.name == 'frozen-packages.json'):
+                  digest = hashlib.sha256(file.read_bytes()).hexdigest()
+                  assert candidate['files'][file.name] == digest
+                  files[file.name] = digest
+          for platform in ('linux-x64', 'macos-arm64', 'macos-x64'):
+              trees = [name for name in files if name.startswith('piweb-') and name.endswith('-' + platform + '.tar.gz')]
+              assert len(trees) == 1 and trees[0] + '.sha256' in files
+          frozen = json.loads((root / 'frozen-packages.json').read_text())
+          for row in frozen['artifacts']:
+              assert files[row['file']] == row['sha256']
+          receipt = {'source': candidate['source'], 'sourceTree': candidate['sourceTree'],
+                     'version': candidate['version'], 'tag': os.environ['GITHUB_REF_NAME'],
+                     'runId': candidate['runId'], 'files': files,
+                     'macPkg': 'Separate maintainer signing/notarization; unsigned CI pkg excluded'}
+          (root / 'release-assets.json').write_text(json.dumps(receipt, indent=2) + '\n')
+      - name: Attach source-install assets to the tagged release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+            dist/*.tgz
+            dist/frozen-packages.json
+            dist/release-assets.json
+          fail_on_unmatched_files: true
+          body: |
+            Prebuilt Pi Web trees for Linux x64 (Ubuntu/WSL2), macOS arm64 and Intel,
+            built from ${{ github.ref_name }} at ${{ github.sha }}.
+            Use the matching source tag with PI_AGENT_PIWEB_ARTIFACT=<asset URL> ./install.sh.
+            SHA256 files and release-assets.json identify these exact bytes and source tree.
+            Frozen Agent Connect/Omnigent/shared-runtime archives retain their npm names and bytes.
+
+            Signed macOS .pkg installers are prepared and attached separately by the maintainer.
+            Unsigned CI review packages are not public release assets.
