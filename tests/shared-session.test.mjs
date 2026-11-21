@@ -65,7 +65,7 @@ for (const probe of [false,true]) test(`shipped Pi wrapper ${probe?'skips pure d
  for(const name of ['pi','pi-agent-env.sh','pi-agent-shared-session.mjs'])fs.copyFileSync(path.resolve('rootfs/bin',name),path.join(bin,name));
  fs.writeFileSync(path.join(install,'session-home.state'),'test');
  const cli=path.join(install,'piweb/lib/node_modules/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent/dist/cli.js');
- fs.mkdirSync(path.dirname(cli),{recursive:true});fs.writeFileSync(cli,'console.log(JSON.stringify({home:process.env.HOME,agentDir:process.env.PI_CODING_AGENT_DIR,shared:process.env.PI_SHARED_DATA_DIR,args:process.argv.slice(2)}))');
+ fs.mkdirSync(path.dirname(cli),{recursive:true});fs.writeFileSync(cli,'console.log(JSON.stringify({home:process.env.HOME,agentDir:process.env.PI_CODING_AGENT_DIR,shared:process.env.PI_SHARED_DATA_DIR,bridge:process.env.PI_SHARED_BRIDGE,args:process.argv.slice(2)}))');
  // The wrapper pins SDK lookup to its own installation, just as the actual
  // installer does. A CLI-only fixture accidentally passed on machines with a
  // global Pi Web SDK while failing on a clean runner.
@@ -77,9 +77,11 @@ for (const probe of [false,true]) test(`shipped Pi wrapper ${probe?'skips pure d
  const fixtureSdk=path.dirname(path.dirname(cli));
  write(path.join(fixtureSdk,'package.json'),{name:'@earendil-works/pi-coding-agent',type:'module',main:'index.mjs'});
  fs.symlinkSync(fs.realpathSync(path.join(sourceSdk,entry)),path.join(fixtureSdk,'index.mjs'));
- const r=spawnSync('bash',[path.join(bin,'pi'),...(probe?['--version']:['--print','fixture'])],{env:{...process.env,HOME:f.home,PI_AGENT_HOME:install,PI_AGENT_DATA_DIR:f.canonical,PI_CODING_AGENT_DIR:f.actual},encoding:'utf8',timeout:30000});
+ const r=spawnSync('bash',[path.join(bin,'pi'),...(probe?['--version']:['--print','fixture'])],{env:{...process.env,HOME:f.home,PI_AGENT_HOME:install,PI_AGENT_DATA_DIR:f.canonical,PI_CODING_AGENT_DIR:f.actual,PI_SHARED_BRIDGE:'0'},encoding:'utf8',timeout:30000});
  assert.equal(r.status,0,r.stderr);assert.doesNotMatch(r.stderr,/shared session sync failed/);const result=JSON.parse(r.stdout);
  assert.equal(result.home,f.home);assert.equal(result.agentDir,f.actual);assert.equal(result.shared,f.canonical);
+ assert.equal(result.bridge,'0','sync-only mode must not leak into the actual Pi CLI');
+ for(const file of [path.join(f.home,'.local/bin/pi-web'),path.join(f.canonical,'shared-runtime/host.json'),path.join(f.canonical,'shared-runtime/bootstrap.log')])assert.equal(fs.existsSync(file),false);
  assert.equal(read(path.join(f.actual,'auth.json')).fixture,'private-unmodified');
  assert.equal(Boolean(read(path.join(f.actual,'mcp.json')).mcpServers.pi_shared_runtime),!probe);
 });

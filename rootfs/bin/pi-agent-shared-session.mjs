@@ -15,6 +15,9 @@ if (!bundle || !canonical || !actual || !home || path.resolve(actual) === path.r
 const identity = value => { try { return fs.realpathSync(value); } catch (error) { if (error.code === 'ENOENT') return path.resolve(value); throw error; } };
 if (identity(actual) === identity(canonical)) process.exit(0);
 if (!fs.existsSync(path.join(bundle, 'src/distribution.mjs'))) process.exit(0);
+// Resource synchronization must not initialize the shared extension or execute
+// user extensions. This child-only mode retains SDK package/skill authority.
+process.env.PI_SHARED_BRIDGE = '1';
 const { seedDistribution, synchronizeDistribution } = await import(pathToFileURL(path.join(bundle, 'src/distribution.mjs')).href);
 const { digest, readJSON, saveJSON, locked } = await import(pathToFileURL(path.join(bundle, 'src/common.mjs')).href);
 const canonicalLoc = { home, data: canonical, state: path.join(canonical, 'shared-runtime') };
