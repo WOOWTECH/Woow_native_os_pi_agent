@@ -67,6 +67,13 @@ async function webUp() {
   try { return (await fetch(url, { signal: AbortSignal.timeout(3000) })).ok; } catch { return false; }
 }
 const bin = name => path.join(install, 'bin', name);
+function launchdGone() {
+  const result = spawnSync('/bin/launchctl', ['print', `${receipt.launchd.domain}/${label}`],
+    { env, encoding: 'utf8', timeout: 5000 });
+  receipt.launchd.lastPrintExit = result.status;
+  // A timed-out or unlaunchable inspection is not evidence of removal.
+  return !result.error && Number.isInteger(result.status) && result.status !== 0;
+}
 let api, runtime, launchdAttempted = false;
 function lifecycleSnapshot() {
   // Only enum values, process states and booleans; never copy config, identity,
@@ -200,7 +207,7 @@ try {
   run(bin('pi-paseo'), ['stop']);
   await until(async () => !(await runtime.status()).daemon.running, 'Agent Connect stop');
   run(bin('pi-agent'), ['stop']);
-  await until(async () => !(await webUp()), 'PiWeb stop');
+  await until(async () => launchdGone() && !(await webUp()), 'PiWeb stop and launchd removal');
   receipt.checks.firstStop = true;
   run(bin('pi-agent'), ['start']); await until(webUp, 'PiWeb restart', 180000);
   run(bin('pi-paseo'), ['start']);
@@ -230,11 +237,14 @@ try {
     receipt.cleanupState = lifecycleSnapshot();
   }
   if (launchdAttempted) {
-    spawnSync('/bin/launchctl', ['bootout', `${receipt.launchd.domain}/${label}`], { env, encoding: 'utf8' });
+    const bootout = spawnSync('/bin/launchctl', ['bootout', `${receipt.launchd.domain}/${label}`],
+      { env, encoding: 'utf8', timeout: 30000 });
+    receipt.launchd.bootoutExit = bootout.status;
+    if (bootout.error) receipt.launchd.bootoutError = safeError(bootout.error);
     try {
-      await until(async () => !(await webUp()), 'final PiWeb stop', 30000);
-      const loaded = spawnSync('/bin/launchctl', ['print', `${receipt.launchd.domain}/${label}`], { env, encoding: 'utf8' });
-      assert.notEqual(loaded.status, 0, 'owned launchd job must be absent after bootout');
+      // HTTP may close before launchd has removed its service record. Require
+      // both within the same bounded wait before declaring cleanup complete.
+      await until(async () => launchdGone() && !(await webUp()), 'final PiWeb stop and launchd removal', 30000);
     } catch (error) { stopped = false; receipt.launchdCleanupError = safeError(error); }
   }
   receipt.checks.finalStop = stopped;
