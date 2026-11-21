@@ -66,8 +66,19 @@ for (const probe of [false,true]) test(`shipped Pi wrapper ${probe?'skips pure d
  fs.writeFileSync(path.join(install,'session-home.state'),'test');
  const cli=path.join(install,'piweb/lib/node_modules/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent/dist/cli.js');
  fs.mkdirSync(path.dirname(cli),{recursive:true});fs.writeFileSync(cli,'console.log(JSON.stringify({home:process.env.HOME,agentDir:process.env.PI_CODING_AGENT_DIR,shared:process.env.PI_SHARED_DATA_DIR,args:process.argv.slice(2)}))');
+ // The wrapper pins SDK lookup to its own installation, just as the actual
+ // installer does. A CLI-only fixture accidentally passed on machines with a
+ // global Pi Web SDK while failing on a clean runner.
+ const sdkCandidates=[path.join(bundle,'node_modules/@earendil-works/pi-coding-agent'),process.env.PI_SHARED_SDK_ROOT&&path.join(process.env.PI_SHARED_SDK_ROOT,'node_modules/@earendil-works/pi-coding-agent')].filter(Boolean);
+ const sourceSdk=sdkCandidates.find(dir=>fs.existsSync(path.join(dir,'package.json')));
+ assert.ok(sourceSdk,'fixture requires the verified distribution SDK');
+ const manifest=read(path.join(sourceSdk,'package.json'));
+ const entry=manifest.exports?.['.']?.import||manifest.module||manifest.main;
+ const fixtureSdk=path.dirname(path.dirname(cli));
+ write(path.join(fixtureSdk,'package.json'),{name:'@earendil-works/pi-coding-agent',type:'module',main:'index.mjs'});
+ fs.symlinkSync(fs.realpathSync(path.join(sourceSdk,entry)),path.join(fixtureSdk,'index.mjs'));
  const r=spawnSync('bash',[path.join(bin,'pi'),...(probe?['--version']:['--print','fixture'])],{env:{...process.env,HOME:f.home,PI_AGENT_HOME:install,PI_AGENT_DATA_DIR:f.canonical,PI_CODING_AGENT_DIR:f.actual},encoding:'utf8',timeout:30000});
- assert.equal(r.status,0,r.stderr);const result=JSON.parse(r.stdout);
+ assert.equal(r.status,0,r.stderr);assert.doesNotMatch(r.stderr,/shared session sync failed/);const result=JSON.parse(r.stdout);
  assert.equal(result.home,f.home);assert.equal(result.agentDir,f.actual);assert.equal(result.shared,f.canonical);
  assert.equal(read(path.join(f.actual,'auth.json')).fixture,'private-unmodified');
  assert.equal(Boolean(read(path.join(f.actual,'mcp.json')).mcpServers.pi_shared_runtime),!probe);
