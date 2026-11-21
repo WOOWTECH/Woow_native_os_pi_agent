@@ -72,6 +72,11 @@ export PI_PASEO_RUNTIME_DIR="${PI_AGENT_HOME}/paseo-runtime"
 export PI_PASEO_PLUGIN_ROOT="${PI_AGENT_HOME}/plugins/pi-paseo-plugin"
 export PI_PASEO_WEB_ARCHIVE="${PI_AGENT_HOME}/paseo-web/client.tar.gz"
 
+# Shared resources stay in this install; provider HOME may be an adopted user HOME.
+export PI_SHARED_RUNTIME_BUNDLE_DIR="${PI_AGENT_HOME}/shared-runtime"
+export PI_SHARED_DATA_DIR="${PI_AGENT_DATA_DIR}"
+export PI_SHARED_SDK_ROOT="${PI_AGENT_HOME}/piweb/lib/node_modules/@agegr/pi-web"
+
 # LiteLLM (or any OpenAI-compatible) gateway credentials, written by
 # pi-agent-litellm. Kept out of models.json, which references ${LITELLM_API_KEY}.
 if [ -r "${PI_AGENT_HOME}/litellm.env" ]; then

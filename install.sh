@@ -8,7 +8,7 @@
 #   ./install.sh <stage>...      # run only the named stage(s), in order
 #   PI_AGENT_HOME=/custom ./install.sh
 #
-# Stages: preflight node fetch piweb clis paseo omnigent wire service
+# Stages: preflight node fetch piweb clis shared paseo omnigent wire service
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -185,6 +185,33 @@ stage_fetch() {
   # (see apply_model_options_hook above). Applied again by `wire`, like the guard.
   apply_model_options_hook
   log "fetch OK (plugins verified, settings patch verified)"
+}
+
+# -------------------------------------------------------------------- shared ---
+# The bundle is immutable application code, not a user package installation.
+# npm postinstall is disabled: registration happens under the provider HOME at boot.
+stage_shared() {
+  log "stage shared — shared runtime $PIN_SHARED_RUNTIME_VERSION"
+  local archive="$PA_TMP_DIR/shared-runtime.tgz" staged="$PI_AGENT_HOME/.shared-runtime-new" previous="$PI_AGENT_HOME/.shared-runtime-old"
+  mkdir -p "$PA_TMP_DIR"
+  fetch_verify "$PIN_SHARED_RUNTIME_TGZ" "$PIN_SHARED_RUNTIME_SHA256" "$archive"
+  [ ! -e "$staged" ] && [ ! -e "$previous" ] || die "unfinished shared-runtime update; inspect .shared-runtime-new/.shared-runtime-old first"
+  mkdir -p "$staged"
+  tar xzf "$archive" --strip-components=1 -C "$staged"
+  PA_NODE -e 'const p=require(process.argv[1]); if(p.name!=="@woowtech/pi-agent-shared-runtime"||p.version!==process.argv[2]) throw Error("unexpected shared runtime")' "$staged/package.json" "$PIN_SHARED_RUNTIME_VERSION"
+  PA_NPM ci --prefix "$staged" --omit=dev --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+  [ -f "$staged/src/distribution.mjs" ] || die "shared distribution adapter missing"
+  # Provider launchers can filter the environment. Keep SDK discovery local to
+  # this install even when PI_SHARED_SDK_ROOT is not inherited by an MCP child.
+  local sdk="$PA_PIWEB_DIR/lib/node_modules/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent"
+  [ -f "$sdk/package.json" ] || die "install the pinned Pi Web stage before shared runtime"
+  mkdir -p "$staged/node_modules/@earendil-works"
+  ln -s "$sdk" "$staged/node_modules/@earendil-works/pi-coding-agent"
+  [ ! -e "$PA_SHARED_RUNTIME_DIR" ] || mv "$PA_SHARED_RUNTIME_DIR" "$previous"
+  mv "$staged" "$PA_SHARED_RUNTIME_DIR"
+  rm -rf "$previous"
+  rm -f "$archive"
+  log "shared runtime installed; existing package choices are preserved at startup"
 }
 
 # -------------------------------------------------------------------- piweb ---
@@ -450,7 +477,7 @@ stage_omnigent() {
 stage_wire() {
   log "stage wire — install scripts + symlinks"
   mkdirs
-  for f in pi-agent-resume.py pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-session-home pi-agent-session-home-macos pi-agent-host-name pi-agent-host-name.mjs pi-agent-litellm pi-agent-share-state.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs omnigent-plugin-session-home-patch.mjs omnigent-plugin-host-name-guard-patch.mjs omnigent-plugin-model-options-hook-patch.mjs; do
+  for f in pi-agent-resume.py pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-session-home pi-agent-session-home-macos pi-agent-host-name pi-agent-host-name.mjs pi-agent-litellm pi-agent-share-state.mjs pi-agent-shared-session.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs omnigent-plugin-session-home-patch.mjs omnigent-plugin-host-name-guard-patch.mjs omnigent-plugin-model-options-hook-patch.mjs; do
     [ -f "$HERE/rootfs/bin/$f" ] && install -m 0755 "$HERE/rootfs/bin/$f" "$PA_BIN_DIR/$f"
   done
   # Host name: the plugin patch (also applied by `fetch`; a no-op when already
@@ -647,7 +674,7 @@ EOF
   log "pi-web will serve http://127.0.0.1:$PIN_PI_WEB_PORT"
 }
 
-ALL_STAGES=(preflight node fetch piweb clis paseo omnigent wire service)
+ALL_STAGES=(preflight node fetch piweb clis shared paseo omnigent wire service)
 run_stage() { "stage_$1"; }
 
 main() {

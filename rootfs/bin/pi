@@ -54,4 +54,18 @@ done
 [ -z "$CLI" ] && CLI="$(find "${PI_AGENT_HOME}/piweb" -path '*@earendil-works/pi-coding-agent/dist/cli.js' -print -quit 2>/dev/null || true)"
 [ -z "$CLI" ] && { echo "pi: cannot locate pi-coding-agent cli.js under ${PI_AGENT_HOME}/piweb (packaging bug)" >&2; exit 127; }
 
+# An adopted Pi keeps its own credentials/settings while MCP goes through the
+# same host-local shared runtime. Pure discovery probes must stay inexpensive.
+_pa_sync=1
+if [ "$#" -gt 0 ]; then
+  _pa_sync=0
+  for _pa_arg in "$@"; do
+    case "$_pa_arg" in --version|-v|-V|--help|-h) ;; *) _pa_sync=1; break ;; esac
+  done
+fi
+if [ "$_pa_sync" = 1 ] && [ -f "${PI_AGENT_HOME}/bin/pi-agent-shared-session.mjs" ]; then
+  "${PI_AGENT_HOME}/node/bin/node" "${PI_AGENT_HOME}/bin/pi-agent-shared-session.mjs" >/dev/null \
+    || echo "pi-agent: shared session sync failed; starting pi with previous settings" >&2
+fi
+
 exec "${PI_AGENT_HOME}/node/bin/node" "$CLI" "$@"

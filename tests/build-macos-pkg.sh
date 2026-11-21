@@ -89,6 +89,9 @@ for U in 022 077; do
     else no "$entry is readable and executable under umask $U"; fi
   done
   if [ -f "$P/scripts/macos/pi-agent-launch.sh" ]; then ok 'shared first-run helper is packaged'; else no 'shared first-run helper is packaged'; fi
+  if cmp -s "$HERE/candidate-packages/woowtech-pi-agent-shared-runtime-0.1.5.tgz" "$P/candidate-packages/woowtech-pi-agent-shared-runtime-0.1.5.tgz"; then
+    ok 'shared runtime candidate archive survives native packaging with exact bytes'
+  else no 'shared runtime candidate archive survives native packaging with exact bytes'; fi
   unreadable="$(find "$P" ! -perm -o+r -print | sed "s#^$P/##" | head -4 | tr '\n' ' ')"
   if [ -z "$unreadable" ]; then ok "every payload file and directory is readable by other users (umask $U)"; else no "every payload file and directory is readable by other users (umask $U)" "e.g. $unreadable"; fi
   untraversable="$(find "$P" -type d ! -perm -o+x -print | sed "s#^$P/##" | head -4 | tr '\n' ' ')"

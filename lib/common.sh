@@ -11,6 +11,7 @@ PA_PASEO_RUNTIME_DIR="$PI_AGENT_HOME/paseo-runtime"
 PA_PASEO_WEB_DIR="$PI_AGENT_HOME/paseo-web"
 PA_OMNIGENT_DIR="$PI_AGENT_HOME/omnigent"
 PA_CLIS_DIR="$PI_AGENT_HOME/clis"
+PA_SHARED_RUNTIME_DIR="$PI_AGENT_HOME/shared-runtime"
 PA_BIN_DIR="$PI_AGENT_HOME/bin"
 PA_DATA_DIR="$PI_AGENT_HOME/data"
 PA_HOME_DIR="$PI_AGENT_HOME/home"
@@ -79,6 +80,11 @@ fetch_verify() {
     for name in "${url##*/}" "$(basename "$dest")"; do
       if [ -n "$name" ] && [ -f "$PI_AGENT_ASSET_CACHE/$name" ]; then cached="$PI_AGENT_ASSET_CACHE/$name"; break; fi
     done
+  fi
+  # Vendored candidate file URLs are local paths, possibly with spaces/CJK.
+  # Copy directly instead of asking curl to URL-decode an unescaped path.
+  if [ -z "$cached" ]; then
+    case "$url" in file://*) cached="${url#file://}" ;; esac
   fi
   if [ -n "$cached" ]; then
     log "use $(basename "$dest") from $cached"
