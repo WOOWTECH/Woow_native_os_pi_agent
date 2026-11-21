@@ -12,7 +12,7 @@ Paseo core CLI and runtime readiness, the hash-locked Omnigent environment,
 Darwin patches/flock, PiWeb HTTP routes and actual Agent Connect lifecycle.
 It checks real wrapper discovery without making provider turns. After stopping
 both services, it restarts them and compares hashes of the daemon identity and
-keypair. The installed Shared 0.1.6 bundle also runs its 22 SDK boundary tests,
+keypair. The installed Shared 0.1.6 bundle also runs its 21 named SDK boundary tests,
 including real cold/warm MCP bridge processes with metadata reuse, no startup
 runtime errors and a successful stdio tool call in each process. The receipt
 records the installed adapter test SHA alongside the shared package version.
