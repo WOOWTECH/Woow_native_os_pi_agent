@@ -15,13 +15,13 @@ PIN_OMNIGENT_UI_SHA256=dc6cf4eb7531445e1a9246a35c6383a60c6769f1e71ac1aa4e1aae9fa
 PIN_OMNIGENT_PLUGIN_TGZ="file://$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/candidate-packages/woowtech-pi-omnigent-plugin-${PIN_OMNIGENT_PLUGIN_VERSION}.tgz"
 
 PIN_PASEO_PLUGIN_VERSION=0.1.17
-PIN_PASEO_PLUGIN_SHA256=1d4f0e9dc08ee73f9935dbff054f2854f77c2b80aedc7f81c3cc527481885fd8
+PIN_PASEO_PLUGIN_SHA256=ef08edfa18cd3f71d8e50cc22329ee7c143632e04338f16c7188ae848f5c8170
 PIN_PASEO_PLUGIN_TGZ="file://$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/candidate-packages/woowtech-pi-paseo-${PIN_PASEO_PLUGIN_VERSION}.tgz"
 PIN_GETPASEO_CLI_VERSION=0.11.2
 
 # Unpublished coordinated candidate, vendored with this source branch.
 PIN_SHARED_RUNTIME_VERSION=0.1.5
-PIN_SHARED_RUNTIME_SHA256=68ba472e3292341911e2041e3e4c19f46ea38aaca13b96728ac874cbb6e97240
+PIN_SHARED_RUNTIME_SHA256=eb6e2056c5523307331f40e1c3a61d552315ef743abfda42a44f7228d6f86a96
 PIN_SHARED_RUNTIME_TGZ="file://$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/candidate-packages/woowtech-pi-agent-shared-runtime-${PIN_SHARED_RUNTIME_VERSION}.tgz"
 
 PIN_OMNIGENT_VERSION=0.16.0
