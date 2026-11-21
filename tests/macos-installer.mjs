@@ -177,6 +177,8 @@ try {
   assert.equal(run(node, [path.join(rt, 'node_modules/@getpaseo/cli/bin/paseo'), '--version']), pins.PIN_GETPASEO_CLI_VERSION);
   receipt.versions.paseoCore = pins.PIN_GETPASEO_CLI_VERSION;
   receipt.runtime = read(path.join(rt, '.pi-paseo-runtime.json'));
+  assert.equal(receipt.runtime.revision, receipt.candidates.find(row => row.file.startsWith('woowtech-pi-paseo-')).runtimeRevision);
+  assert.equal(receipt.runtime.revision, layout.RUNTIME_REVISION);
   await api.saveConfig({ name: 'Native installer CI', target: 'woowtech' });
   // A real launchd job and installed PiWeb launcher, with no persistent DB update.
   launchdAttempted = true;
