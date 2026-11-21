@@ -224,11 +224,16 @@ try {
   await started('Agent Connect restart completed');
   assert.deepEqual(identity(), firstIdentity);
   receipt.checks.restartIdentity = true;
-  // Run the frozen extension-free boundary against the SDK actually installed on Mac.
+  // Run the frozen extension-free boundary and real cold/warm MCP processes
+  // against the SDK and shared bundle actually installed on this Mac.
   const shared = path.join(install, 'shared-runtime');
+  assert.equal(read(path.join(shared, 'package.json')).version, pins.PIN_SHARED_RUNTIME_VERSION);
+  receipt.sharedRuntime = { version: pins.PIN_SHARED_RUNTIME_VERSION,
+    mcpAdapterTestSha256: sha(path.join(shared, 'tests/mcp-adapter.test.mjs')) };
   env.PI_SHARED_SDK_ROOT = sdk;
   run(node, ['--test', ...['resource-authority', 'resource-boundary', 'extension-scan', 'bridge', 'mcp-adapter'].map(test => path.join(shared, `tests/${test}.test.mjs`))], { output: true });
   receipt.checks.sharedSdkBoundary = true;
+  receipt.checks.sharedColdWarmMcp = true;
   for (const file of ['data/auth.json', 'home/.codex/auth.json', 'home/.claude/.credentials.json']) {
     const full = path.join(install, file);
     if (fs.existsSync(full)) assert.equal(Object.keys(read(full)).length, 0, `no provider credentials: ${file}`);

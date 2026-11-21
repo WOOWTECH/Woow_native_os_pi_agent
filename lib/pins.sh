@@ -20,8 +20,8 @@ PIN_PASEO_PLUGIN_TGZ="file://$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ca
 PIN_GETPASEO_CLI_VERSION=0.11.2
 
 # Unpublished coordinated candidate, vendored with this source branch.
-PIN_SHARED_RUNTIME_VERSION=0.1.5
-PIN_SHARED_RUNTIME_SHA256=f59b204a681f147b843199ffec9845723176916dee979ee78c4cf82b7dd1f3ea
+PIN_SHARED_RUNTIME_VERSION=0.1.6
+PIN_SHARED_RUNTIME_SHA256=0914069fb0cf83f258cf81034bb16573f6e4242e8779cea47b4a5e841f98a937
 PIN_SHARED_RUNTIME_TGZ="file://$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/candidate-packages/woowtech-pi-agent-shared-runtime-${PIN_SHARED_RUNTIME_VERSION}.tgz"
 
 PIN_OMNIGENT_VERSION=0.16.0

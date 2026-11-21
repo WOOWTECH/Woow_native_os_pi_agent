@@ -187,7 +187,7 @@ tar cf - -C "$HERE" install.sh lib rootfs scripts tests docs README.md vendor ca
 printf '%s\n' "$VERSION" > "$ROOT$PAYLOAD/VERSION"
 mkdir -p "$ROOT$PAYLOAD/tools"
 cp -Rp "$TOOLS/." "$ROOT$PAYLOAD/tools/"
-for f in install.sh lib/pins.sh vendor/omnigent-requirements.lock candidate-packages/woowtech-pi-agent-shared-runtime-0.1.5.tgz VERSION \
+for f in install.sh lib/pins.sh vendor/omnigent-requirements.lock candidate-packages/woowtech-pi-agent-shared-runtime-0.1.6.tgz VERSION \
          rootfs/bin/flock rootfs/bin/pi-agent-env.sh tools/bin/tmux; do
   [ -e "$ROOT$PAYLOAD/$f" ] || die "payload is missing $f"
 done

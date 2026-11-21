@@ -60,7 +60,9 @@ jobs:
       - name: Shared runtime under the native Pi SDK
         run: |
           export SHARED_RUNTIME_TEST_BUNDLE="${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/shared-runtime"
-          "${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/node/bin/node" --test "$SHARED_RUNTIME_TEST_BUNDLE/tests/resource-authority.test.mjs" "$SHARED_RUNTIME_TEST_BUNDLE/tests/resource-boundary.test.mjs"
+          export PI_SHARED_SDK_ROOT="${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/piweb/lib/node_modules/@agegr/pi-web"
+          # Includes real cold/warm headless MCP processes against this installed SDK.
+          "${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/node/bin/node" --test "$SHARED_RUNTIME_TEST_BUNDLE/tests/resource-authority.test.mjs" "$SHARED_RUNTIME_TEST_BUNDLE/tests/resource-boundary.test.mjs" "$SHARED_RUNTIME_TEST_BUNDLE/tests/extension-scan.test.mjs" "$SHARED_RUNTIME_TEST_BUNDLE/tests/bridge.test.mjs" "$SHARED_RUNTIME_TEST_BUNDLE/tests/mcp-adapter.test.mjs"
           NATIVE_DISTRIBUTION=1 "${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/node/bin/node" --test tests/shared-distribution.test.mjs tests/shared-session.test.mjs
 
       - name: Package artifact
