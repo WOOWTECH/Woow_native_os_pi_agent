@@ -1,4 +1,4 @@
-"""Verified frozen v3 npm package + owned transport fixtures; no SDK/host."""
+"""Verified frozen v4 npm package + owned transport fixtures; no SDK/host."""
 import ast
 import hashlib
 import json
@@ -13,7 +13,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE = ROOT / "candidate-packages/woowtech-pi-omnigent-plugin-0.3.35.tgz"
-ARCHIVE_SHA = "a882728cbf506cef201ef855368318e18cb879ef93baafdecdf4959b4cca0cbc"
+ARCHIVE_SHA = "9ac751b3e0cf0b8f7c253e50c258321ce577191d0e07524d1d0621caa6d4db2b"
 NODE = shutil.which("node")
 PATCHES = ("darwin", "session-home", "host-name-guard", "model-options-hook")
 

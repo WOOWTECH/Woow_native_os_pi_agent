@@ -16,10 +16,10 @@
     },
     {
       "file": "woowtech-pi-omnigent-plugin-0.3.35.tgz",
-      "sha256": "a882728cbf506cef201ef855368318e18cb879ef93baafdecdf4959b4cca0cbc",
+      "sha256": "9ac751b3e0cf0b8f7c253e50c258321ce577191d0e07524d1d0621caa6d4db2b",
       "status": "unpublished candidate; not a registry/release asset",
-      "sourceFreezeSha256": "04c331d170a99da37bf69efc02ff0ba62da29b8c4848ca0002ca0ad847ff2378",
-      "releaseHandoffSha256": "174feef5242af546e1ee06e2218ee3dc6695a4a9222466955fac8d3cdf8ab3ee"
+      "sourceFreezeSha256": "095d8b1ab67f5d0dc66325b475790ba8fae695db8f835629a8e1dded343d8f87",
+      "releaseHandoffSha256": "cae362ce8904d655bd654b77994d0e0b2a1c406f47628d5e595dd6866b262dfb"
     }
   ]
 }
