@@ -15,10 +15,11 @@
       "runtimeRevision": "0.11.2-r4-4cf9d40940bf"
     },
     {
-      "file": "woowtech-pi-omnigent-plugin-0.3.34.tgz",
-      "sha256": "e9e80783881f8a036cbf922d2f50fad860dac3bd23e170dda768ab3c56107945",
+      "file": "woowtech-pi-omnigent-plugin-0.3.35.tgz",
+      "sha256": "a882728cbf506cef201ef855368318e18cb879ef93baafdecdf4959b4cca0cbc",
       "status": "unpublished candidate; not a registry/release asset",
-      "sourceCommit": "d8652e971bdf66133d699052ab9003d39ff69159"
+      "sourceFreezeSha256": "04c331d170a99da37bf69efc02ff0ba62da29b8c4848ca0002ca0ad847ff2378",
+      "releaseHandoffSha256": "174feef5242af546e1ee06e2218ee3dc6695a4a9222466955fac8d3cdf8ab3ee"
     }
   ]
 }

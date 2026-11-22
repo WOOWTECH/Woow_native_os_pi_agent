@@ -1,0 +1,24 @@
+# Native maintenance consumer candidate
+
+This proposal starts at native main `a1149879db6644c193625472bf647af5871d6ffa`. It changes the four consumer patches individually for the maintenance-aware 0.3.35 plugin. Native `VERSION` stays unchanged. The candidate consumes frozen v3 npm package `a882728cbf506cef201ef855368318e18cb879ef93baafdecdf4959b4cca0cbc` (285949 bytes, 37 members), source freeze `04c331d170a99da37bf69efc02ff0ba62da29b8c4848ca0002ca0ad847ff2378` and handoff `174feef5242af546e1ee06e2218ee3dc6695a4a9222466955fac8d3cdf8ab3ee`. The retired `439b` archive and interim receipts remain historical evidence. This proposal requires final root review before a PR and does not authorize publication or deployment.
+
+| Consumer | New 0.3.35 behavior | Retained behavior |
+| --- | --- | --- |
+| Darwin | Requires the reviewed upstream platform/bwrap and maintenance/spawn boundaries; omits obsolete platform edits and first-launch warm-up | PATH flock lookup and kernel-lock contract; no-/proc resume rule; Intel constraints; historical versions keep their old edits and warm-up |
+| Session HOME | Requires final maintenance and validated spawn before inserting the HOME opt-in | Config/data identity and default scoped HOME; explicit `PI_AGENT_SESSION_HOME` only |
+| Host-name guard | Requires final maintenance and validated spawn; collision check stays inside the launch lock before log open and final source validation | Existing/external-host behavior, deliberate takeover checks and original identity/signal checks |
+| Model-options hook | Retains the discovery anchor before final maintenance | Fresh and force installs patch credentials/model discovery before the host can load it; convenience-hook errors remain nonfatal, maintenance refusal still blocks readiness |
+
+Unknown versions retain the native scripts' warning/skip contract and are left untouched. Modern source-boundary drift also skips edits. Those compatibility checks do not confer maintenance admission: the plugin's strict guard and validated Python/console selection are unchanged.
+
+The candidate manifest records either an exact source commit or the reviewed freeze plus handoff hashes. The archive hash is always verified. The new alternative avoids attributing an uncommitted source set to its base commit. Existing commit-based package rows and old package bytes remain unchanged.
+
+## Fixture verification
+
+`python3 -B tests/native-maintenance-consumers.test.py` verifies the pinned npm archive, extracts owned copies and exercises both patch orders, idempotence, compilers, unknown-version/source-drift skips, a real old-package warm-up control, installer orchestration and adapter guard/HOME/collision/refusal behavior. Positive metadata is kept byte-identical to the archive. Only the unknown-version negative changes its metadata. Fresh and force transport cases cover ambient hardlink, clone, copy and unset modes: the UV child must use copy, the caller environment must stay unchanged, and maintenance must still run after the model hook. An owned mutation back to hardlink must fail the transport assertion even with an otherwise successful synthetic guard receipt. The deployment-ci job runs this suite unconditionally with full checkout history for the exact legacy baseline; a missing baseline object fails the test.
+
+The installer fixture controls command transport; the adapter fixture AST-executes selected packaged methods with explicit local dependencies. Neither imports the SDK. Existing host-name and resume fixtures still run the actual production `require_maintenance_preservation` method, with its subprocess transport replaced by a labelled synthetic proof. These proofs test orchestration and refusal, not SDK source admission. Test helpers are not installed by `wire`; there is no production skip flag.
+
+Affected existing source fixture suites: artifact manifest, model-options hook, resume without /proc, host-name Node, host-name Python, and Intel A-C. Use `PA_TEST_OFFLINE=1 bash tests/intel-mac.sh` with the local pinned archive and an owned `PA_TEST_INSTALL_HOME`; this excludes all network/uv discovery and D-E SDK installs. The host-name wrapper's optional real-SDK K section is outside this verification: its Node and Python halves run directly with an owned extracted package and existing httpx/PyYAML interpreter.
+
+Receipts live in `live-acceptance/native-consumer-reconciliation-20261122`. Early failures and superseded attempts remain recorded. Final handoff binds this exact package, source inventory and affected fixture receipts; final root review remains required before a PR. Linux fixtures do not prove actual macOS/WSL execution, hardware wheel availability, SDK installation, provider behavior, deployment, or recovery of the missing 15 native JSONL files across five bridge homes.

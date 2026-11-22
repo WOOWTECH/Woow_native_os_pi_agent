@@ -30,7 +30,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34'];
+// 0.3.35 maintenance-aware layout; exact candidate archive is locked in lib/pins.sh.
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35'];
 const MARKER = 'session-home (Woow native installer)';
 const ANCHOR = '                environment["OMNIGENT_HOST_NO_OPEN"] = "1"\n';
 const ADDITION = [
@@ -60,6 +61,12 @@ function main() {
   if (!EXPECTED_VERSIONS.includes(version)) {
     log(`plugin ${version} is installed but this patch was validated against ${EXPECTED_VERSIONS.join(', ')} — SKIPPING. Sessions keep the scoped HOME until it is re-checked.`);
     return 0;
+  }
+
+  if (version === '0.3.35'
+      && (source.split('launch = self.require_maintenance_preservation()').length !== 2
+          || source.split('subprocess.Popen([launch["pythonExecutable"], "-I", "-B", launch["consoleScript"], "host"').length !== 2)) {
+    log('reviewed maintenance/validated-spawn boundary differs — SKIPPING'); return 0;
   }
 
   // Counted, exact anchor: a moved or re-indented spawn must be re-inspected

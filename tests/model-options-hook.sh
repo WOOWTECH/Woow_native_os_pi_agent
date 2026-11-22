@@ -105,7 +105,7 @@ for order in "hook darwin" "darwin hook"; do
     if [ "$which" = hook ]; then "$NODE" "$HOOK" "$C" >/dev/null 2>&1; else "$NODE" "$DARWIN" "$C" >/dev/null 2>&1; fi
   done
   n_hook="$(grep -cF "$MARK" "$(installer_of "$C")")"; n_launch="$(grep -c "first-launch (Woow native installer)" "$(installer_of "$C")")"; n_uv="$(grep -c "uv-constraints (Woow native installer)" "$(installer_of "$C")")"
-  if "$NODE" --check "$(installer_of "$C")" 2>/dev/null && [ "$n_hook" = 1 ] && [ "$n_launch" = 1 ] && [ "$n_uv" = 1 ]; then ok "$order: valid JavaScript, every edit exactly once"
+  if "$NODE" --check "$(installer_of "$C")" 2>/dev/null && [ "$n_hook" = 1 ] && [ "$n_launch" = 0 ] && [ "$n_uv" = 1 ]; then ok "$order: valid JavaScript, every edit exactly once"
   else no "$order: valid JavaScript, every edit exactly once" "hook=$n_hook launch=$n_launch uv=$n_uv"; fi
 done
 
@@ -119,6 +119,8 @@ const stateDir = process.env.PA_TEST_STATE, paHome = process.env.PA_TEST_HOME ||
 const tool = path.join(stateDir, 'uv', 'tools', 'omnigent'), managed = path.join(stateDir, 'bin', 'omnigent');
 let installed = mode === 'update' || mode === 'present', discovers = 0;
 const events = [], patchCalls = [];
+let maintenanceCalls = 0;
+const maintenance = async entry => { maintenanceCalls++; events.push("maintenance"); if (!entry.available) throw Error("fixture SDK unavailable"); return {ok:true,state:"verified"}; };
 const discover = async () => {
   events.push(discovers++ === 0 ? 'discover' : 'rediscover');
   return {
@@ -127,9 +129,11 @@ const discover = async () => {
     omnigent: installed ? { available: true, path: managed, version: '0.16.0' } : { available: false, path: null },
   };
 };
+const installLinkModes = [];
 const run = async (command, args, options = {}) => {
   if (args[0] === 'tool' && args[1] === 'install') {
     events.push('uv-install');
+    installLinkModes.push(options.env.UV_LINK_MODE);
     if (scenario === 'uv-fails') return { code: 1, stdout: '', stderr: 'boom' };
     installed = true;
   } else if (args[0] === '--version' && command === managed) {
@@ -141,9 +145,10 @@ const run = async (command, args, options = {}) => {
   }
   return { code: 0, stdout: '', stderr: '' };
 };
-const env = { PATH: '/usr/bin:/bin', HOME: stateDir, ...(paHome ? { PI_AGENT_HOME: paHome } : {}) };
-const result = await installDependencies({ env, home: stateDir, stateDir, run, discover, platform, arch, update: mode === 'update' });
-console.log(JSON.stringify({ events, patchCalls, ok: result.ok, issues: result.issues, installed: result.installed, tool, paHome }));
+const env = { PATH: '/usr/bin:/bin', HOME: stateDir, UV_LINK_MODE: 'hardlink', ...(paHome ? { PI_AGENT_HOME: paHome } : {}) };
+const result = await installDependencies({ env, home: stateDir, stateDir, run, discover, platform, arch, update: mode === 'update', maintenance });
+if (installLinkModes.some(mode => mode !== 'copy') || env.UV_LINK_MODE !== 'hardlink') throw Error('copy-mode/caller-env regression');
+console.log(JSON.stringify({ events, patchCalls, maintenanceCalls, installLinkModes, ok: result.ok, issues: result.issues, installed: result.installed, tool, paHome }));
 JS
 PAH="$WORK/pa-home"; mkdir -p "$PAH/bin"; printf '#!/usr/bin/env python3\n' > "$PAH/bin/omnigent-model-options-patch.py"
 PAH_NOFILE="$WORK/pa-home-nofile"; mkdir -p "$PAH_NOFILE/bin"
@@ -160,13 +165,13 @@ expect() {  # expect <name> <json> <js condition on o>
 WANT_ARGS="o.patchCalls.length === 1 && o.patchCalls[0].command === o.tool + '/bin/python' && o.patchCalls[0].args.join(' ') === '$PAH/bin/omnigent-model-options-patch.py --tool-dir ' + o.tool && o.patchCalls[0].timeoutMs <= 60000"
 out="$(drive "$LINUXP" linux x64 install ok "$PAH")"
 expect "install: the tool's own python runs the patch with --tool-dir <the tool>, once, with a limit" "$out" "$WANT_ARGS"
-expect "...after the uv install and before the plugin looks at the result" "$out" "o.events.join(',') === 'discover,uv-install,patch,rediscover' && o.ok === true && o.installed.includes('omnigent')"
+expect "...after the uv install and before the plugin looks at the result" "$out" "o.events.join(',') === 'discover,uv-install,patch,rediscover,maintenance' && o.ok === true && o.maintenanceCalls === 1 && o.installed.includes('omnigent')"
 out="$(drive "$LINUXP" linux arm64 update ok "$PAH")"
-expect "update (--force builds a new venv, so the patch went with the old one): patched again, in the same place" "$out" "o.events.join(',') === 'discover,uv-install,patch,rediscover' && $WANT_ARGS"
+expect "update (--force builds a new venv, so the patch went with the old one): patched again, in the same place" "$out" "o.events.join(',') === 'discover,uv-install,patch,rediscover,maintenance' && $WANT_ARGS"
 out="$(drive "$DARWINP" darwin x64 install ok "$PAH")"
-expect "Intel Mac with the darwin patch: install, the first run, then the patch, then the result" "$out" "o.events.join(',') === 'discover,uv-install,first-run,patch,rediscover' && o.ok === true"
+expect "Intel Mac0.3.35: no obsolete warm-up; model hook then preservation" "$out" "o.events.join(',') === 'discover,uv-install,patch,rediscover,maintenance' && o.ok === true"
 out="$(drive "$LINUXP" linux x64 install ok "")"
-expect "PI_AGENT_HOME unset (the container images): nothing runs, the install is unchanged" "$out" "o.patchCalls.length === 0 && o.events.join(',') === 'discover,uv-install,rediscover' && o.ok === true"
+expect "PI_AGENT_HOME unset (the container images): nothing runs, the install is unchanged" "$out" "o.patchCalls.length === 0 && o.events.join(',') === 'discover,uv-install,rediscover,maintenance' && o.ok === true"
 out="$(drive "$LINUXP" linux x64 install ok "$PAH_NOFILE")"
 expect "the patch file is not there: nothing runs, the install is unchanged" "$out" "o.patchCalls.length === 0 && o.ok === true"
 out="$(drive "$LINUXP" linux x64 install patch-exit1 "$PAH")"
@@ -174,7 +179,7 @@ expect "the patch exits non-zero: the install still succeeds" "$out" "o.patchCal
 out="$(drive "$LINUXP" linux x64 install patch-throws "$PAH")"
 expect "the patch cannot even start: the install still succeeds" "$out" "o.patchCalls.length === 1 && o.ok === true && o.issues.length === 0"
 out="$(drive "$LINUXP" linux x64 present ok "$PAH")"
-expect "omnigent already installed (nothing to install): the hook does not run -- pi-web-start.sh covers restarts" "$out" "o.patchCalls.length === 0 && o.events.join(',') === 'discover'"
+expect "omnigent already installed (nothing to install): the hook does not run -- pi-web-start.sh covers restarts" "$out" "o.patchCalls.length === 0 && o.events.join(',') === 'discover,maintenance'"
 out="$(drive "$LINUXP" linux x64 install uv-fails "$PAH")"
 expect "the uv install fails: nothing is patched, and the failure is reported as before" "$out" "o.patchCalls.length === 0 && o.ok === false && o.issues.length >= 1"
 out="$(drive "$PRISTINE" linux x64 install ok "$PAH")"

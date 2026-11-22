@@ -74,3 +74,26 @@ test('real installer rejects an old tree without deleting the existing installat
   assert.match(result.stderr, /release binding failed/);
   assert.equal(fs.readFileSync(retained, 'utf8'), 'retain');
 });
+
+test('candidate without a source commit retains exact freeze and handoff provenance', () => {
+  const row = expected().packages.find(x => x.file.includes('omnigent-plugin-0.3.35'));
+  assert.equal(row.sourceCommit, undefined);
+  assert.match(row.sourceFreezeSha256, /^[a-f0-9]{64}$/);
+  assert.match(row.releaseHandoffSha256, /^[a-f0-9]{64}$/);
+});
+for (const [label, mutate] of [
+  ['missing freeze', row => { delete row.sourceFreezeSha256; }],
+  ['malformed freeze', row => { row.sourceFreezeSha256 = 'not-a-pin'; }],
+  ['missing handoff', row => { delete row.releaseHandoffSha256; }],
+  ['ambiguous commit and freeze', row => { row.sourceCommit = 'a'.repeat(40); }],
+]) test(`source candidate rejects ${label}`, t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'candidate-provenance-'));
+  t.after(() => fs.rmSync(dir, { recursive:true, force:true }));
+  fs.copyFileSync(path.join(repo,'VERSION'),path.join(dir,'VERSION'));
+  fs.cpSync(path.join(repo,'candidate-packages'),path.join(dir,'candidate-packages'),{recursive:true});
+  const file=path.join(dir,'candidate-packages/manifest.json');
+  const value=JSON.parse(fs.readFileSync(file));
+  mutate(value.artifacts.find(x => x.file.includes('omnigent-plugin-0.3.35')));
+  fs.writeFileSync(file,JSON.stringify(value));
+  assert.throws(() => expectedManifest(dir,'linux','x64',pins.version,pins.ref,pins.adapter));
+});

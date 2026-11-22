@@ -27,6 +27,11 @@ import time
 from unittest.mock import patch
 from pathlib import Path
 
+# Explicit test-only fake-SDK receipt transport; no production guard bypass.
+_fixture_spec = importlib.util.spec_from_file_location("native_maintenance_fixture", Path(__file__).with_name("maintenance_fixture.py"))
+_fixture = importlib.util.module_from_spec(_fixture_spec)
+_fixture_spec.loader.exec_module(_fixture)
+
 PRISTINE, NODE, PATCH = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 WORK = Path(tempfile.mkdtemp(prefix="pa-resume-"))
 BASE_ENV = {k: v for k, v in os.environ.items()
@@ -58,8 +63,8 @@ def load(name, patched):
     shutil.copy(PRISTINE / "package.json", plugin / "package.json")
     shutil.copy(PRISTINE / "src" / "omnigent.py", plugin / "src" / "omnigent.py")
     if patched:
-        (plugin / "src" / "installer.mjs").write_text("")   # the patch's other files: absent anchors only log
-        (plugin / "src" / "common.mjs").write_text("")
+        shutil.copy(PRISTINE / "src/installer.mjs", plugin / "src/installer.mjs")
+        shutil.copy(PRISTINE / "src/common.mjs", plugin / "src/common.mjs")
         done = subprocess.run([NODE, PATCH, str(plugin)], capture_output=True, text=True)
         assert done.returncode == 0, done.stdout + done.stderr
         assert MARKER in (plugin / "src" / "omnigent.py").read_text(), done.stdout
@@ -128,7 +133,7 @@ def resume(mod, statuses, timeout=8):
     workspace.mkdir()
     (config / "config.yaml").write_text(f"server: {URL}\nhost:\n  host_id: {HOST_ID}\n  name: testbox (pi-agent)\n")
     started, binary = work / "started.txt", work / "omnigent"
-    binary.write_text(f'#!/bin/sh\necho "$*" > "{started}"\nexit 1\n')   # the real one refuses a duplicate like this
+    binary.write_text(f'#!{sys.executable}\nimport sys\nfrom pathlib import Path\nPath({str(started)!r}).write_text(" ".join(sys.argv[1:]))\nraise SystemExit(1)\n')   # the real one refuses a duplicate like this
     binary.chmod(0o755)
     STATE["statuses"], STATE["log"] = list(statuses), []
     os.environ.clear()
@@ -148,12 +153,13 @@ def resume(mod, statuses, timeout=8):
 
     result = code = None
     try:
-        with patch.object(mod.subprocess, "Popen", exited_launcher):
+        with _fixture.guard_receipt_fixture(mod, binary) as maintenance_calls, patch.object(mod.subprocess, "Popen", exited_launcher):
             result = plugin.resume()
     except mod.PluginError as caught:
         code = caught.code
     finally:
         plugin.close()
+        assert len(maintenance_calls) == 2, "maintenance did not bracket the owned fake launch"
     for _ in range(100):
         if started.exists():
             break

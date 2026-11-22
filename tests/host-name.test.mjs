@@ -357,22 +357,24 @@ if (!havePristine) skip('B*', 'PA_TEST_PRISTINE (the extracted pinned plugin) is
 else {
   await t('B1 applies once: method above ensure_host, call right before the host.log open, .orig is the pristine file', () => {
     const p = newPlugin(); const r = run(GUARD, p);
-    assert.equal(r.code, 0); assert.match(r.out, /patched .*omnigent\.py \(plugin 0\.3\.3[1234]\)/);
+    assert.equal(r.code, 0); assert.match(r.out, /patched .*omnigent\.py \(plugin 0\.3\.3[12345]\)/);
     const text = fs.readFileSync(pyOf(p), 'utf8');
     assert.equal(count(text, 'def guard_host_name(self, server: str) -> None:'), 1);
     assert.equal(count(text, 'self.guard_host_name(server)'), 1);
     assert.equal(count(text, MARKER), 2, 'one marker on the method comment, one on the call');
     const def = text.indexOf('def guard_host_name'), ensure = text.indexOf('    def ensure_host(self, server: str) -> str:');
     const call = text.indexOf('self.guard_host_name(server)'), open = text.indexOf('descriptor = os.open(self.state_dir / "host.log"');
-    const popen = text.indexOf('subprocess.Popen([binary, "host"');
-    assert.ok(def < ensure && ensure < call && call < open && open < popen, `order def=${def} ensure=${ensure} call=${call} open=${open} popen=${popen}`);
+    const maintenance = text.indexOf('launch = self.require_maintenance_preservation()', open);
+    const popen = text.indexOf('subprocess.Popen([launch["pythonExecutable"], "-I", "-B", launch["consoleScript"], "host"', open);
+    assert.ok(def < ensure && ensure < call && call < open && open < maintenance && maintenance < popen,
+      `order def=${def} ensure=${ensure} call=${call} open=${open} maintenance=${maintenance} popen=${popen}`);
     assert.equal(fs.readFileSync(pyOf(p) + '.orig', 'utf8'), pristineText);
     // and the hints, in the plugin's own table
     const issues = fs.readFileSync(issuesOf(p), 'utf8');
     for (const code of NEW_CODES) assert.equal(count(issues, `  ${code}: hint(null,`), 1, code);
     assert.equal(count(issues, MARKER), 1);
     assert.equal(fs.readFileSync(issuesOf(p) + '.orig', 'utf8'), pristineIssues);
-    assert.match(r.out, /patched .*issues\.mjs \(plugin 0\.3\.3[1234]\)/);
+    assert.match(r.out, /patched .*issues\.mjs \(plugin 0\.3\.3[12345]\)/);
   });
 
   await t('B2 second run is a no-op (byte-identical files, "already patched")', () => {

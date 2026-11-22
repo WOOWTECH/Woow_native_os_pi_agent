@@ -33,7 +33,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34'];
+// 0.3.35 maintenance-aware layout; exact candidate archive is locked in lib/pins.sh.
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35'];
 
 // src/installer.mjs: the re-discovery right after the plugin's own `uv tool install omnigent`.
 const HOOK_MARKER = 'model-options-hook (Woow native installer)';
@@ -97,6 +98,14 @@ function main() {
   if (!EXPECTED_VERSIONS.includes(version)) {
     log(`plugin ${version} is installed but this patch was validated against ${EXPECTED_VERSIONS.join(', ')} — SKIPPING. Re-check whether the plugin still installs omnigent without patching it, then widen EXPECTED_VERSIONS.`);
     return 0;
+  }
+
+  if (version === '0.3.35') {
+    let source;
+    try { source = fs.readFileSync(path.join(root, 'src/installer.mjs'), 'utf8'); }
+    catch { log('reviewed maintenance source unavailable — SKIPPING'); return 0; }
+    const anchor = 'maintenancePreservation = await maintenance(discovery.omnigent, { stateDir, env, run })';
+    if (source.split(anchor).length !== 2) { log('reviewed maintenance boundary differs — SKIPPING'); return 0; }
   }
 
   return edit(root, 'installer.mjs', version, {

@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The maintenance suite compares legacy outputs with exact a1149879 sources.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -22,6 +25,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_local_resume.py' -v
       - name: Prebuilt artifact release binding and retained installation
         run: node --test tests/artifact-manifest.test.mjs
+      - name: Native maintenance consumer composition and refusal boundaries
+        run: python3 -B tests/native-maintenance-consumers.test.py
       - name: Shared runtime archive and migration contracts
         run: |
           . lib/pins.sh
