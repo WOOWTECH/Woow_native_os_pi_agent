@@ -1,0 +1,83 @@
+name: owned-ubuntu-acceptance
+
+'on':
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  genuine-owned-ubuntu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the actual PR head
+        uses: actions/checkout@v4
+        timeout-minutes: 5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify source and preprovisioned runner
+        timeout-minutes: 5
+        env:
+          CI_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          umask 022
+          /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 \
+            CI_EXPECTED_HEAD="$CI_EXPECTED_HEAD" \
+            CI_REPOSITORY="$GITHUB_REPOSITORY" CI_RUN_ID="$GITHUB_RUN_ID" \
+            CI_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT" CI_EVENT_SHA="$GITHUB_SHA" \
+            CI_WORKFLOW_SHA="${GITHUB_WORKFLOW_SHA:-}" CI_WORKFLOW_REF="${GITHUB_WORKFLOW_REF:-}" \
+            CI_IMAGE_OS="${ImageOS:-}" CI_IMAGE_VERSION="${ImageVersion:-}" \
+            /usr/bin/python3 -I -S -B "$GITHUB_WORKSPACE/scripts/owned-ubuntu-acceptance-ci.py" \
+            prepare "$RUNNER_TEMP/owned-ubuntu-control" "$RUNNER_TEMP/owned-ubuntu-evidence"
+
+      - name: Build real Pi Web and package the same tree
+        timeout-minutes: 35
+        run: |
+          umask 022
+          /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 \
+            /usr/bin/python3 -I -S -B "$GITHUB_WORKSPACE/scripts/owned-ubuntu-acceptance-ci.py" \
+            build "$RUNNER_TEMP/owned-ubuntu-control" "$RUNNER_TEMP/owned-ubuntu-evidence"
+
+      - name: Run the real owned Ubuntu driver with the recorded artifact SHA
+        timeout-minutes: 35
+        run: |
+          umask 022
+          /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 \
+            /usr/bin/python3 -I -S -B "$GITHUB_WORKSPACE/scripts/owned-ubuntu-acceptance-ci.py" \
+            accept "$RUNNER_TEMP/owned-ubuntu-control" "$RUNNER_TEMP/owned-ubuntu-evidence"
+
+      - name: Collect only the bounded driver receipt
+        if: always()
+        timeout-minutes: 2
+        run: |
+          umask 022
+          /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 \
+            /usr/bin/python3 -I -S -B "$GITHUB_WORKSPACE/scripts/owned-ubuntu-acceptance-ci.py" \
+            collect "$RUNNER_TEMP/owned-ubuntu-control" "$RUNNER_TEMP/owned-ubuntu-evidence"
+
+      - name: Retain only nonsecret receipts and source/build identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 3
+        with:
+          name: owned-ubuntu-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/owned-ubuntu-evidence/identity.json
+            ${{ runner.temp }}/owned-ubuntu-evidence/prepare-result.json
+            ${{ runner.temp }}/owned-ubuntu-evidence/build-command.json
+            ${{ runner.temp }}/owned-ubuntu-evidence/package-command.json
+            ${{ runner.temp }}/owned-ubuntu-evidence/build-result.json
+            ${{ runner.temp }}/owned-ubuntu-evidence/artifact.sha256
+            ${{ runner.temp }}/owned-ubuntu-evidence/artifact-manifest.json
+            ${{ runner.temp }}/owned-ubuntu-evidence/acceptance-command.json
+            ${{ runner.temp }}/owned-ubuntu-evidence/accept-result.json
+            ${{ runner.temp }}/owned-ubuntu-evidence/driver-receipt.json
+            ${{ runner.temp }}/owned-ubuntu-evidence/collect-result.json

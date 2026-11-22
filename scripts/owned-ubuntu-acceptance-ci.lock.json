@@ -1,0 +1,85 @@
+{
+  "schema": "owned-ubuntu-genuine-ci-inputs/v1",
+  "baseCommit": "172522c8a4065f80e813d6d4710b26b13b6094c7",
+  "baseTree": "4ebb37ac864d1a423eccfb6cdd838f1f94bbf21f",
+  "installerInputLock": {
+    "path": "tests/owned-native-acceptance.lock.json",
+    "sha256": "62f53c599ea777759c846c6a5c14e768bce0c5d1ac888027a999606a4d3b4805",
+    "count": 39
+  },
+  "packager": {
+    "path": "scripts/build-piweb-artifact.sh",
+    "sha256": "157eae7044a6dcb641f60306fb60cf1e2d024be9c64130ca714a170648ad0263",
+    "bytes": 2416,
+    "mode": 493
+  },
+  "candidateSource": {
+    "freezeSha256": "f221a00da7ab2a9aee07f5f337b53d7ccfff48befd60b2cb8aa80350901f9800",
+    "handoffSha256": "0b40b9395f638161fb730f33121ce6c64e327bbae8e8f8a0c420b4fe2369a39e",
+    "revision": "frozen-v4",
+    "files": [
+      {
+        "path": ".github/workflows/deployment-ci.yml",
+        "bytes": 4132,
+        "sha256": "ecff97943056dfde8ba0c0dd1f8cda5fbed30088d1cddae4f53881e437f2c416",
+        "mode": 420
+      },
+      {
+        "path": "docs/OWNED-NATIVE-ACCEPTANCE.md",
+        "bytes": 9313,
+        "sha256": "b05264ffe7ccd951348630c5960d36dde1d3b5f60c3fad94f9a68a074de45ada",
+        "mode": 420
+      },
+      {
+        "path": "docs/TESTING.md",
+        "bytes": 48655,
+        "sha256": "a2df1df87e7126b93e8bf5da8f27e6642052abcb04c7af0b65cd4f652bc4212f",
+        "mode": 420
+      },
+      {
+        "path": "docs/plans/2026-11-22-owned-native-acceptance.md",
+        "bytes": 3477,
+        "sha256": "a933b487707809b13f894cb1ad650d2ef42476db0abbb02a51e4cb1439779415",
+        "mode": 420
+      },
+      {
+        "path": "tests/fixtures/owned_acceptance_child.py",
+        "bytes": 2974,
+        "sha256": "6745af03f8b8cad6418aa4068a22626d32b64dc1f266cebef02572fe28ddc0fc",
+        "mode": 420
+      },
+      {
+        "path": "tests/owned-native-acceptance.lock.json",
+        "bytes": 16117,
+        "sha256": "62f53c599ea777759c846c6a5c14e768bce0c5d1ac888027a999606a4d3b4805",
+        "mode": 420
+      },
+      {
+        "path": "tests/owned_acceptance_supervisor.py",
+        "bytes": 5359,
+        "sha256": "8c575ef79954250d03d7f1d9ae4624a786db164b77c586796df24d32196ab1d4",
+        "mode": 420
+      },
+      {
+        "path": "tests/owned_native_acceptance.py",
+        "bytes": 52324,
+        "sha256": "9210654c7d54d52f6d5ad64c056ef4a18ae6f509dc1257ca678eba3d8c89a62d",
+        "mode": 420
+      },
+      {
+        "path": "tests/smoke.sh",
+        "bytes": 380,
+        "sha256": "2023ab29ae20656a3adfa1b646342c4ca515759b07337c56adc5cbd27429e6dd",
+        "mode": 493
+      },
+      {
+        "path": "tests/test_owned_native_acceptance.py",
+        "bytes": 49061,
+        "sha256": "a40c4919ea9cde2473f418643c5dfa97ee2c7d989839d563f925890247b688f0",
+        "mode": 420
+      }
+    ],
+    "acceptedCommit": "ec0a52a20958d7ca8ad779a5b5d2391b52248892",
+    "acceptedTree": "982e0f89ace1acf2cd8753f9a6434d829ce1ee13"
+  }
+}
