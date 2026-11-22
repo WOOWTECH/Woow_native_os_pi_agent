@@ -27,6 +27,9 @@ jobs:
         run: node --test tests/artifact-manifest.test.mjs
       - name: Native maintenance consumer composition and refusal boundaries
         run: python3 -B tests/native-maintenance-consumers.test.py
+      - name: Owned native acceptance safety fixtures and workflow contract
+        timeout-minutes: 5
+        run: python3 -B tests/test_owned_native_acceptance.py
       - name: Shared runtime archive and migration contracts
         run: |
           . lib/pins.sh
