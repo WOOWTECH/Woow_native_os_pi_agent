@@ -9,8 +9,8 @@
       "path": "VERSION",
       "bytes": 6,
       "mode": 420,
-      "sha256": "283571d2642fc7b3befd294f45d53b896a1d54d34c86235b13151192b380606a",
-      "gitBlob": "a45be4627678330112f94a9b48a5e821ed846104"
+      "sha256": "2f2b333be8858cb384114251b668bb1c9e45a0bb8393600b7ad4093d0e8e72f6",
+      "gitBlob": "1866a362b7bef6cc0e128e9d3f846fdb6b179858"
     },
     {
       "path": "candidate-packages/manifest.json",
