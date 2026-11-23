@@ -1,7 +1,28 @@
-# Native 0.2.8 release preparation
+# Native release preparation
 
-This is a source candidate, not a published release. Existing 0.2.7 assets and
-the separate 0.3.0-rc Windows channel remain immutable.
+## 0.2.9
+
+Changes from 0.2.8 (PR #16):
+
+- Omnigent plugin 0.3.34 → 0.3.35, frozen as
+  `woowtech-pi-omnigent-plugin-0.3.35.tgz` (sha256 `9ac751b3…db2b` in
+  `candidate-packages/manifest.json`). 0.3.35 checks the managed Omnigent before
+  maintenance and refuses files that have more than one hard link.
+- On Linux and WSL2, a plugin-managed Omnigent installed by plugin 0.3.34 or
+  earlier shares its files with the uv cache, so the upgrade left hosts offline
+  with `DEPENDENCIES_MISSING`. `install.sh` now runs
+  `rootfs/bin/pi-agent-unshare-omnigent.py` before it unpacks the plugin and
+  gives those files their own copies. If it cannot, it stops with the old plugin
+  and Pi Web still in place. See `docs/OPERATIONS-GOTCHAS.md` section 22.
+- Agent Connect stays 0.1.20 and the shared runtime stays 0.1.6. Agent Connect
+  0.1.21 fixes the Ubuntu pid-file mode, but Omnigent plugin 0.3.35's combined
+  adapter accepts only 0.1.20. 0.1.21 waits for the next plugin release.
+- Pi Web stays 0.10.0, so the asset names are unchanged apart from the tag.
+
+Existing 0.2.8 assets and the separate 0.3.0-rc Windows channel remain
+immutable. The release route below is unchanged since 0.2.8.
+
+## Release route (prepared for 0.2.8)
 
 The normal Ubuntu/WSL2 instructions use tag `v0.2.8` and its Linux x64 Pi Web
 artifact. Mac downloads use the matching arm64/x64 pkg URLs. These paths become
