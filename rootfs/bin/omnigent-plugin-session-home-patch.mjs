@@ -30,8 +30,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-// 0.3.35 maintenance-aware layout; exact candidate archive is locked in lib/pins.sh.
-const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35'];
+// 0.3.35+ maintenance-aware layout (0.3.36 adds only refusal reasons and the
+// Agent Connect 0.1.21 adapter pin); exact candidate archive is locked in lib/pins.sh.
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35', '0.3.36'];
+const MAINTENANCE_AWARE_VERSIONS = ['0.3.35', '0.3.36'];
 const MARKER = 'session-home (Woow native installer)';
 const ANCHOR = '                environment["OMNIGENT_HOST_NO_OPEN"] = "1"\n';
 const ADDITION = [
@@ -63,7 +65,7 @@ function main() {
     return 0;
   }
 
-  if (version === '0.3.35'
+  if (MAINTENANCE_AWARE_VERSIONS.includes(version)
       && (source.split('launch = self.require_maintenance_preservation()').length !== 2
           || source.split('subprocess.Popen([launch["pythonExecutable"], "-I", "-B", launch["consoleScript"], "host"').length !== 2)) {
     log('reviewed maintenance/validated-spawn boundary differs — SKIPPING'); return 0;

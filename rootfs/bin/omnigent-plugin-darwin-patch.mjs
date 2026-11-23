@@ -84,8 +84,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-// 0.3.35 maintenance-aware layout; exact candidate archive is locked in lib/pins.sh.
-const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35'];
+// 0.3.35+ maintenance-aware layout (0.3.36 adds only refusal reasons and the
+// Agent Connect 0.1.21 adapter pin); exact candidate archive is locked in lib/pins.sh.
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35', '0.3.36'];
+const MAINTENANCE_AWARE_VERSIONS = ['0.3.35', '0.3.36'];
 
 const GATE_OLD = "if (platform !== 'linux' || !['x64', 'arm64'].includes(arch)) {";
 const GATE_NEW = "if (!['linux', 'darwin'].includes(platform) || !['x64', 'arm64'].includes(arch)) {";
@@ -191,19 +193,19 @@ function main() {
   // New maintenance-aware path: platform/bwrap support is already upstream.
   // Require that reviewed shape before touching any file. Legacy paths below
   // deliberately keep their historical warm-up and platform edits.
-  const maintenanceAware = version === '0.3.35';
+  const maintenanceAware = MAINTENANCE_AWARE_VERSIONS.includes(version);
   if (maintenanceAware) {
     let installer, adapter;
     try {
       installer = fs.readFileSync(path.join(root, 'src/installer.mjs'), 'utf8');
       adapter = fs.readFileSync(path.join(root, 'src/omnigent.py'), 'utf8');
-    } catch { log('0.3.35 reviewed source unavailable — SKIPPING'); return 0; }
+    } catch { log(`${version} reviewed source unavailable — SKIPPING`); return 0; }
     const unique = (text, anchor) => text.split(anchor).length === 2;
     if (!unique(installer, GATE_NEW) || !unique(installer, BWRAP_NEW)
         || !unique(installer, 'maintenancePreservation = await maintenance(discovery.omnigent, { stateDir, env, run })')
         || !unique(adapter, 'launch = self.require_maintenance_preservation()')
         || !unique(adapter, 'subprocess.Popen([launch["pythonExecutable"], "-I", "-B", launch["consoleScript"], "host"')) {
-      log('0.3.35 reviewed maintenance/platform shape differs — SKIPPING'); return 0;
+      log(`${version} reviewed maintenance/platform shape differs — SKIPPING`); return 0;
     }
   }
 

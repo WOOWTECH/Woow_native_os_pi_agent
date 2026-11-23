@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Resume an authorized loopback Omnigent connection after concurrent cold boot.
+"""Resume an authorized Omnigent connection after a cold boot or Pi Web restart.
 
-No login, password copying, host replacement, or model conversation is performed.
-Remote servers remain managed by the plugin's existing lifecycle.
+A loopback HTTP server is ready once it answers /health; an HTTPS server once it
+accepts a TCP connection (the network may come up after Pi Web). Then the
+plugin's supported `boot` lifecycle resumes the recorded host. No login,
+password copying, host replacement, or model conversation is performed.
 """
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import time
 import urllib.parse
@@ -25,9 +28,22 @@ def local_health_url(proof):
     return urllib.parse.urlunsplit((url.scheme, url.netloc, '/health', '', ''))
 
 
+def remote_address(proof):
+    url = urllib.parse.urlsplit(proof.get('server', ''))
+    if (url.scheme != 'https' or not url.hostname or url.hostname in ('127.0.0.1', 'localhost', '::1')
+            or url.username or url.password or url.query or url.fragment or url.path not in ('', '/')):
+        return None
+    return url.hostname, url.port or 443  # A malformed port raises before any command runs.
+
+
 def health(url):
     with urllib.request.urlopen(url, timeout=10) as response:
         return response.status == 200
+
+
+def reachable(address):
+    with socket.create_connection(address, timeout=10):
+        return True
 
 
 def boot(root):
@@ -37,14 +53,17 @@ def boot(root):
     return json.loads(result.stdout) if result.stdout.strip() else {}
 
 
-def resume(root, *, ready=health, launch=boot, clock=time.monotonic, sleep=time.sleep, budget=780):
+def resume(root, *, ready=None, launch=boot, clock=time.monotonic, sleep=time.sleep, budget=780):
     receipt = root / 'data/omnigent-plugin/connection.json'
     if not receipt.is_file():
         return 'no-recorded-connection'
     proof = json.loads(receipt.read_text())
-    url = local_health_url(proof)
-    if not url:
-        return 'remote-or-unsupported-server'
+    target, check = local_health_url(proof), health
+    if not target:
+        target, check = remote_address(proof), reachable
+    if not target:
+        return 'unsupported-server'
+    check = ready or check
     host_id = proof.get('host', {}).get('id')
     if not host_id:
         return 'identity-needs-setup'
@@ -54,7 +73,7 @@ def resume(root, *, ready=health, launch=boot, clock=time.monotonic, sleep=time.
         if not receipt.is_file() or json.loads(receipt.read_text()) != proof:
             return 'connection-changed'
         try:
-            if ready(url):
+            if check(target):
                 data = launch(root)
                 result = data.get('resumption', {})
                 if result.get('resumed'):
@@ -65,9 +84,9 @@ def resume(root, *, ready=health, launch=boot, clock=time.monotonic, sleep=time.
         except (OSError, ValueError, subprocess.TimeoutExpired):
             pass
         sleep(10)
-    raise TimeoutError('Local Omnigent did not resume within the cold-start budget')
+    raise TimeoutError('Omnigent did not resume within the cold-start budget')
 
 
 if __name__ == '__main__':
     root = Path(os.environ.get('PI_AGENT_HOME', Path.home() / '.local/share/pi-agent'))
-    print('Local Omnigent recovery: ' + resume(root))
+    print('Omnigent recovery: ' + resume(root))
