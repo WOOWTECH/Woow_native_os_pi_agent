@@ -49,10 +49,10 @@
     },
     {
       "path": "install.sh",
-      "bytes": 39186,
+      "bytes": 40385,
       "mode": 493,
-      "sha256": "088cd8d65e68a36604262f9d67e66ba1ee3320438f36f4313904cfe5470c3b91",
-      "gitBlob": "9446cf0ca2027b9aa8e10995fa4b2b913617bfb5"
+      "sha256": "b273ff8e20c65588883f5b07cd479cbcb357a338913ef3e4835f892d26b1917f",
+      "gitBlob": "07dfa97262b7b375e1119a88912cef0461fd3ffd"
     },
     {
       "path": "lib/artifact-manifest.mjs",
@@ -249,6 +249,13 @@
       "mode": 420,
       "sha256": "1092ecb2330542175dfd700b8a2c9c219fbdc8c8825a00a1113e259decab6001",
       "gitBlob": "beb03b21fc17c3b4336e1d58c16af7dfd35f0b66"
+    },
+    {
+      "path": "rootfs/bin/pi-agent-unshare-omnigent.py",
+      "bytes": 10225,
+      "mode": 420,
+      "sha256": "d1fb7c51d2f0a857a17be62ed0d563711169773b5332e9e1d4f852ad2460fb7b",
+      "gitBlob": "05bf6f44223ce8a0a531b798f1c86ac76d81da91"
     },
     {
       "path": "rootfs/bin/pi-omnigent",

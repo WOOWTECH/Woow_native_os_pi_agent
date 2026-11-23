@@ -800,7 +800,7 @@ class ScenarioTests(unittest.TestCase):
             run.finish(mod.Hold('fixture-refusal'))
 
     def test_source_lock_substitution_and_mode_rejected(self):
-        self.assertEqual(len(mod.verify_source(HERE.parent)['files']), 39)
+        self.assertEqual(len(mod.verify_source(HERE.parent)['files']), 40)
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             lock = mod.verify_source(HERE.parent)
