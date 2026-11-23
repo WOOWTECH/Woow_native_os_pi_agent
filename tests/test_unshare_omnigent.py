@@ -92,7 +92,9 @@ class UnshareTests(unittest.TestCase):
         before = self.fx.snapshot(self.fx.home)
         code, report, text = run_main(self.fx.home, '--check')
         self.assertEqual((code, report['status'], report['shared']), (3, 'shared', len(FILES)))
-        self.assertEqual(report['sharedBytes'], sum(len(data) for data, _ in FILES.values()))
+        allocated = [(self.fx.tool / relative).stat() for relative in FILES]
+        self.assertEqual(report['sharedBytes'], sum(max(i.st_size, i.st_blocks * 512) for i in allocated))
+        self.assertGreaterEqual(report['sharedBytes'], sum(len(data) for data, _ in FILES.values()))
         self.assertEqual(self.fx.snapshot(self.fx.home), before)
         self.assertNotIn(str(self.base), text)  # counts and a fixed relative label only
 
@@ -171,7 +173,7 @@ class UnshareTests(unittest.TestCase):
 
     def test_space_margin_is_the_copies_plus_64_mib(self):
         self.fx.build()
-        need = sum(len(data) for data, _ in FILES.values()) + mod.MARGIN
+        need = run_main(self.fx.home, '--check')[1]['sharedBytes'] + mod.MARGIN  # allocated blocks + margin
         with mock.patch.object(mod.os, 'statvfs', return_value=self.statvfs(need - 1)):
             self.assertEqual(run_main(self.fx.home)[1]['reason'], 'insufficient-space')
         with mock.patch.object(mod.os, 'statvfs', return_value=self.statvfs(need)):
@@ -253,8 +255,19 @@ class UnshareTests(unittest.TestCase):
         self.assertEqual((code, report['staleTempsRemoved']), (0, 1))
         self.assertFalse(stale.exists())
 
+    def test_nfs_silly_renamed_names_are_ignored(self):
+        self.fx.build()
+        silly = self.fx.tool / SITE / 'omnigent/.nfs00000000001a2b3c00000001'
+        os.link(self.fx.cache / SITE / 'omnigent/_speedups.so', silly)
+        code, report, _ = run_main(self.fx.home, '--check')
+        self.assertEqual((code, report['shared']), (3, len(FILES)))  # the .nfs name is not counted
+        code, report, _ = run_main(self.fx.home)
+        self.assertEqual((code, report['status'], report['remaining']), (0, 'repaired', 0))
+        self.assertEqual(silly.stat().st_nlink, 2)  # untouched: the NFS client removes it on last close
+
     def test_usage(self):
         with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(mod.main(['pi-agent-unshare-omnigent.py', '']), 2)  # an unset PI_AGENT_HOME
             self.assertEqual(mod.main(['pi-agent-unshare-omnigent.py']), 2)
             self.assertEqual(mod.main(['pi-agent-unshare-omnigent.py', '/x', '--repair']), 2)
 

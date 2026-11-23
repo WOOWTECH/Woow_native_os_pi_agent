@@ -252,10 +252,10 @@
     },
     {
       "path": "rootfs/bin/pi-agent-unshare-omnigent.py",
-      "bytes": 10924,
+      "bytes": 11471,
       "mode": 420,
-      "sha256": "ceb25ebc94ed23f80927cb0234399ea60a932a9f5647668c6a15a466366d4ebd",
-      "gitBlob": "1848c44d36d8a2f486c0ea26fdbcd6453d01bb5d"
+      "sha256": "b1521bb7e615a2a92d032252df643727dfad2d1fa8c9fc7d71b261f5e32f83cb",
+      "gitBlob": "b17734dc78b576c0e02d622288d9520b09ffec10"
     },
     {
       "path": "rootfs/bin/pi-omnigent",

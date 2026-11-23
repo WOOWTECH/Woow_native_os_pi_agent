@@ -29,6 +29,7 @@ import sys
 USAGE = 'usage: pi-agent-unshare-omnigent.py <PI_AGENT_HOME> [--check]'
 TOOL = ('data', 'omnigent-plugin', 'uv', 'tools', 'omnigent')
 TEMP_PREFIX = '.pi-agent-unshare.'
+NFS_SILLY_PREFIX = '.nfs'  # an NFS client's name for a removed file that is still open
 MARGIN = 64 * 1024 * 1024
 INODE_MARGIN = 1024
 CHUNK = 1024 * 1024
@@ -78,6 +79,8 @@ def walk(dir_fd, visit, leave=None):
     with os.scandir(dir_fd) as listing:
         names = sorted(entry.name for entry in listing)
     for name in names:
+        if name.startswith(NFS_SILLY_PREFIX):
+            continue  # left by a rename over a file the running host has open; gone on its last close
         try:
             info = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
         except FileNotFoundError:
@@ -110,7 +113,8 @@ def survey(root_fd):
             found['staleTemps'] += 1
         elif info.st_nlink > 1:
             found['shared'] += 1
-            found['sharedBytes'] += info.st_size
+            # Space the copy takes: allocated blocks, which round small files up.
+            found['sharedBytes'] += max(info.st_size, getattr(info, 'st_blocks', 0) * 512)
             # The copy is created and renamed in this directory, as this user.
             if (info.st_uid != uid or dir_info.st_uid != uid
                     or not dir_info.st_mode & stat.S_IWUSR or not dir_info.st_mode & stat.S_IXUSR):
@@ -179,10 +183,14 @@ def unshare(dir_fd, name, info):
         if (size != first.st_size or fingerprint(os.fstat(source)) != fingerprint(first)
                 or digest_of(dir_fd, temp) != value.hexdigest()):
             raise Refused('changed-during-repair')
+        # Close before the rename: on NFS an open target would be silly-renamed instead.
+        os.close(source)
+        source = None
         os.rename(temp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
         renamed = True
     finally:
-        os.close(source)
+        if source is not None:
+            os.close(source)
         if created and not renamed:
             try:
                 os.unlink(temp, dir_fd=dir_fd)
@@ -224,7 +232,7 @@ def repair(root_fd):
 
 
 def main(argv):
-    if len(argv) not in (2, 3) or (len(argv) == 3 and argv[2] != '--check'):
+    if len(argv) not in (2, 3) or not argv[1] or (len(argv) == 3 and argv[2] != '--check'):
         print(USAGE, file=sys.stderr)
         return 2
     report = {'tool': '/'.join(TOOL)}

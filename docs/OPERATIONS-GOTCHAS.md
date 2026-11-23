@@ -525,7 +525,18 @@ A failure part-way, for example a disk quota or an I/O error, also stops the ins
 new plugin is unpacked. Each file is then either untouched or already an identical single-link
 copy, and running the installer again finishes the job.
 
-**Check:** `find "$PI_AGENT_HOME/data/omnigent-plugin/uv/tools/omnigent" -type f -links +1 | wc -l`
+The helper prints one JSON line, and `reason` says why it stopped:
+- `unsafe-tool-path`: a symlink in the tool path.
+- `foreign-owner` or `foreign-owner-or-read-only`: ownership or permissions.
+- `insufficient-space` or `insufficient-inodes`: not enough room for the copies.
+- `changed-during-scan` or `changed-during-repair`: something wrote to the tree meanwhile; run it
+  again.
+- `repair-incomplete`, or `os-error` with an `errno`.
+
+On an NFS home, a file the running host has open leaves a `.nfs…` name behind until the host
+closes it. The helper ignores those names.
+
+**Check:** `find "${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/data/omnigent-plugin/uv/tools/omnigent" -type f -links +1 | wc -l`
 is 0 when the guard can read the files. `pi-agent-unshare-omnigent.py <PI_AGENT_HOME> --check`
 exits 3 when files are still shared.
 
@@ -533,7 +544,8 @@ exits 3 when files are still shared.
 is not in `$PI_AGENT_HOME/bin` yet):
 1. Run the fixed installer again from its source checkout (`./install.sh`): `fetch` repairs the
    files before it unpacks the plugin. To repair by hand instead, run
-   `python3 -I -B <source checkout>/rootfs/bin/pi-agent-unshare-omnigent.py "$PI_AGENT_HOME"`.
+   `python3 -I -B <source checkout>/rootfs/bin/pi-agent-unshare-omnigent.py "${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}"`.
+   A plain terminal does not set `PI_AGENT_HOME`; the default is `~/.local/share/pi-agent`.
 2. From a terminal on that machine, restart pi-web: `systemctl --user restart pi-web.service`.
    Don't do this from a conversation running on that host: the host runs inside pi-web's cgroup,
    so the restart stops the host and every conversation on it until it reconnects.
