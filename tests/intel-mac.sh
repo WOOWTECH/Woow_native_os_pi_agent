@@ -9,7 +9,7 @@
 # 4-6 s there, and the plugin probes it with a 5 s limit. This suite checks each piece and then the real thing:
 #   A  vendor/omnigent-requirements.lock pins both twice: once for Intel Macs, once for everything else
 #   B  the darwin patch makes the plugin pass --constraints "$PI_OMNIGENT_UV_CONSTRAINTS" to that install,
-#      while reviewed 0.3.35 keeps its longer upstream probe and final maintenance guard
+#      while reviewed 0.3.35+ keeps its longer upstream probe and final maintenance guard
 #   C  pi-agent-env.sh sets the variable on Intel Macs, and nowhere else
 #   D  with the pinned uv: the lock selects the right pins on this machine, and the Intel pins are still
 #      uv's own answer to the command the lock's header documents

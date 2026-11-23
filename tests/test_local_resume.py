@@ -88,11 +88,61 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.run_resume(ready=lambda _: True,
             launch=lambda _: {'resumption': {'resumed': True, 'host': {'id': 'other'}}}), 'identity-needs-setup')
 
-    def test_malformed_remote_port_refuses_before_any_command(self):
-        self.proof['server'] = 'https://omnigent.example.invalid:99999'
+    def test_malformed_or_zero_remote_port_is_unsupported_before_any_command(self):
+        for server in ('https://omnigent.example.invalid:99999', 'https://omnigent.example.invalid:0',
+                       'https://omnigent.example.invalid:x'):
+            self.proof['server'] = server
+            self.write()
+            self.assertEqual(self.run_resume(ready=lambda _: self.fail('probe'), launch=lambda _: self.fail('boot')),
+                             'unsupported-server', server)
+
+    def test_odd_receipts_do_not_crash(self):
+        for proof in ([], {'server': 7, 'host': {'id': 'x'}}, {'server': 'https://omnigent.example.invalid', 'host': 'x'}):
+            self.receipt.write_text(json.dumps(proof))
+            self.assertIn(self.run_resume(ready=lambda _: self.fail('probe'), launch=lambda _: self.fail('boot')),
+                          ('unsupported-server', 'identity-needs-setup'))
+
+    def remote(self):
+        self.proof['server'] = 'https://omnigent.example.invalid'
         self.write()
-        with self.assertRaises(ValueError):
-            self.run_resume(ready=lambda _: self.fail('probe'), launch=lambda _: self.fail('boot'))
+
+    def test_remote_persistent_failures_stop_after_one_boot(self):
+        # Host-name collisions, a refused SDK, a disabled plugin or the CLI's
+        # string error must not become a signed-in retry every few seconds.
+        self.remote()
+        for data in ({'resumption': {'ok': False, 'error': {'code': 'HOST_NAME_COLLISION'}}},
+                     {'resumption': {'ok': False, 'error': {'code': 'MAINTENANCE_PRESERVATION_REQUIRED'}}},
+                     {'initialization': {'phase': 'disabled'}, 'startup': {'status': 'disabled'}},
+                     {'initialization': {'ok': False, 'phase': 'error'}, 'startup': {'status': 'settings-required'}},
+                     {'phase': 'error', 'error': 'Operation failed (ENOSPC).'}, {}, []):
+            calls = []
+            self.assertEqual(self.run_resume(ready=lambda _: True, launch=lambda _: calls.append(1) or data),
+                             'needs-attention', data)
+            self.assertEqual(len(calls), 1)
+        self.assertEqual(self.now, 0)
+
+    def test_remote_transient_failure_backs_off_then_resumes(self):
+        self.remote()
+        outcomes = [{'resumption': {'ok': False, 'error': {'code': 'SERVER_UNREACHABLE'}}},
+                    {'resumption': {'ok': False, 'error': {'code': 'OPERATION_BUSY'}}},
+                    {'resumption': {'resumed': True, 'host': {'id': 'fixture-host'}}}]
+        pauses = []
+        def sleep(duration):
+            pauses.append(duration)
+            self.now += duration
+        result = module.resume(self.root, ready=lambda _: True, launch=lambda _: outcomes.pop(0),
+                               clock=lambda: self.now, sleep=sleep, budget=600)
+        self.assertEqual(result, 'resumed')
+        self.assertEqual(pauses, [module.REMOTE_BACKOFF] * 2)
+
+    def test_remote_budget_ends_cleanly_without_a_restart_loop(self):
+        self.remote()
+        self.assertEqual(self.run_resume(ready=lambda _: False, launch=lambda _: self.fail('boot')), 'remote-not-resumed')
+        self.assertEqual(self.now, 30)
+
+    def test_local_cli_string_error_keeps_retrying_without_crashing(self):
+        with self.assertRaises(TimeoutError):
+            self.run_resume(ready=lambda _: True, launch=lambda _: {'phase': 'error', 'error': 'Operation failed (x).'})
 
     def test_default_remote_probe_is_a_bounded_tcp_connect(self):
         calls = []

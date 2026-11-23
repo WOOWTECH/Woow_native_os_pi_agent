@@ -169,7 +169,7 @@ expect "...after the uv install and before the plugin looks at the result" "$out
 out="$(drive "$LINUXP" linux arm64 update ok "$PAH")"
 expect "update (--force builds a new venv, so the patch went with the old one): patched again, in the same place" "$out" "o.events.join(',') === 'discover,uv-install,patch,rediscover,maintenance' && $WANT_ARGS"
 out="$(drive "$DARWINP" darwin x64 install ok "$PAH")"
-expect "Intel Mac0.3.35: no obsolete warm-up; model hook then preservation" "$out" "o.events.join(',') === 'discover,uv-install,patch,rediscover,maintenance' && o.ok === true"
+expect "Intel Mac $PIN_OMNIGENT_PLUGIN_VERSION: no obsolete warm-up; model hook then preservation" "$out" "o.events.join(',') === 'discover,uv-install,patch,rediscover,maintenance' && o.ok === true"
 out="$(drive "$LINUXP" linux x64 install ok "")"
 expect "PI_AGENT_HOME unset (the container images): nothing runs, the install is unchanged" "$out" "o.patchCalls.length === 0 && o.events.join(',') === 'discover,uv-install,rediscover,maintenance' && o.ok === true"
 out="$(drive "$LINUXP" linux x64 install ok "$PAH_NOFILE")"

@@ -3,7 +3,7 @@
  * Let pi-omnigent-plugin run on macOS.
  *
  * Compatibility split: the historical edits below remain for 0.3.31–0.3.34.
- * Reviewed 0.3.35 already has platform/bwrap support and a 30s default probe:
+ * Reviewed 0.3.35 and 0.3.36 already have platform/bwrap support and a 30s default probe:
  * retain flock/no-proc/Intel constraints, skip those old edits and warm-up.
  * No maintenance/auth/identity/signal check is bypassed.
  *
@@ -232,8 +232,8 @@ function main() {
     marker: UV_MARKER,
     required: [['uv tool install arguments', UV_OLD, UV_NEW]],
   });
-  // Default probe is now 30s; omit the obsolete 5s warm-up only for 0.3.35.
-  if (maintenanceAware) { log('0.3.35: upstream platform support retained; no legacy first-launch warm-up'); return 0; }
+  // Default probe is now 30s; omit the obsolete 5s warm-up for 0.3.35 and later.
+  if (maintenanceAware) { log(`${version}: upstream platform support retained; no legacy first-launch warm-up`); return 0; }
   return edit(root, 'installer.mjs', version, {
     marker: LAUNCH_MARKER,
     required: [['re-discovery after the omnigent install', LAUNCH_OLD, LAUNCH_NEW]],
