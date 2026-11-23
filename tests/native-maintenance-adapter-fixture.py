@@ -18,6 +18,10 @@ original = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name =
 methods = [n for n in original.body if isinstance(n, ast.FunctionDef) and n.name in
            ('require_maintenance_preservation', 'ensure_host', 'guard_host_name')]
 error = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'PluginError')
+# 0.3.36 names the guard's refusal reason through module-level helpers.
+helpers = [n for n in tree.body
+           if (isinstance(n, ast.FunctionDef) and n.name in ('maintenance_refusal_reason', 'maintenance_message'))
+           or (isinstance(n, ast.Assign) and any(getattr(x, 'id', None) == '_MAINTENANCE_REASON' for x in n.targets))]
 with tempfile.TemporaryDirectory(prefix='native-adapter-owned-') as d:
     base = Path(d)
     binary = base / 'omnigent'
@@ -47,7 +51,7 @@ with tempfile.TemporaryDirectory(prefix='native-adapter-owned-') as d:
                                  TimeoutExpired=subprocess.TimeoutExpired)
     ns = dict(Path=Path,sys=sys,json=json,re=re,subprocess=fake,os=os,shutil=shutil,fcntl=fcntl,
               _SCRIPT_DIR=root/'src',atomic_json=lambda *a:None)
-    program = ast.Module(body=[error,ast.ClassDef(name='Fixture',bases=[],keywords=[],body=methods,decorator_list=[])],type_ignores=[])
+    program = ast.Module(body=[error,*helpers,ast.ClassDef(name='Fixture',bases=[],keywords=[],body=methods,decorator_list=[])],type_ignores=[])
     exec(compile(ast.fix_missing_locations(program),'actual-adapter-fixture','exec'),ns)
     p = ns['Fixture']()
     p.request = dict(omnigentBin=str(binary),allowManagedHost=True)

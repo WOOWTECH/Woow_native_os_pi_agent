@@ -22,8 +22,8 @@ acceptance require separate host evidence.
 | **macOS** (Intel x86_64, 13.7 + 15.4 verified) | ✅ installs end to end with no compiler, Omnigent dependencies complete · since v0.2.5 · see [`docs/MACOS.md`](docs/MACOS.md#intel-macs-x86_64) |
 | **Windows (WSL2)** | ⏳ reuses the Linux path |
 
-**Upgrading Linux or WSL2 from v0.2.8 or earlier:** v0.2.9 ships Omnigent plugin
-0.3.35, which refuses hard-linked Omnigent files. On Linux, a plugin-managed
+**Upgrading Linux or WSL2 from v0.2.8 or earlier:** since v0.2.9 the release ships
+Omnigent plugin 0.3.35 or later, which refuses hard-linked Omnigent files. On Linux, a plugin-managed
 Omnigent installed by plugin 0.3.34 or earlier shares those files with its uv
 cache, and the host stays offline after the upgrade. `./install.sh` now gives
 them their own copies before it unpacks the new plugin; if it cannot, it stops
@@ -39,21 +39,21 @@ hard-linking them.
 Check out the source that matches the release:
 
 ```bash
-git clone --branch v0.2.9 --depth 1 https://github.com/WOOWTECH/Woow_native_os_pi_agent
+git clone --branch v0.2.10 --depth 1 https://github.com/WOOWTECH/Woow_native_os_pi_agent
 cd Woow_native_os_pi_agent
 ```
 
 Then run the command for your Mac. **Apple silicon (arm64):**
 
 ```bash
-PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.9/piweb-0.10.0-macos-arm64.tar.gz \
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.10/piweb-0.10.0-macos-arm64.tar.gz \
   ./install.sh
 ```
 
 **Intel (x64):**
 
 ```bash
-PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.9/piweb-0.10.0-macos-x64.tar.gz \
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.10/piweb-0.10.0-macos-x64.tar.gz \
   ./install.sh
 ```
 
@@ -74,9 +74,9 @@ full toolchain. Releases ship that tree prebuilt per platform, so no compiler is
 needed and the build disappears entirely.
 
 ```bash
-git clone --branch v0.2.9 --depth 1 https://github.com/WOOWTECH/Woow_native_os_pi_agent
+git clone --branch v0.2.10 --depth 1 https://github.com/WOOWTECH/Woow_native_os_pi_agent
 cd Woow_native_os_pi_agent
-PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.9/piweb-0.10.0-linux-x64.tar.gz \
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.10/piweb-0.10.0-linux-x64.tar.gz \
   ./install.sh
 ```
 

@@ -1,5 +1,32 @@
 # Native release preparation
 
+## 0.2.10
+
+Changes from 0.2.9:
+
+- Omnigent plugin 0.3.35 → 0.3.36 (pi-omnigent-plugin #33, frozen as
+  `woowtech-pi-omnigent-plugin-0.3.36.tgz`, sha256 `223d1464…11f6`). When the
+  maintenance preservation guard refuses the SDK, status and the installer
+  issue now name the cause as a fixed token. For example, `unsafe-source-file`
+  means hard-linked files, and the issue says to run
+  `pi-omnigent repair --update`. Before, it showed only "dependencies missing".
+- Agent Connect 0.1.20 → 0.1.21 (`woowtech-pi-paseo-0.1.21.tgz`, sha256
+  `538ce608…a39f`, source `d382779f`). Upstream Paseo writes `paseo.pid`
+  without a mode, so under Ubuntu's umask 002 it is 0664. 0.1.20 refused that
+  file on every retry, so Agent Connect never started. 0.1.21 accepts it
+  inside the private home. The Pi Web adapter patch is byte-identical, so the
+  combined patch (`f5c909b3…`) and the prebuilt Pi Web asset names are
+  unchanged.
+- Linux/WSL2 recovery: `woow-native-connection.service` now also resumes an
+  authorized host on an HTTPS server. It waits until the server accepts a TCP
+  connection, then runs the same plugin boot lifecycle. Pi Web's own boot
+  worker tries only once, so a network that came up after Pi Web left the host
+  offline until someone opened Settings.
+- The four plugin overlays accept 0.3.36 through the same reviewed
+  maintenance-aware path as 0.3.35. Every anchor they check is unchanged.
+
+Shared runtime 0.1.6 and Pi Web 0.10.0 are unchanged.
+
 ## 0.2.9
 
 Changes from 0.2.8 (PR #16):

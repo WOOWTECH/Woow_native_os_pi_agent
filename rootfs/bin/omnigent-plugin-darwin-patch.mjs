@@ -3,7 +3,7 @@
  * Let pi-omnigent-plugin run on macOS.
  *
  * Compatibility split: the historical edits below remain for 0.3.31–0.3.34.
- * Reviewed 0.3.35 already has platform/bwrap support and a 30s default probe:
+ * Reviewed 0.3.35 and 0.3.36 already have platform/bwrap support and a 30s default probe:
  * retain flock/no-proc/Intel constraints, skip those old edits and warm-up.
  * No maintenance/auth/identity/signal check is bypassed.
  *
@@ -84,8 +84,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-// 0.3.35 maintenance-aware layout; exact candidate archive is locked in lib/pins.sh.
-const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35'];
+// 0.3.35+ maintenance-aware layout (0.3.36 adds only refusal reasons and the
+// Agent Connect 0.1.21 adapter pin); exact candidate archive is locked in lib/pins.sh.
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35', '0.3.36'];
+const MAINTENANCE_AWARE_VERSIONS = ['0.3.35', '0.3.36'];
 
 const GATE_OLD = "if (platform !== 'linux' || !['x64', 'arm64'].includes(arch)) {";
 const GATE_NEW = "if (!['linux', 'darwin'].includes(platform) || !['x64', 'arm64'].includes(arch)) {";
@@ -191,19 +193,19 @@ function main() {
   // New maintenance-aware path: platform/bwrap support is already upstream.
   // Require that reviewed shape before touching any file. Legacy paths below
   // deliberately keep their historical warm-up and platform edits.
-  const maintenanceAware = version === '0.3.35';
+  const maintenanceAware = MAINTENANCE_AWARE_VERSIONS.includes(version);
   if (maintenanceAware) {
     let installer, adapter;
     try {
       installer = fs.readFileSync(path.join(root, 'src/installer.mjs'), 'utf8');
       adapter = fs.readFileSync(path.join(root, 'src/omnigent.py'), 'utf8');
-    } catch { log('0.3.35 reviewed source unavailable — SKIPPING'); return 0; }
+    } catch { log(`${version} reviewed source unavailable — SKIPPING`); return 0; }
     const unique = (text, anchor) => text.split(anchor).length === 2;
     if (!unique(installer, GATE_NEW) || !unique(installer, BWRAP_NEW)
         || !unique(installer, 'maintenancePreservation = await maintenance(discovery.omnigent, { stateDir, env, run })')
         || !unique(adapter, 'launch = self.require_maintenance_preservation()')
         || !unique(adapter, 'subprocess.Popen([launch["pythonExecutable"], "-I", "-B", launch["consoleScript"], "host"')) {
-      log('0.3.35 reviewed maintenance/platform shape differs — SKIPPING'); return 0;
+      log(`${version} reviewed maintenance/platform shape differs — SKIPPING`); return 0;
     }
   }
 
@@ -230,8 +232,8 @@ function main() {
     marker: UV_MARKER,
     required: [['uv tool install arguments', UV_OLD, UV_NEW]],
   });
-  // Default probe is now 30s; omit the obsolete 5s warm-up only for 0.3.35.
-  if (maintenanceAware) { log('0.3.35: upstream platform support retained; no legacy first-launch warm-up'); return 0; }
+  // Default probe is now 30s; omit the obsolete 5s warm-up for 0.3.35 and later.
+  if (maintenanceAware) { log(`${version}: upstream platform support retained; no legacy first-launch warm-up`); return 0; }
   return edit(root, 'installer.mjs', version, {
     marker: LAUNCH_MARKER,
     required: [['re-discovery after the omnigent install', LAUNCH_OLD, LAUNCH_NEW]],

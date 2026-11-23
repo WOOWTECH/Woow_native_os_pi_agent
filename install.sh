@@ -653,7 +653,7 @@ WantedBy=default.target
 EOF
         cat > "$unitdir/woow-native-connection.service" <<EOF
 [Unit]
-Description=Resume the authorized local Pi Omnigent host
+Description=Resume the authorized Pi Omnigent host
 Wants=pi-web.service
 After=pi-web.service omnigent-server.service
 PartOf=pi-web.service
