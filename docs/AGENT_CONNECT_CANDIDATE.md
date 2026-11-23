@@ -10,7 +10,7 @@ coordinated consumer updates and the normal release gates.
 | Input | Candidate version | SHA-256 |
 | --- | --- | --- |
 | `@woowtech/pi-agent-shared-runtime` | 0.1.6 | `0914069fb0cf83f258cf81034bb16573f6e4242e8779cea47b4a5e841f98a937` |
-| `@woowtech/pi-paseo` (Agent Connect) | 0.1.20 | `1574c1bd1d0023c7b536c9feb773e1cdded929104d79cfb05b1deda5846203f8` |
+| `@woowtech/pi-paseo` (Agent Connect) | 0.1.21 | `538ce60897173f390e890d4a3064076853e7579931b74c387e7887f39404a39f` |
 | `@woowtech/pi-omnigent-plugin` | 0.3.34 | `e9e80783881f8a036cbf922d2f50fad860dac3bd23e170dda768ab3c56107945` |
 | Combined Pi Web 0.10 adapter | 0.3.34 | `f5c909b3fe6f544e11a4eed46c7e217a490f89c5e4ec356c9906e3908d9f6c30` |
 
@@ -106,5 +106,12 @@ Version 0.1.20 retains the 0.1.19 fix, extending the supervisor stop budget to 3
 first-stop, restart and identity gates must pass on this exact archive; prior
 0.1.18 failures remain historical evidence. Publication and real-host provider
 acceptance remain pending.
+
+Version 0.1.21 (source `93c8d15bcd5b409639c08c6a84054c54838eea48`, WOOWTECH/pi-paseo-plugin#21)
+changes only `src/daemon-identity.mjs`. Upstream Paseo writes `paseo.pid` without a mode, so under
+Ubuntu's umask 002 it is 0664. On a native Ubuntu host, every supervisor retry then failed with
+`DAEMON_IDENTITY_UNSAFE`. The PID file is now read only after its directory is verified private
+(0700, this user); group write is then accepted, and other write still fails. The runtime revision is
+the same, and the archive differs from 0.1.20 only in `package.json` and that file.
 
 Joint freeze: Omnigent0.3.34 source `d8652e971bdf66133d699052ab9003d39ff69159` and Paseo0.1.20 source `aea2da4a83dbd220d8e9aa532ff91f9ac4e2c206`. The combined PiWeb metadata pins both versions exactly and its VM fixtures include the lifecycle-timeouts dependency. Full consumer results must be checked on this joint candidate.

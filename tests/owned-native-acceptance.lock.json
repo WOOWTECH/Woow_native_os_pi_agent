@@ -16,8 +16,8 @@
       "path": "candidate-packages/manifest.json",
       "bytes": 1079,
       "mode": 420,
-      "sha256": "a62d4db733a9d48bac122373f09c6e185294c477b512f7a67713a34d397a6564",
-      "gitBlob": "0492bf7a37047385fda0ff84e9bb5c1db919996b"
+      "sha256": "f36ad094e179f9373f2493a48cb19a5d7483051736b27e3c9238519c0c7a1dbd",
+      "gitBlob": "61b937c1d1062f48748be34f53b0f6f465f91039"
     },
     {
       "path": "candidate-packages/woowtech-pi-agent-shared-runtime-0.1.6.tgz",
@@ -41,11 +41,11 @@
       "gitBlob": "8cedf2fb8f12cebb0ad64f502ab09949fd3594aa"
     },
     {
-      "path": "candidate-packages/woowtech-pi-paseo-0.1.20.tgz",
-      "bytes": 185532,
+      "path": "candidate-packages/woowtech-pi-paseo-0.1.21.tgz",
+      "bytes": 185813,
       "mode": 420,
-      "sha256": "1574c1bd1d0023c7b536c9feb773e1cdded929104d79cfb05b1deda5846203f8",
-      "gitBlob": "a4e71c0daf58470f05d69e7bd39743f5f5390bf1"
+      "sha256": "538ce60897173f390e890d4a3064076853e7579931b74c387e7887f39404a39f",
+      "gitBlob": "fa6b6e064686eb0245bb4a4984392fd1ac7630a2"
     },
     {
       "path": "install.sh",
@@ -72,8 +72,8 @@
       "path": "lib/pins.sh",
       "bytes": 4530,
       "mode": 420,
-      "sha256": "3d3ed1aeca1bc6c210d96012ab88a09678ba8974bfc33eadbb503e6bd68d28da",
-      "gitBlob": "e10e91683c3f767d389e9db858139b2777ebee95"
+      "sha256": "5871b6b77578bc7e2195b24e62e081609424895696d4ec5ebec911608902ac9a",
+      "gitBlob": "65c49a638cc98635ab4123a99a84ebfa02637221"
     },
     {
       "path": "rootfs/bin/_ref-pi",
