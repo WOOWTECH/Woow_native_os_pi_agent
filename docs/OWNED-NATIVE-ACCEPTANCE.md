@@ -71,7 +71,7 @@ artifact platform/source/adapter/package-manifest checks remain authoritative.
   archive `9ac751b3…`. The lock was first frozen from commit
   `172522c8a4065f80e813d6d4710b26b13b6094c7` and its tree, which stay its base
   reference. Inputs changed since then (the hard-link repair in `install.sh` and
-  its helper, and Agent Connect 0.1.21) are pinned at their current bytes. The
+  its helper) are pinned at their current bytes. The
   lock also binds all 37 expected
   Linux plugin member bytes/modes after native overlays. Source provenance
   refers to that base; it does not claim this new driver was committed there.
