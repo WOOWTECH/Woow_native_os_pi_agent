@@ -66,9 +66,13 @@ artifact platform/source/adapter/package-manifest checks remain authoritative.
 - An exclusive random mode 0700 directory and mode 0600 marker bind the run.
   Descriptor-relative no-follow traversal rejects outside paths, links and
   collisions. Files read as state must be regular, singly linked, size bounded
-  and stable across the read. Source/package inputs are locked to original
-  commit `172522c8a4065f80e813d6d4710b26b13b6094c7`, its tree, all 39 installer
-  inputs and plugin archive `9ac751b3…`. The lock also binds all 37 expected
+  and stable across the read. Source/package inputs are locked by content: all
+  40 installer inputs in `tests/owned-native-acceptance.lock.json` and plugin
+  archive `9ac751b3…`. The lock was first frozen from commit
+  `172522c8a4065f80e813d6d4710b26b13b6094c7` and its tree, which stay its base
+  reference. Inputs changed since then (the hard-link repair in `install.sh` and
+  its helper, and Agent Connect 0.1.21) are pinned at their current bytes. The
+  lock also binds all 37 expected
   Linux plugin member bytes/modes after native overlays. Source provenance
   refers to that base; it does not claim this new driver was committed there.
   The copied inputs include `VERSION`, which the actual artifact manifest

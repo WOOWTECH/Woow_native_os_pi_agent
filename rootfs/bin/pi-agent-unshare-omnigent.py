@@ -12,7 +12,9 @@ Each multi-linked regular file is replaced, in its own directory, by a byte-iden
 copy with the same mode and timestamps, through an atomic rename. The cache keeps
 its own copy. Symlinks are never followed, nothing outside the managed tool tree is
 written, and no path or file content is printed. Nothing is changed when ownership,
-permissions or free space do not allow the whole repair.
+permissions, free space or free inodes do not allow the whole repair. A failure part-way
+(a disk quota, an I/O error) stops it with every file either untouched or already an
+identical single-link copy; running it again finishes the job.
 
 usage: python3 -I -B pi-agent-unshare-omnigent.py <PI_AGENT_HOME> [--check]
 prints one JSON line; exit 0 = nothing left to do, 3 = --check found shared files,
@@ -28,6 +30,7 @@ USAGE = 'usage: pi-agent-unshare-omnigent.py <PI_AGENT_HOME> [--check]'
 TOOL = ('data', 'omnigent-plugin', 'uv', 'tools', 'omnigent')
 TEMP_PREFIX = '.pi-agent-unshare.'
 MARGIN = 64 * 1024 * 1024
+INODE_MARGIN = 1024
 CHUNK = 1024 * 1024
 NOFOLLOW_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
@@ -75,7 +78,10 @@ def walk(dir_fd, visit, leave=None):
     with os.scandir(dir_fd) as listing:
         names = sorted(entry.name for entry in listing)
     for name in names:
-        info = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+        try:
+            info = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            continue  # removed since the listing: nothing left to give a copy
         if stat.S_ISDIR(info.st_mode):
             try:
                 child = os.open(name, NOFOLLOW_DIR, dir_fd=dir_fd)
@@ -160,11 +166,11 @@ def unshare(dir_fd, name, info):
                 value.update(chunk)
                 write_all(copy, chunk)
                 size += len(chunk)
-            os.fchmod(copy, stat.S_IMODE(first.st_mode))
             try:
-                os.fchown(copy, -1, first.st_gid)
+                os.fchown(copy, -1, first.st_gid)  # before fchmod: chown clears setuid/setgid
             except PermissionError:
                 pass  # a group this user cannot give; the owner is already the same
+            os.fchmod(copy, stat.S_IMODE(first.st_mode))
             os.utime(copy, ns=(first.st_atime_ns, first.st_mtime_ns))
             os.fsync(copy)
         finally:
@@ -183,7 +189,8 @@ def unshare(dir_fd, name, info):
             except FileNotFoundError:
                 pass
     after = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
-    if after.st_nlink != 1 or after.st_size != first.st_size or after.st_mtime_ns != first.st_mtime_ns:
+    if (after.st_nlink != 1 or after.st_size != first.st_size or after.st_mtime_ns != first.st_mtime_ns
+            or stat.S_IMODE(after.st_mode) != stat.S_IMODE(first.st_mode)):
         raise Refused('repair-not-confirmed')
     return first.st_size
 
@@ -242,6 +249,9 @@ def main(argv):
                 space = os.statvfs(root)
                 if found['sharedBytes'] + MARGIN > space.f_bavail * space.f_frsize:
                     raise Refused('insufficient-space')
+                # A file system that reports no inode counts (f_files 0, e.g. btrfs) has no fixed limit.
+                if space.f_files and found['shared'] + INODE_MARGIN > space.f_favail:
+                    raise Refused('insufficient-inodes')
                 report.update(repair(root))
                 left = survey(root)
                 report['remaining'] = left['shared']

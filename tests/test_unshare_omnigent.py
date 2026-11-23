@@ -166,6 +166,50 @@ class UnshareTests(unittest.TestCase):
         self.assertEqual((code, report['reason']), (1, 'insufficient-space'))
         self.assertEqual(self.fx.snapshot(self.fx.home), before)
 
+    def statvfs(self, available_bytes, files=0, favail=0):
+        return os.statvfs_result((4096, 1, 10**12, available_bytes, available_bytes, files, favail, favail, 0, 255))
+
+    def test_space_margin_is_the_copies_plus_64_mib(self):
+        self.fx.build()
+        need = sum(len(data) for data, _ in FILES.values()) + mod.MARGIN
+        with mock.patch.object(mod.os, 'statvfs', return_value=self.statvfs(need - 1)):
+            self.assertEqual(run_main(self.fx.home)[1]['reason'], 'insufficient-space')
+        with mock.patch.object(mod.os, 'statvfs', return_value=self.statvfs(need)):
+            self.assertEqual(run_main(self.fx.home)[1]['status'], 'repaired')
+
+    def test_inodes_are_checked_where_the_file_system_counts_them(self):
+        self.fx.build()
+        before = self.fx.snapshot(self.fx.home)
+        short = self.statvfs(10**12, files=10**6, favail=len(FILES) + mod.INODE_MARGIN - 1)
+        with mock.patch.object(mod.os, 'statvfs', return_value=short):
+            self.assertEqual(run_main(self.fx.home)[1]['reason'], 'insufficient-inodes')
+        self.assertEqual(self.fx.snapshot(self.fx.home), before)
+        uncounted = self.statvfs(10**12, files=0, favail=0)  # btrfs reports no inode totals
+        with mock.patch.object(mod.os, 'statvfs', return_value=uncounted):
+            self.assertEqual(run_main(self.fx.home)[1]['status'], 'repaired')
+
+    def test_setuid_and_mode_bits_survive(self):
+        self.fx.build()
+        shared = self.fx.tool / SITE / 'omnigent/_speedups.so'
+        shared.chmod(0o4755)
+        self.assertEqual(run_main(self.fx.home)[1]['status'], 'repaired')
+        self.assertEqual((stat.S_IMODE(shared.stat().st_mode), shared.stat().st_nlink), (0o4755, 1))
+
+    def test_an_entry_that_vanishes_during_the_scan_is_skipped(self):
+        self.fx.build()
+        real_stat, gone = os.stat, []
+
+        def stat_once_missing(name, *args, **kwargs):
+            if name == 'INSTALLER' and not gone:
+                gone.append(name)
+                raise FileNotFoundError(name)
+            return real_stat(name, *args, **kwargs)
+
+        with mock.patch.object(mod.os, 'stat', side_effect=stat_once_missing):
+            code, report, _ = run_main(self.fx.home)
+        self.assertEqual((code, report['status'], report['remaining']), (0, 'repaired', 0))
+        self.assertEqual(gone, ['INSTALLER'])
+
     def test_another_users_tree_or_a_read_only_directory_changes_nothing(self):
         self.fx.build()
         before = self.fx.snapshot(self.fx.home)
@@ -237,6 +281,17 @@ class FetchStageTests(unittest.TestCase):
         self.assertIn('hard-linked files now have their own copies', output)
         for relative in FILES:
             self.assertEqual((self.fx.tool / relative).stat().st_nlink, 1, relative)
+
+    def test_macos_fetch_leaves_the_files_alone(self):
+        shim = self.fx.home.parent / 'shim'
+        shim.mkdir()
+        real = subprocess.run(['/bin/sh', '-c', 'command -v uname'], capture_output=True, text=True).stdout.strip()
+        (shim / 'uname').write_text('#!/bin/sh\ncase "$1" in -s) echo Darwin ;; -m) echo arm64 ;; *) exec %s "$@" ;; esac\n' % real)
+        (shim / 'uname').chmod(0o755)
+        env = {'PATH': f"{shim}:{os.environ.get('PATH', '/usr/bin:/bin')}", 'HOME': str(self.fx.home.parent), 'PI_AGENT_HOME': str(self.fx.home)}
+        result = subprocess.run(['/bin/bash', str(ROOT / 'install.sh'), 'fetch'], env=env, capture_output=True, text=True, timeout=300)
+        self.assertNotIn('hard-linked files now have their own copies', result.stdout + result.stderr)
+        self.assertEqual((self.fx.tool / SITE / 'omnigent/__init__.py').stat().st_nlink, 2)
 
     def test_fetch_stops_with_the_old_plugin_in_place_when_refused(self):
         package = self.fx.tool / SITE / 'omnigent'

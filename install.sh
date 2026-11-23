@@ -68,7 +68,7 @@ unshare_managed_omnigent() {
   local out rc=0
   out="$(python3 -I -B "$HERE/rootfs/bin/pi-agent-unshare-omnigent.py" "$PI_AGENT_HOME")" || rc=$?
   case "$out" in *'"status": "repaired"'*) log "managed omnigent: hard-linked files now have their own copies $out" ;; esac
-  [ "$rc" -eq 0 ] || die "managed omnigent shares files with its uv cache and was not repaired: $out -- the old plugin and Pi Web are still in place; see docs/OPERATIONS-GOTCHAS.md section 22"
+  [ "$rc" -eq 0 ] || die "could not check or repair the plugin-managed omnigent (exit $rc): ${out:-no output} -- the old plugin and Pi Web are still in place; see docs/OPERATIONS-GOTCHAS.md section 22"
 }
 seed_host_name() {
   local tool="$HERE/rootfs/bin/pi-agent-host-name.mjs"

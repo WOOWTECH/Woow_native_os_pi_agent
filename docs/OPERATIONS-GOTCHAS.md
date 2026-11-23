@@ -516,16 +516,24 @@ container images: the plugin uses the image's `/usr/local/bin/omnigent` before i
 new plugin. Each multi-linked file gets a byte-identical copy (same mode and timestamps) through
 an atomic rename in its own directory, and the cache keeps its copy. 586 MB took 57 s, mostly
 fsync. It changes nothing, and the install stops with the old plugin and Pi Web still in place,
-in two cases:
+in three cases:
 - a shared file, or its directory, is not this user's or not writable;
-- free space is less than the copies plus 64 MiB.
+- free space is less than the copies plus 64 MiB;
+- free inodes are fewer than the copies plus 1,024, on file systems that count inodes.
+
+A failure part-way, for example a disk quota or an I/O error, also stops the install before the
+new plugin is unpacked. Each file is then either untouched or already an identical single-link
+copy, and running the installer again finishes the job.
 
 **Check:** `find "$PI_AGENT_HOME/data/omnigent-plugin/uv/tools/omnigent" -type f -links +1 | wc -l`
 is 0 when the guard can read the files. `pi-agent-unshare-omnigent.py <PI_AGENT_HOME> --check`
 exits 3 when files are still shared.
 
-**A host that is already offline:**
-1. Run `python3 -I -B "$PI_AGENT_HOME/bin/pi-agent-unshare-omnigent.py" "$PI_AGENT_HOME"`.
+**A host that is already offline** (upgraded by an installer without this step, so the helper
+is not in `$PI_AGENT_HOME/bin` yet):
+1. Run the fixed installer again from its source checkout (`./install.sh`): `fetch` repairs the
+   files before it unpacks the plugin. To repair by hand instead, run
+   `python3 -I -B <source checkout>/rootfs/bin/pi-agent-unshare-omnigent.py "$PI_AGENT_HOME"`.
 2. From a terminal on that machine, restart pi-web: `systemctl --user restart pi-web.service`.
    Don't do this from a conversation running on that host: the host runs inside pi-web's cgroup,
    so the restart stops the host and every conversation on it until it reconnects.
