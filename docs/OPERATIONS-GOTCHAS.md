@@ -489,3 +489,65 @@ must list models.
 **Check, with nothing running:** `grep -c list-models
 data/omnigent-plugin/uv/tools/omnigent/lib/python3.*/site-packages/omnigent/harnesses/pi_native/credentials.py`
 is 0 for an unpatched omnigent and 4 for a patched one.
+
+## 22. A Linux host stays offline after the upgrade to plugin 0.3.35: the managed omnigent is hard-linked
+
+**Symptom.** After the pi-web restart that loads plugin 0.3.35, the Omnigent host never comes
+back, and a reboot does not help. `data/omnigent-plugin/state.json` says `phase: error`,
+`DEPENDENCIES_MISSING`, and Settings → Omnigent shows only "Omnigent maintenance preservation
+could not be verified. Use the reviewed SDK source and retry." Nothing says why.
+
+**Cause.** Plugin 0.3.34 and older installed omnigent (`uv tool install`) under
+`data/omnigent-plugin/uv/tools/omnigent` with uv's default link mode. On Linux that is
+`hardlink`: each file of the venv is a second name of a file in `data/omnigent-plugin/uv-cache`.
+Plugin 0.3.35's maintenance preservation guard reads SDK files only when they have one link (a
+patch of a shared inode would also rewrite the cache copy). It refuses with `unsafe-source-file`
+and reports only the generic message. 0.3.35 itself installs with `UV_LINK_MODE=copy`, but only
+when it installs or updates omnigent; it keeps an omnigent of the pinned version as it is.
+
+Measured on an Ubuntu laptop installed on 2026-11-02 and upgraded on 2026-11-22: 6,892 files
+with two links. A reproduction with uv 0.12.10 and omnigent 0.16.0 had 6,952 of 7,273, and the
+0.3.35 guard refused with `unsafe-source-file`; after the repair below it reported `applied` and
+then `verified`. CI never saw it: the plugin's CI and `owned-ubuntu-acceptance` both install
+with copy mode. macOS is not affected (uv clones there: one link per file). Neither are the
+container images: the plugin uses the image's `/usr/local/bin/omnigent` before its own copy.
+
+**What `install.sh` does.** `fetch` runs `pi-agent-unshare-omnigent.py` before it unpacks the
+new plugin. Each multi-linked file gets a byte-identical copy (same mode and timestamps) through
+an atomic rename in its own directory, and the cache keeps its copy. 586 MB took 57 s, mostly
+fsync. It changes nothing, and the install stops with the old plugin and Pi Web still in place,
+in three cases:
+- a shared file, or its directory, is not this user's or not writable;
+- free space is less than the copies plus 64 MiB;
+- free inodes are fewer than the copies plus 1,024, on file systems that count inodes.
+
+A failure part-way, for example a disk quota or an I/O error, also stops the install before the
+new plugin is unpacked. Each file is then either untouched or already an identical single-link
+copy, and running the installer again finishes the job.
+
+The helper prints one JSON line, and `reason` says why it stopped:
+- `unsafe-tool-path`: a symlink in the tool path.
+- `foreign-owner` or `foreign-owner-or-read-only`: ownership or permissions.
+- `insufficient-space` or `insufficient-inodes`: not enough room for the copies.
+- `changed-during-scan` or `changed-during-repair`: something wrote to the tree meanwhile; run it
+  again.
+- `repair-incomplete`, or `os-error` with an `errno`.
+
+On an NFS home, a file the running host has open leaves a `.nfs…` name behind until the host
+closes it. The helper ignores those names.
+
+**Check:** `find "${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}/data/omnigent-plugin/uv/tools/omnigent" -type f -links +1 | wc -l`
+is 0 when the guard can read the files. `pi-agent-unshare-omnigent.py <PI_AGENT_HOME> --check`
+exits 3 when files are still shared.
+
+**A host that is already offline** (upgraded by an installer without this step, so the helper
+is not in `$PI_AGENT_HOME/bin` yet):
+1. Run the fixed installer again from its source checkout (`./install.sh`): `fetch` repairs the
+   files before it unpacks the plugin. To repair by hand instead, run
+   `python3 -I -B <source checkout>/rootfs/bin/pi-agent-unshare-omnigent.py "${PI_AGENT_HOME:-$HOME/.local/share/pi-agent}"`.
+   A plain terminal does not set `PI_AGENT_HOME`; the default is `~/.local/share/pi-agent`.
+2. From a terminal on that machine, restart pi-web: `systemctl --user restart pi-web.service`.
+   Don't do this from a conversation running on that host: the host runs inside pi-web's cgroup,
+   so the restart stops the host and every conversation on it until it reconnects.
+3. Never run `omnigent host reset-id`. It makes a new host, and the old one and its
+   conversations stay offline.

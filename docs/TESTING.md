@@ -29,10 +29,11 @@ done: preflight node fetch piweb clis paseo omnigent wire service
   removing one prunes it from both (managed-marker tracking)
 - **restart**: pi-web serves again after `systemctl --user restart`
 
-Run it yourself:
-```bash
-bash tests/smoke-linux.sh    # exits non-zero on any failure
-```
+The observations above are historical. The legacy `tests/smoke.sh` and its
+`smoke-linux.sh` symlink now refuse unconditionally: they replaced shared MCP
+state and restarted a fixed per-user service. They are not a tenant acceptance
+command. See [owned native acceptance](OWNED-NATIVE-ACCEPTANCE.md) for the new
+isolated seam, safety-fixture scope and still-pending Ubuntu/WSL2 execution.
 
 ### Browser verification (real Chromium, over an SSH tunnel to localhost:30141)
 - Settings dialog renders all 8 tabs: 一般 · 模型 · 技能 · 子代理 · 外掛 · MCP ·

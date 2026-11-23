@@ -56,6 +56,20 @@ apply_model_options_hook() {
   [ -f "$patch" ] && [ -d "$PA_PLUGINS_DIR/pi-omnigent-plugin" ] || return 0
   PA_NODE "$patch" "$PA_PLUGINS_DIR/pi-omnigent-plugin" 2>&1 | relay_helper_output || true
 }
+# Hard-linked managed Omnigent (docs/OPERATIONS-GOTCHAS.md section 22): plugin <= 0.3.34 installed
+# its omnigent with uv's default Linux link mode, so every file is a hard link into the plugin's uv
+# cache. Plugin 0.3.35 starts no host from such files and keeps an omnigent of the pinned version,
+# so without this the host stays offline after the upgrade. `fetch` gives each file its own copy
+# before it unpacks the new plugin; when that cannot be done the install stops there, with the old
+# plugin and Pi Web still in place. macOS is skipped: uv clones there (one link per file), and its
+# python3 can be an installer stub.
+unshare_managed_omnigent() {
+  case "$OS" in linux|wsl) ;; *) return 0 ;; esac
+  local out rc=0
+  out="$(python3 -I -B "$HERE/rootfs/bin/pi-agent-unshare-omnigent.py" "$PI_AGENT_HOME")" || rc=$?
+  case "$out" in *'"status": "repaired"'*) log "managed omnigent: hard-linked files now have their own copies $out" ;; esac
+  [ "$rc" -eq 0 ] || die "could not check or repair the plugin-managed omnigent (exit $rc): ${out:-no output} -- the old plugin and Pi Web are still in place; see docs/OPERATIONS-GOTCHAS.md section 22"
+}
 seed_host_name() {
   local tool="$HERE/rootfs/bin/pi-agent-host-name.mjs"
   [ -f "$tool" ] || return 0
@@ -150,6 +164,7 @@ stage_node() {
 # settings patch) and extract them to the plugins dir.
 stage_fetch() {
   log "stage fetch — plugins"
+  unshare_managed_omnigent
   mkdir -p "$PA_PLUGINS_DIR" "$PA_TMP_DIR"
   local ot="$PA_TMP_DIR/omnigent-plugin.tgz" pt="$PA_TMP_DIR/paseo-plugin.tgz"
   fetch_verify "$PIN_OMNIGENT_PLUGIN_TGZ" "$PIN_OMNIGENT_PLUGIN_SHA256" "$ot"
@@ -488,7 +503,7 @@ stage_omnigent() {
 stage_wire() {
   log "stage wire — install scripts + symlinks"
   mkdirs
-  for f in pi-agent-resume.py pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-session-home pi-agent-session-home-macos pi-agent-host-name pi-agent-host-name.mjs pi-agent-litellm pi-agent-share-state.mjs pi-agent-shared-session.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs omnigent-plugin-session-home-patch.mjs omnigent-plugin-host-name-guard-patch.mjs omnigent-plugin-model-options-hook-patch.mjs; do
+  for f in pi-agent-resume.py pi-agent-unshare-omnigent.py pi-agent-env.sh pi claude codex pi-omnigent pi-paseo pi-web-start.sh pi-agent pi-agent-adopt-logins pi-agent-session-home pi-agent-session-home-macos pi-agent-host-name pi-agent-host-name.mjs pi-agent-litellm pi-agent-share-state.mjs pi-agent-shared-session.mjs fix-unicode-space-paths.mjs omnigent-model-options-patch.py omnigent-plugin-darwin-patch.mjs omnigent-plugin-session-home-patch.mjs omnigent-plugin-host-name-guard-patch.mjs omnigent-plugin-model-options-hook-patch.mjs; do
     [ -f "$HERE/rootfs/bin/$f" ] && install -m 0755 "$HERE/rootfs/bin/$f" "$PA_BIN_DIR/$f"
   done
   # Host name: the plugin patch (also applied by `fetch`; a no-op when already

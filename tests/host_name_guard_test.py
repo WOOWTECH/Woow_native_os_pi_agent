@@ -26,6 +26,11 @@ import threading
 import time
 from pathlib import Path
 
+# Explicit test-only fake-SDK receipt transport; no production guard bypass.
+_fixture_spec = importlib.util.spec_from_file_location("native_maintenance_fixture", Path(__file__).with_name("maintenance_fixture.py"))
+_fixture = importlib.util.module_from_spec(_fixture_spec)
+_fixture_spec.loader.exec_module(_fixture)
+
 PRISTINE, NODE, PATCH = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 WORK = Path(tempfile.mkdtemp(prefix="pa-hn-guard-"))
 # The environment every scenario starts from: nothing of the machine's own Omnigent or
@@ -148,8 +153,8 @@ def scenario(hosts=(), *, name=NAME, my_id=None, me=(200, {"user_id": "u_me"}), 
         lines = ["host:"] + ([f"  host_id: {my_id}"] if my_id else []) + [f"  name: {json.dumps(name)}"]
         (config_home / "config.yaml").write_text("\n".join(lines) + "\n")
     marker, binary = work / "spawned.txt", work / "omnigent"
-    binary.write_text(f'#!/bin/sh\necho "spawned $*" > "{marker}"\n'
-                      f'echo "takeover=${{PI_AGENT_TAKEOVER_HOST_ID-unset}}" >> "{marker}"\n')
+    binary.write_text(f'#!{sys.executable}\nimport os,sys\nfrom pathlib import Path\n'
+                      f'Path({str(marker)!r}).write_text("spawned " + " ".join(sys.argv[1:]) + "\\n" + "takeover=" + os.environ.get("PI_AGENT_TAKEOVER_HOST_ID", "unset") + "\\n")\n')
     binary.chmod(0o755)
     STATE["log"] = []
     STATE["me"] = me
@@ -172,11 +177,13 @@ def scenario(hosts=(), *, name=NAME, my_id=None, me=(200, {"user_id": "u_me"}), 
     plugin = mod.Plugin(request, auth=FakeAuth())
     result = error = None
     try:
-        result = plugin.ensure_host(server_url)
+        with _fixture.guard_receipt_fixture(mod, binary) as maintenance_calls:
+            result = plugin.ensure_host(server_url)
     except PluginError as caught:
         error = caught
     finally:
         plugin.close()
+        assert len(maintenance_calls) == (2 if result == "plugin" else 1), "maintenance boundary was skipped"
     text = None
     if result == "plugin":
         deadline = time.monotonic() + 5

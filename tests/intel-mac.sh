@@ -9,7 +9,7 @@
 # 4-6 s there, and the plugin probes it with a 5 s limit. This suite checks each piece and then the real thing:
 #   A  vendor/omnigent-requirements.lock pins both twice: once for Intel Macs, once for everything else
 #   B  the darwin patch makes the plugin pass --constraints "$PI_OMNIGENT_UV_CONSTRAINTS" to that install,
-#      and on x64 run the new omnigent once, without the probe's limit, before probing it
+#      while reviewed 0.3.35 keeps its longer upstream probe and final maintenance guard
 #   C  pi-agent-env.sh sets the variable on Intel Macs, and nowhere else
 #   D  with the pinned uv: the lock selects the right pins on this machine, and the Intel pins are still
 #      uv's own answer to the command the lock's header documents
@@ -27,6 +27,7 @@
 #   PA_TEST_PLUGIN_TGZ    a local copy of the pinned plugin tarball, for offline runs (still verified)
 #   PA_TEST_CACHE         where downloads are kept (default $TMPDIR/pi-agent-test-cache)
 #   PA_TEST_KEEP=1        keep the work directory for inspection
+#   PA_TEST_OFFLINE=1     run only owned A-C fixtures; no uv discovery/network probe/D-E
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../lib/pins.sh
@@ -114,16 +115,17 @@ JS
 "$NODE" "$WORK/lock-check.cjs" "$LOCK" "$INTEL" "$NOT_INTEL" > "$WORK/lock-check.out" 2>&1
 relay < "$WORK/lock-check.out"
 
-echo "== B. the darwin patch: --constraints for the plugin's own uv install, and a first run before its probe"
+echo "== B. the darwin patch: constraints retained, obsolete warm-up absent, maintenance still required"
 PATCH="$HERE/rootfs/bin/omnigent-plugin-darwin-patch.mjs"
 P="$WORK/patched"; cp -R "$PRISTINE" "$P"
 "$NODE" "$PATCH" "$P" > "$WORK/patch1.log" 2>&1
 if grep -q "uv-constraints (Woow native installer)" "$P/src/installer.mjs" \
    && grep -qF "args.push('--constraints', env.PI_OMNIGENT_UV_CONSTRAINTS)" "$P/src/installer.mjs" \
-   && grep -q "first-launch (Woow native installer)" "$P/src/installer.mjs"; then
-  ok "both edits are in src/installer.mjs (plugin $PIN_OMNIGENT_PLUGIN_VERSION)"
+   && ! grep -q "first-launch (Woow native installer)" "$P/src/installer.mjs" \
+   && grep -qF 'maintenancePreservation = await maintenance(' "$P/src/installer.mjs"; then
+  ok "constraints without obsolete warm-up, final maintenance retained (plugin $PIN_OMNIGENT_PLUGIN_VERSION)"
 else
-  no "both edits are in src/installer.mjs (plugin $PIN_OMNIGENT_PLUGIN_VERSION)" "$(tr '\n' ' ' < "$WORK/patch1.log" | cut -c1-300)"
+  no "constraints/warm-up/maintenance shape (plugin $PIN_OMNIGENT_PLUGIN_VERSION)" "$(tr '\n' ' ' < "$WORK/patch1.log" | cut -c1-300)"
 fi
 before="$(sha256_file "$P/src/installer.mjs")"
 "$NODE" "$PATCH" "$P" > "$WORK/patch2.log" 2>&1
@@ -137,7 +139,7 @@ fi
 cat > "$WORK/drive.mjs" <<'JS'
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-const [installer, platform, arch, constraints, mode] = process.argv.slice(2);
+const [installer, platform, arch, constraints, mode, proof] = process.argv.slice(2);
 const { installDependencies } = await import(pathToFileURL(installer).href);
 const stateDir = process.env.PA_TEST_STATE;
 const managed = path.join(stateDir, 'bin', 'omnigent');
@@ -148,16 +150,26 @@ const discover = async () => ({
   omnigent: installed ? { available: true, path: managed, version: '0.16.0' } : { available: false, path: null },
 });
 const calls = [];
+let maintenanceCalls = 0;
+// Explicit fixture at the installer's maintenance callback, never a production bypass.
+// This checks orchestration only; no SDK/guard source is admitted by this synthetic result.
+const maintenance = async (tool, options) => {
+  if (tool.path !== managed || options.stateDir !== stateDir) throw Error('wrong fixture identity');
+  maintenanceCalls++;
+  return { ok: proof !== 'refuse', state: 'synthetic-fixture' };
+};
 const run = async (command, args, options = {}) => {
-  calls.push({ command, args, timeoutMs: options.timeoutMs });
+  calls.push({ command, args, timeoutMs: options.timeoutMs, linkMode: options.env?.UV_LINK_MODE });
   if (args[0] === 'tool') installed = true;
   return { code: 0, stdout: '', stderr: '' };
 };
-const env = { PATH: '/usr/bin:/bin', HOME: stateDir, ...(constraints ? { PI_OMNIGENT_UV_CONSTRAINTS: constraints } : {}) };
-const result = await installDependencies({ env, home: stateDir, stateDir, run, discover, platform, arch, update: mode === 'update' });
+const env = { PATH: '/usr/bin:/bin', HOME: stateDir, UV_LINK_MODE: 'hardlink', ...(constraints ? { PI_OMNIGENT_UV_CONSTRAINTS: constraints } : {}) };
+const result = await installDependencies({ env, home: stateDir, stateDir, run, discover, maintenance, platform, arch, update: mode === 'update' });
 const at = calls.findIndex(c => c.args[0] === 'tool' && c.args[1] === 'install');
+if (at < 0 || calls[at].linkMode !== 'copy' || env.UV_LINK_MODE !== 'hardlink') throw Error('copy-mode/caller-env regression');
 console.log(JSON.stringify({ argv: at >= 0 ? calls[at].args : null,
-  firstRun: calls.slice(at + 1).filter(c => c.command === managed && c.args[0] === '--version'), ok: result.ok, issues: result.issues }));
+  firstRun: calls.slice(at + 1).filter(c => c.command === managed && c.args[0] === '--version'),
+  maintenanceCalls, ok: result.ok, issues: result.issues }));
 JS
 drive() {  # drive <installer.mjs> <platform> <arch> <constraints or ""> <install|update>
   local state; state="$(mktemp -d "$WORK/state.XXXXXX")"
@@ -171,18 +183,21 @@ C="$WORK/omnigent/requirements.lock"
 out="$(drive "$P/src/installer.mjs" darwin x64 "$C" install)"
 expect "Intel Mac, variable set: uv tool install gets --constraints <the lock>, ahead of the omnigent requirement" "$out" \
   "o.argv.indexOf('--constraints') >= 0 && o.argv[o.argv.indexOf('--constraints') + 1] === '$C' && o.argv.indexOf('--constraints') < o.argv.findIndex(a => a.startsWith('omnigent=='))"
-expect "...then runs the new omnigent once with a limit well above the probe's 5 s, before probing it" "$out" \
-  "o.firstRun.length === 1 && o.firstRun[0].timeoutMs >= 60000 && o.ok === true"
+expect "...has no obsolete warm-up and still requires final maintenance" "$out" \
+  "o.firstRun.length === 0 && o.maintenanceCalls === 1 && o.ok === true"
 out="$(drive "$P/src/installer.mjs" darwin x64 "$C" update)"
-expect "...and on the update path too (--force and --constraints, then the first run)" "$out" \
-  "o.argv.includes('--force') && o.argv.includes('--constraints') && o.firstRun.length === 1"
+expect "...and on update (--force, --constraints, no warm-up, final maintenance)" "$out" \
+  "o.argv.includes('--force') && o.argv.includes('--constraints') && o.firstRun.length === 0 && o.maintenanceCalls === 1 && o.ok === true"
 out="$(drive "$P/src/installer.mjs" darwin x64 "" install)"
-expect "variable unset: the command is unchanged (no --constraints)" "$out" "!o.argv.includes('--constraints')"
+expect "variable unset: no --constraints, final maintenance required" "$out" "!o.argv.includes('--constraints') && o.maintenanceCalls === 1 && o.ok === true"
 out="$(drive "$P/src/installer.mjs" darwin arm64 "" install)"
-expect "Apple silicon: no first run before the probe (the install is unchanged there)" "$out" "o.firstRun.length === 0 && !o.argv.includes('--constraints')"
+expect "Apple silicon: no warm-up/constraints, final maintenance required" "$out" "o.firstRun.length === 0 && !o.argv.includes('--constraints') && o.maintenanceCalls === 1 && o.ok === true"
 out="$(drive "$PRISTINE/src/installer.mjs" linux x64 "$C" install)"
 expect "the unpatched plugin ignores the variable and does no first run (the edits are what do both)" "$out" \
-  "!o.argv.includes('--constraints') && o.firstRun.length === 0"
+  "!o.argv.includes('--constraints') && o.firstRun.length === 0 && o.maintenanceCalls === 1 && o.ok === true"
+out="$(drive "$P/src/installer.mjs" darwin x64 "$C" install refuse)"
+expect "a failed maintenance fixture blocks readiness after the constrained install" "$out" \
+  "o.maintenanceCalls === 1 && o.ok === false"
 
 echo "== C. pi-agent-env.sh sets PI_OMNIGENT_UV_CONSTRAINTS on Intel Macs, and nowhere else"
 env_case() {  # env_case <uname -s> <uname -m> <lock present: 1|0>  -> the variable, empty when unset
@@ -202,10 +217,13 @@ v="$(env_case Linux x86_64 1)"
 [ -z "$v" ] && ok "Linux x86_64: unset" || no "Linux x86_64: unset" "got '$v'"
 
 UV=""
+NET=0
+if [ "${PA_TEST_OFFLINE:-}" != 1 ]; then
 for c in "${PA_TEST_UV:-}" "$INSTALL_HOME/bin/uv"; do
   [ -n "$c" ] && [ -x "$c" ] && [ "$("$c" --version 2>/dev/null | awk '{print $2}')" = "$PIN_UV_VERSION" ] && { UV="$c"; break; }
 done
-NET=0; curl -fsS -o /dev/null --max-time 15 https://pypi.org/simple/cryptography/ 2>/dev/null && NET=1
+curl -fsS -o /dev/null --max-time 15 https://pypi.org/simple/cryptography/ 2>/dev/null && NET=1
+fi
 IS_INTEL=0; [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = x86_64 ] && IS_INTEL=1
 pin_of() {  # pin_of <package> <marker or ""> -> its version in the lock
   "$NODE" -e '
