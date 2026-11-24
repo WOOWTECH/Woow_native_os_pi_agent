@@ -12,8 +12,8 @@ import tarfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-ARCHIVE = ROOT / "candidate-packages/woowtech-pi-omnigent-plugin-0.3.36.tgz"
-ARCHIVE_SHA = "223d14646969f99197186d159ab3bcf3492851ee1a3d81676f942e4eb6b811f6"
+ARCHIVE = ROOT / "candidate-packages/woowtech-pi-omnigent-plugin-0.3.37.tgz"
+ARCHIVE_SHA = "2b05b25c38db14fd2ee4f03b2a065f385b2267aaba1fc7293e0f9f4013f244f8"
 NODE = shutil.which("node")
 PATCHES = ("darwin", "session-home", "host-name-guard", "model-options-hook")
 
@@ -23,7 +23,7 @@ class Consumers(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
 
-    def fixture(self, name="plugin", version="0.3.36"):
+    def fixture(self, name="plugin", version="0.3.37"):
         p = self.base / name
         archive = ARCHIVE if version != "0.3.34" else ROOT / "candidate-packages/woowtech-pi-omnigent-plugin-0.3.34.tgz"
         expected = ARCHIVE_SHA if version != "0.3.34" else "e9e80783881f8a036cbf922d2f50fad860dac3bd23e170dda768ab3c56107945"

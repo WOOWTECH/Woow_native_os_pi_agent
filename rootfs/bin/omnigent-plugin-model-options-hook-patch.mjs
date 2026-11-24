@@ -34,9 +34,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // 0.3.35+ maintenance-aware layout (0.3.36 adds only refusal reasons and the
-// Agent Connect 0.1.21 adapter pin); exact candidate archive is locked in lib/pins.sh.
-const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35', '0.3.36'];
-const MAINTENANCE_AWARE_VERSIONS = ['0.3.35', '0.3.36'];
+// Agent Connect 0.1.21 adapter pin, 0.3.37 only the Agent Connect 0.1.22 combined
+// adapter); exact candidate archive is locked in lib/pins.sh.
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35', '0.3.36', '0.3.37'];
+const MAINTENANCE_AWARE_VERSIONS = ['0.3.35', '0.3.36', '0.3.37'];
 
 // src/installer.mjs: the re-discovery right after the plugin's own `uv tool install omnigent`.
 const HOOK_MARKER = 'model-options-hook (Woow native installer)';
