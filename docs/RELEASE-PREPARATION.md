@@ -1,5 +1,30 @@
 # Native release preparation
 
+## 0.2.11
+
+Changes from 0.2.10:
+
+- Agent Connect 0.1.21 → 0.1.22 (pi-paseo-plugin #22, merged as `3c3a94cb`;
+  `woowtech-pi-paseo-0.1.22.tgz`, sha256 `98cdf9d4…00fcf`). Settings > Agent
+  Connect gains 「允許代理彼此協作」, **off by default**. When on, agents get
+  Paseo's own MCP tools through `daemon.mcp.injectIntoAgents`: agents,
+  terminals and schedules, plus messaging, mode changes and permission
+  approvals for any agent on the host. Paseo 0.11.2 leaves that setting off,
+  so Agent Connect agents could not hand work to each other through the tools.
+  The switch shows the daemon config value, which a Paseo client can also
+  change. The page states the risk (terminals run commands without permission
+  prompts). It also states that turning the switch off reaches only newly
+  opened conversations.
+- Omnigent plugin 0.3.36 → 0.3.37 (pi-omnigent-plugin #34, squash `effc5984`;
+  `woowtech-pi-omnigent-plugin-0.3.37.tgz`, sha256 `2b05b25c…44f8`): only its combined
+  Pi Web adapter, which now pairs with exactly Agent Connect 0.1.22. The
+  combined patch (`PIN_OMNIGENT_UI_SHA256`) becomes `178236c5…`, so the
+  prebuilt Pi Web trees are rebuilt; asset names are unchanged.
+- The four plugin overlays accept 0.3.37 through the same reviewed
+  maintenance-aware path as 0.3.35 and 0.3.36.
+
+Shared runtime 0.1.6 and Pi Web 0.10.0 are unchanged.
+
 ## 0.2.10
 
 Changes from 0.2.9:
