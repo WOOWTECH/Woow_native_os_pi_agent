@@ -2,22 +2,22 @@
   "schema": 1,
   "baseCommit": "172522c8a4065f80e813d6d4710b26b13b6094c7",
   "baseTree": "4ebb37ac864d1a423eccfb6cdd838f1f94bbf21f",
-  "pluginSha256": "2b05b25c38db14fd2ee4f03b2a065f385b2267aaba1fc7293e0f9f4013f244f8",
+  "pluginSha256": "2ed6aef9d64a3e53166805db76a98437aee44a4401b6cc698bd92c6a79425cde",
   "sharedSha256": "0914069fb0cf83f258cf81034bb16573f6e4242e8779cea47b4a5e841f98a937",
   "files": [
     {
       "path": "VERSION",
       "bytes": 7,
       "mode": 420,
-      "sha256": "bbab81dca58f2b892db293acbba7fe5731667b67876f6812e3e7b9e2253a5c51",
-      "gitBlob": "d3b5ba4bfc3a30c1777e71f0f7cc4be5bc4bd24c"
+      "sha256": "b1d246bf58dfe9d621c372fbca4fdda71a56ddd79c641b9e3b7dde08ca4d7512",
+      "gitBlob": "f2722b1339604f33291e0436bcd966323ebd8293"
     },
     {
       "path": "candidate-packages/manifest.json",
       "bytes": 951,
       "mode": 420,
-      "sha256": "fd3856f2461d64f5895151b053ea9dfe643d77076fa1c1eea87738293776ffe4",
-      "gitBlob": "a4441918824c4c906334f4b5e6886428854d4c61"
+      "sha256": "116ed7606fc9e0685cf09f1396115c4256dc039b5de8d35a8e109cbb9b837a0f",
+      "gitBlob": "6e1169e00a00d166dd842d3b3776b71e7d2e4ccd"
     },
     {
       "path": "candidate-packages/woowtech-pi-agent-shared-runtime-0.1.6.tgz",
@@ -34,18 +34,18 @@
       "gitBlob": "37043c98bfda8d83aa24329f1a6895cc5f026b6c"
     },
     {
-      "path": "candidate-packages/woowtech-pi-omnigent-plugin-0.3.37.tgz",
-      "bytes": 292562,
+      "path": "candidate-packages/woowtech-pi-omnigent-plugin-0.3.38.tgz",
+      "bytes": 292454,
       "mode": 420,
-      "sha256": "2b05b25c38db14fd2ee4f03b2a065f385b2267aaba1fc7293e0f9f4013f244f8",
-      "gitBlob": "cf14716722e2251c3c9e9040e9eea6146117ccb4"
+      "sha256": "2ed6aef9d64a3e53166805db76a98437aee44a4401b6cc698bd92c6a79425cde",
+      "gitBlob": "68e3931577fd5178d78c243e00bb5f0e809b95ba"
     },
     {
-      "path": "candidate-packages/woowtech-pi-paseo-0.1.22.tgz",
-      "bytes": 190672,
+      "path": "candidate-packages/woowtech-pi-paseo-0.1.23.tgz",
+      "bytes": 188070,
       "mode": 420,
-      "sha256": "98cdf9d49e3613fa5fc0679539e2b2809a9ac927f71d22ac6aa1944486100fcf",
-      "gitBlob": "91101dc7656157811f007a0e9404942b4cc101d6"
+      "sha256": "0e4f3c99dc26b670b59c5b328285655dd47b0d81f892707f7ce387ca551e0265",
+      "gitBlob": "1055519c67d928791d67cb6a50597fb73f186ccd"
     },
     {
       "path": "install.sh",
@@ -63,17 +63,17 @@
     },
     {
       "path": "lib/common.sh",
-      "bytes": 6372,
+      "bytes": 6328,
       "mode": 420,
-      "sha256": "050677ff9d59d8f531e307d7c459fad8b96233d8217d1ed3e6580bc2bdd942ab",
-      "gitBlob": "c7b4a7844a6739ea0a587291764da63c89f6a426"
+      "sha256": "7bb7d8e6be7a1bc940904cda850477cfddd0f9f7e6617e4f66eb88d0484b48c0",
+      "gitBlob": "2631abfb272d42e9643864ef7b93a9cd75b69457"
     },
     {
       "path": "lib/pins.sh",
       "bytes": 4530,
       "mode": 420,
-      "sha256": "cb69dde2b406d8970ba85e98d91a840db741f61fadc9a8f9ca074b35366b7280",
-      "gitBlob": "1a864d127518b400c26e78589103125695d88176"
+      "sha256": "cdd5de81f4c2f89a2ba219f821851c6c57c57c8abd3f7760157c4b59da531dfd",
+      "gitBlob": "3174757695e7a5027e17cbbb2d39d3bc4bdff723"
     },
     {
       "path": "rootfs/bin/_ref-pi",
@@ -140,31 +140,31 @@
     },
     {
       "path": "rootfs/bin/omnigent-plugin-darwin-patch.mjs",
-      "bytes": 14100,
+      "bytes": 14178,
       "mode": 420,
-      "sha256": "809ebc7aba71c3cb69ebab6983f32aa34048743dc79518ed8254e1979b92955a",
-      "gitBlob": "b5ed022bb236aaea94a9ba880ca57fef7d24123a"
+      "sha256": "b1130b31820a3b86087b91ca51626413c1a6c72f3c0eb0bc5b027b5986b2a145",
+      "gitBlob": "ede53e7ecf4e0494c9cdac7aa4d77f803ea6ce0d"
     },
     {
       "path": "rootfs/bin/omnigent-plugin-host-name-guard-patch.mjs",
-      "bytes": 17918,
+      "bytes": 17996,
       "mode": 493,
-      "sha256": "7607d8f0ff023c70584b9291e1d9d2efa388728f2a0aad4773f18a2a203f44cc",
-      "gitBlob": "6d1fb97d2c1f9171f9324c43219de8f7bccf8293"
+      "sha256": "c1e9003dbb1099083929f6b28ad0e3968e2fb1fb83b3b4eef3a4ddb6d951b7ea",
+      "gitBlob": "1135bbe61618d796086ffb9586e0af5ee702affc"
     },
     {
       "path": "rootfs/bin/omnigent-plugin-model-options-hook-patch.mjs",
-      "bytes": 6874,
+      "bytes": 6952,
       "mode": 493,
-      "sha256": "503b08849b5d680d312506b23ecdb1871381394f0f90f9ccb9d3f9c420cb200d",
-      "gitBlob": "b41f4f62e6b2553946d341c3950801821d75974b"
+      "sha256": "d8121cf4109c894305a05a1232de456d97a436b5de05cf62f21f12dc6dd8e480",
+      "gitBlob": "ccd8ce3e4d141d27c7dda6323dee54d118b12e16"
     },
     {
       "path": "rootfs/bin/omnigent-plugin-session-home-patch.mjs",
-      "bytes": 4789,
+      "bytes": 4867,
       "mode": 493,
-      "sha256": "ae0083f9abcaa8d49eeb3ec2ee3348fadbc0e860a182f3d37e15fabaeff7d572",
-      "gitBlob": "25dfb58c3bdfec811a5a878cc1d62ea3fd159515"
+      "sha256": "80567829b3a998292192d640bd348bfd1c93e3023788cc32a13c2bc6d1bbc7a8",
+      "gitBlob": "e2e3d45c5ca53087673ef63e3b65677ac7363a23"
     },
     {
       "path": "rootfs/bin/pi",
@@ -189,10 +189,10 @@
     },
     {
       "path": "rootfs/bin/pi-agent-env.sh",
-      "bytes": 4795,
+      "bytes": 4724,
       "mode": 420,
-      "sha256": "392499c9dc4ebc125a719b414fc9ba26d3384e988ec7fd0effdaf0936a26f653",
-      "gitBlob": "646b2bc11478ba929b267d752e34e6f6cede72fa"
+      "sha256": "f8cfc291e96700c3c734604cd3c2c63f70530980beb0ff152c3945721f1c9c1f",
+      "gitBlob": "903abcec68f3470df7c498d46d33f38d12890625"
     },
     {
       "path": "rootfs/bin/pi-agent-host-name",
@@ -313,7 +313,7 @@
       "mode": 420
     },
     "integrations/pi-web/combined.adapter-meta.json": {
-      "sha256": "618ddab7be30bba7410085fc967d4364ad3821ece26ff3781b4621af73345bbf",
+      "sha256": "e32187f9672ba13f7068ce4675eab5f79fe8ac189fda0b9c4139484b413f0759",
       "bytes": 784,
       "mode": 420
     },
@@ -328,7 +328,7 @@
       "mode": 420
     },
     "package.json": {
-      "sha256": "0971672cfc12f680e4fde14365f0b08e8ba1a1a53d9b9f8eaff7dee0f527f65a",
+      "sha256": "8bee47dbd07f323b22d0c2383ccf368df680c94c31f35bdca180c1f09e1cccd1",
       "bytes": 1722,
       "mode": 420
     },
@@ -338,8 +338,8 @@
       "mode": 420
     },
     "CHANGELOG.md": {
-      "sha256": "4bac061ab8a80aac4ed495385393be539d0a3cbc33f778b44b6cff9202b53ee0",
-      "bytes": 4442,
+      "sha256": "721b20b3d8a5dfcff3a3eda4815a61d0e698a2d6383430df6cf40bac6de49bf4",
+      "bytes": 5398,
       "mode": 420
     },
     "docs/commercial-readiness.md": {
@@ -353,13 +353,13 @@
       "mode": 420
     },
     "integrations/pi-web/README.md": {
-      "sha256": "10e7fa86ab76962fb769c50184736a6e0e8e177245d83426422101c3f72c62cd",
-      "bytes": 7280,
+      "sha256": "abded239d6312eb32dd97ba177138d8a33b26a126ff2a1390308c81bc3d128dd",
+      "bytes": 7501,
       "mode": 420
     },
     "README.md": {
-      "sha256": "79645a7ae3b2d477f7ad84bca8791ecaaeae11443243624e810c769b416d345d",
-      "bytes": 31509,
+      "sha256": "f259ca44d430cba631c01fea37299c6838aa37abb23029c242d4e79da7b6df76",
+      "bytes": 31679,
       "mode": 420
     },
     "src/acceptance.mjs": {
@@ -438,8 +438,8 @@
       "mode": 420
     },
     "integrations/pi-web/combined.adapter.patch": {
-      "sha256": "178236c53149efb4be63888b6d5bc3aeb94ffec3002e4366b6cb9ec2d8ffaf76",
-      "bytes": 425926,
+      "sha256": "a5f5e6ebe6efd9ba350fe8e494677ef224ad7681d7e44beb4840d281dfbc4449",
+      "bytes": 423408,
       "mode": 420
     },
     "src/native-maintenance/apply_maintenance_patch.py": {
