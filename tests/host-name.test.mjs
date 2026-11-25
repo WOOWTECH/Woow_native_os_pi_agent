@@ -357,7 +357,7 @@ if (!havePristine) skip('B*', 'PA_TEST_PRISTINE (the extracted pinned plugin) is
 else {
   await t('B1 applies once: method above ensure_host, call right before the host.log open, .orig is the pristine file', () => {
     const p = newPlugin(); const r = run(GUARD, p);
-    assert.equal(r.code, 0); assert.match(r.out, /patched .*omnigent\.py \(plugin 0\.3\.3[1234567]\)/);
+    assert.equal(r.code, 0); assert.match(r.out, /patched .*omnigent\.py \(plugin 0\.3\.3[12345678]\)/);
     const text = fs.readFileSync(pyOf(p), 'utf8');
     assert.equal(count(text, 'def guard_host_name(self, server: str) -> None:'), 1);
     assert.equal(count(text, 'self.guard_host_name(server)'), 1);
@@ -374,7 +374,7 @@ else {
     for (const code of NEW_CODES) assert.equal(count(issues, `  ${code}: hint(null,`), 1, code);
     assert.equal(count(issues, MARKER), 1);
     assert.equal(fs.readFileSync(issuesOf(p) + '.orig', 'utf8'), pristineIssues);
-    assert.match(r.out, /patched .*issues\.mjs \(plugin 0\.3\.3[1234567]\)/);
+    assert.match(r.out, /patched .*issues\.mjs \(plugin 0\.3\.3[12345678]\)/);
   });
 
   await t('B2 second run is a no-op (byte-identical files, "already patched")', () => {

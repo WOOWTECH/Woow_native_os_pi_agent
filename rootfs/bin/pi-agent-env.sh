@@ -73,7 +73,6 @@ export PI_OMNIGENT_PLUGIN_ROOT="${PI_AGENT_HOME}/plugins/pi-omnigent-plugin"
 export PI_OMNIGENT_SDK_ROOT="${PI_AGENT_HOME}/piweb/lib/node_modules/@agegr/pi-web"
 export PI_PASEO_RUNTIME_DIR="${PI_AGENT_HOME}/paseo-runtime"
 export PI_PASEO_PLUGIN_ROOT="${PI_AGENT_HOME}/plugins/pi-paseo-plugin"
-export PI_PASEO_WEB_ARCHIVE="${PI_AGENT_HOME}/paseo-web/client.tar.gz"
 
 # Shared resources stay in this install; provider HOME may be an adopted user HOME.
 export PI_SHARED_RUNTIME_BUNDLE_DIR="${PI_AGENT_HOME}/shared-runtime"

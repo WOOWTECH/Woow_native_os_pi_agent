@@ -1,5 +1,38 @@
 # Native release preparation
 
+## 0.2.12
+
+Changes from 0.2.11:
+
+- Agent Connect 0.1.22 → 0.1.23 (pi-paseo-plugin #23, merged as `152e1c3a`;
+  `woowtech-pi-paseo-0.1.23.tgz`, sha256 `0e4f3c99…0265`). The Paseo target
+  opens and pairs at the official `https://app.paseo.sh`, like the two Smart
+  targets open their own sites. The bundled `/paseo-web` client (patched
+  Paseo Web 0.13.0-woow.1, about 11 MB downloaded per host) and its Pi Web
+  route are removed. Activation removes the copy 0.1.9–0.1.22 left in the
+  Agent Connect state directory: only the entries those versions created,
+  never through a symlink, and a failure never blocks activation. Browsers
+  paired through `/paseo-web` pair once more on app.paseo.sh; daemon
+  identity, logins and conversations are unchanged. The bundled build
+  carried two display fixes that upstream has not merged yet
+  (getpaseo/paseo#7908); until upstream ships them, the official site may
+  still show them. The backend conversation is unaffected.
+- Omnigent plugin 0.3.37 → 0.3.38 (pi-omnigent-plugin #35, squash `a447f30d`;
+  `woowtech-pi-omnigent-plugin-0.3.38.tgz`, sha256 `2ed6aef9…5cde`): only its
+  combined Pi Web adapter, which now pairs with exactly Agent Connect 0.1.23.
+  The combined patch (`PIN_OMNIGENT_UI_SHA256`) becomes `a5f5e6eb…`, so the
+  prebuilt Pi Web trees are rebuilt; asset names are unchanged.
+- The four plugin overlays accept 0.3.38 through the same reviewed
+  maintenance-aware path as 0.3.35 to 0.3.37.
+- `PA_PASEO_WEB_DIR` (lib/common.sh) and `PI_PASEO_WEB_ARCHIVE`
+  (rootfs/bin/pi-agent-env.sh) are removed. Nothing ever read them.
+
+After upgrading, restart Pi Web (the macOS installer reloads it; on Linux
+restart `pi-web.service`). Until then the old process keeps the 0.1.22
+runtime in memory and cannot make a Paseo pairing link.
+
+Shared runtime 0.1.6 and Pi Web 0.10.0 are unchanged.
+
 ## 0.2.11
 
 Changes from 0.2.10:
