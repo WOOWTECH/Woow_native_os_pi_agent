@@ -1,5 +1,77 @@
 # Native release preparation
 
+## 0.2.13
+
+Changes from 0.2.12:
+
+- Agent Connect 0.1.23 → 0.1.24 (pi-paseo-plugin #24, merged as `ee8f9b43`;
+  `woowtech-pi-paseo-0.1.24.tgz`, sha256 `a8ffeda6…f831`). The managed Paseo
+  daemon moves from 0.11.2 to **0.17.4** (runtime revision
+  `0.17.4-r1-a651f42711da`), so the official app (app.paseo.sh 0.17.x) can use
+  daemon features such as the "All changes" diff. The settings page and the
+  three targets are unchanged.
+  - **Restart to switch.** The first activation after the upgrade only
+    installs 0.17.4 into a new release directory. A running 0.11.2 daemon keeps
+    serving and the status reads `restart_required`; stop and start Agent
+    Connect (Settings > Agent Connect, or `node bin/cli.mjs stop` then
+    `start`) and the same `PASEO_HOME` runs under 0.17.4. Server ID, daemon key
+    (the host identity in pairing links), settings and conversations are kept.
+    `status.version` is the installed version, `status.daemon.version` the one
+    serving.
+  - **Config conversion.** Before the first 0.17.4 start the plugin loads
+    `config.json` through 0.17.4's own reader and rewrites the voice settings
+    it no longer accepts (`providers.openai` key and URL move into the OpenAI
+    dictation/voice settings, `provider` defaults to `local`, fields `local`
+    does not use are dropped). A setting 0.17.4 cannot load is reported as
+    `CONFIG_INCOMPATIBLE` before anything is stopped; the old daemon keeps
+    serving.
+  - **Smart targets.** The Woowtech and Apporo Smart apps are 0.10.1 builds
+    and only speak the older relay encryption, so Agent Connect sets
+    `daemon.relay.requireProtectedSecurity` to false at every start for those
+    two targets and refuses to hand out a pairing link that would require it
+    (`PAIRING_SECURITY_UNSUPPORTED`). The Paseo target leaves the setting to
+    its clients. Smart app compatibility with 0.17.4 has not been tested live.
+  - **New 0.17.4 defaults.** `agents.idleRuntimeCleanup` is on: an agent idle
+    for 60 minutes has its provider process closed and is reopened on the next
+    message. `daemon.usage.enabled` is on: when an app asks for usage, the
+    daemon reads this host's Claude/Codex login files and calls the providers'
+    usage APIs. Both can be turned off in `config.json` without a restart.
+  - **Terminals and `ps`.** 0.17.4 terminals are held by detached worker
+    processes and cleaned up with `ps` (procps) on stop and start. The Linux
+    installer already installs procps. Stop waits up to 45 seconds for the
+    supervisor (the supervisor itself is bounded at 81 seconds) and never
+    force-kills a process.
+  - **Disk.** A runtime release directory is about 0.7 GB (0.11.2: about
+    0.57 GB). After a healthy 0.17.4 start the plugin removes release
+    directories it no longer needs, keeping the newest older one for rollback,
+    and records the result in `state.json` (`lastPrune`).
+  - **Rollback to 0.1.23** also needs a stop and start, and two changes 0.17.4
+    makes to saved data are not undone: the OpenAI key moved out of
+    `providers.openai` (0.11.2 then rejects the config as `CONFIG_INVALID`
+    until it is moved back), and agent options saved in 0.17.4's new
+    `controls` form, which 0.11.2 ignores, have to be set again.
+- Omnigent plugin 0.3.38 → 0.3.39 (pi-omnigent-plugin #36, squash `b2c6d12c`;
+  `woowtech-pi-omnigent-plugin-0.3.39.tgz`, sha256 `a5eb78fe…ff58`): only its
+  combined Pi Web adapter, which now pairs with exactly Agent Connect 0.1.24.
+  The combined patch (`PIN_OMNIGENT_UI_SHA256`) becomes `5e2c36b4…`; it differs
+  from 0.3.38's in one file (a test that takes the Paseo version from the
+  plugin instead of hardcoding it). Asset names are unchanged.
+- The four plugin overlays accept 0.3.39 through the same reviewed
+  maintenance-aware path as 0.3.35 to 0.3.38.
+- `PIN_GETPASEO_CLI_VERSION` becomes 0.17.4 and the manifest's
+  `runtimeRevision` for Agent Connect becomes `0.17.4-r1-a651f42711da`. The
+  installer stages the runtime from the plugin's own lock, so these only feed
+  the macOS installer test's checks.
+- The 0.3.38 and Agent Connect 0.1.23 archives are dropped.
+
+After upgrading, restart Pi Web (the macOS installer reloads it; on Linux
+restart `pi-web.service`), then stop and start Agent Connect to move the
+daemon to 0.17.4. The host identity in pairing links is unchanged. Do the stop
+and start after the Pi Web restart: until then the running process still has
+the 0.1.23 plugin loaded.
+
+Shared runtime 0.1.6 and Pi Web 0.10.0 are unchanged.
+
 ## 0.2.12
 
 Changes from 0.2.11:

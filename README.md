@@ -39,21 +39,21 @@ hard-linking them.
 Check out the source that matches the release:
 
 ```bash
-git clone --branch v0.2.12 --depth 1 https://github.com/WOOWTECH/Woow_native_os_pi_agent
+git clone --branch v0.2.13 --depth 1 https://github.com/WOOWTECH/Woow_native_os_pi_agent
 cd Woow_native_os_pi_agent
 ```
 
 Then run the command for your Mac. **Apple silicon (arm64):**
 
 ```bash
-PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.12/piweb-0.10.0-macos-arm64.tar.gz \
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.13/piweb-0.10.0-macos-arm64.tar.gz \
   ./install.sh
 ```
 
 **Intel (x64):**
 
 ```bash
-PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.12/piweb-0.10.0-macos-x64.tar.gz \
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.13/piweb-0.10.0-macos-x64.tar.gz \
   ./install.sh
 ```
 
@@ -74,9 +74,9 @@ full toolchain. Releases ship that tree prebuilt per platform, so no compiler is
 needed and the build disappears entirely.
 
 ```bash
-git clone --branch v0.2.12 --depth 1 https://github.com/WOOWTECH/Woow_native_os_pi_agent
+git clone --branch v0.2.13 --depth 1 https://github.com/WOOWTECH/Woow_native_os_pi_agent
 cd Woow_native_os_pi_agent
-PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.12/piweb-0.10.0-linux-x64.tar.gz \
+PI_AGENT_PIWEB_ARTIFACT=https://github.com/WOOWTECH/Woow_native_os_pi_agent/releases/download/v0.2.13/piweb-0.10.0-linux-x64.tar.gz \
   ./install.sh
 ```
 
