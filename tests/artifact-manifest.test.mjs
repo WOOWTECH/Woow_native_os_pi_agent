@@ -82,8 +82,8 @@ test('every frozen candidate binds the source commit it was packed from', () => 
     assert.equal(row.releaseHandoffSha256, undefined, row.file);
   }
   // pi-omnigent-plugin #38, squash-merged; git archive + npm pack reproduces the archive.
-  assert.equal(expected().packages.find(x => x.file.includes('omnigent-plugin-0.3.41')).sourceCommit,
-    'b481f9cd74e269a3f52a5cbf62713e252573c075');
+  assert.equal(expected().packages.find(x => x.file.includes('omnigent-plugin-0.3.42-rc.1')).sourceCommit,
+    'a79eb5cb891a7807f8aa665c6ef0b59b25fcc860');
 });
 // A reviewed candidate frozen before it had a commit (as 0.3.35 was) keeps its
 // freeze and handoff identity instead; never both kinds of provenance.
@@ -95,13 +95,13 @@ function withPluginRow(t, mutate) {
   fs.cpSync(path.join(repo,'candidate-packages'),path.join(dir,'candidate-packages'),{recursive:true});
   const file=path.join(dir,'candidate-packages/manifest.json');
   const value=JSON.parse(fs.readFileSync(file));
-  mutate(value.artifacts.find(x => x.file.includes('omnigent-plugin-0.3.41')));
+  mutate(value.artifacts.find(x => x.file.includes('omnigent-plugin-0.3.42-rc.1')));
   fs.writeFileSync(file,JSON.stringify(value));
   return dir;
 }
 test('a pre-commit candidate retains exact freeze and handoff provenance', t => {
   const dir = withPluginRow(t, freezeOnly);
-  const row = expectedManifest(dir,'linux','x64',pins.version,pins.ref,pins.adapter).packages.find(x => x.file.includes('omnigent-plugin-0.3.41'));
+  const row = expectedManifest(dir,'linux','x64',pins.version,pins.ref,pins.adapter).packages.find(x => x.file.includes('omnigent-plugin-0.3.42-rc.1'));
   assert.equal(row.sourceCommit, undefined);
   assert.equal(row.sourceFreezeSha256, 'b'.repeat(64));
   assert.equal(row.releaseHandoffSha256, 'c'.repeat(64));
@@ -115,4 +115,52 @@ for (const [label, mutate] of [
 ]) test(`source candidate rejects ${label}`, t => {
   const dir = withPluginRow(t, mutate);
   assert.throws(() => expectedManifest(dir,'linux','x64',pins.version,pins.ref,pins.adapter));
+});
+
+test('0.17.5 release candidate archives bind their exact source commits without stable-release claims', () => {
+  const rows = JSON.parse(fs.readFileSync(path.join(repo, 'candidate-packages/manifest.json'))).artifacts;
+  const paseo = rows.find(x => x.file === 'woowtech-pi-paseo-0.1.27-rc.1.tgz');
+  const omni = rows.find(x => x.file === 'woowtech-pi-omnigent-plugin-0.3.42-rc.1.tgz');
+  assert.equal(paseo.sourceCommit, 'e4c568ce3214592574f11243acf5ed7db743d47e');
+  assert.equal(paseo.runtimeRevision, '0.17.5-r1-8664f2c3f8f5');
+  assert.equal(omni.sourceCommit, 'a79eb5cb891a7807f8aa665c6ef0b59b25fcc860');
+  for (const row of [paseo, omni]) {
+    assert.equal(row.status, 'unpublished coordinated candidate; not a registry/release asset');
+    assert.equal(row.releaseURL, undefined);
+  }
+});
+
+function prereleaseFixture(t, rename = true) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'native-prerelease-manifest-'));
+  t.after(() => fs.rmSync(dir, { recursive:true, force:true }));
+  fs.writeFileSync(path.join(dir, 'VERSION'), '0.2.16-rc.1\n');
+  fs.cpSync(path.join(repo, 'candidate-packages'), path.join(dir, 'candidate-packages'), { recursive:true });
+  const file = path.join(dir, 'candidate-packages/manifest.json');
+  const value = JSON.parse(fs.readFileSync(file));
+  const row = value.artifacts.find(x => x.file.includes('paseo-'));
+  if (rename) {
+    const next = row.file.replace('0.1.26.tgz', '0.1.27-rc.1.tgz');
+    fs.copyFileSync(path.join(dir, 'candidate-packages', row.file), path.join(dir, 'candidate-packages', next));
+    row.file = next;
+  }
+  fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
+  return dir;
+}
+test('native prerelease accepts a package archive with a valid SemVer prerelease filename', t => {
+  const dir = prereleaseFixture(t);
+  const expected = expectedManifest(dir, 'linux', 'x64', pins.version, pins.ref, pins.adapter);
+  assert.equal(expected.version, '0.2.16-rc.1');
+  assert.ok(expected.packages.some(x => x.file === 'woowtech-pi-paseo-0.1.27-rc.1.tgz'));
+});
+for (const invalid of [
+  '../woowtech-pi-paseo-0.1.27-rc.1.tgz',
+  'woowtech-pi-paseo-0.1.27-rc.01.tgz',
+  'woowtech-pi-paseo-0.1.27-.tgz',
+]) test(`native prerelease refuses unsafe or invalid archive filename ${invalid}`, t => {
+  const dir = prereleaseFixture(t, false);
+  const manifestPath = path.join(dir, 'candidate-packages/manifest.json');
+  const value = JSON.parse(fs.readFileSync(manifestPath));
+  value.artifacts.find(x => x.file.includes('paseo-')).file = invalid;
+  fs.writeFileSync(manifestPath, JSON.stringify(value, null, 2) + '\n');
+  assert.throws(() => expectedManifest(dir, 'linux', 'x64', pins.version, pins.ref, pins.adapter));
 });

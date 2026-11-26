@@ -26,6 +26,11 @@ acceptance require separate host evidence.
 background startup to readiness, explains unsaved or pending target changes,
 and bounds waiting without automatically repeating lifecycle actions.
 
+**0.2.16-rc.1 is a coordinated candidate.** It pairs Agent Connect
+0.1.27-rc.1 and Omnigent 0.3.42-rc.1 with the Paseo 0.17.5 runtime. Its
+artifacts remain unpublished candidates; this source change does not claim
+host acceptance.
+
 **v0.2.14 added Tasks to Agent Connect.** The bundled Agent Connect 0.1.25
 uses Better Paseo Tasks with the official Paseo 0.17.4 runtime. Tasks defaults
 to enabled; chat enhancements and automatic update checks default to disabled.

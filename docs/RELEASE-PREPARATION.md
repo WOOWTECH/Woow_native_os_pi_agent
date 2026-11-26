@@ -1,5 +1,27 @@
 # Native release preparation
 
+## 0.2.16-rc.1 coordinated candidate
+
+- Agent Connect 0.1.27-rc.1 is paired with the Paseo 0.17.5 runtime at
+  `0.17.5-r1-8664f2c3f8f5`; source commit
+  `e4c568ce3214592574f11243acf5ed7db743d47e`, archive SHA256
+  `f91b7daa16cc0d86907507fc21d5f87ec021c0ee0a9a93b47c7864debd10c52b`.
+- Omnigent 0.3.42-rc.1 is paired to that Agent Connect source; commit
+  `a79eb5cb891a7807f8aa665c6ef0b59b25fcc860`, archive SHA256
+  `ada685198ba0a06d3a73e935c063857dfc7bbef5ab612d74c1a80d4bb41d4ede`.
+  Its combined adapter bytes remain SHA256
+  `13775483ce327a544b2604f4205db11ec0eec516e0765c44bebf72a133503dbb`.
+- The four native Omnigent overlays accept only the exact new prerelease in
+  addition to their reviewed versions. The three Linux overlays were regenerated
+  against the paired archive and their installed member hashes are locked.
+- Native artifact receipts now accept valid SemVer prerelease package filenames
+  while retaining exact source, archive digest and receipt checks. Candidate
+  archives have no stable release URL or stable-release status.
+- The official CLI pin is 0.17.5. Pi Web remains pinned to source
+  `6fcd7d44981ab51a21d6cd6eb06d361d0e3d3068`; the coordinated build is performed
+  separately from this source change and must write its receipt against the
+  final native candidate commit.
+
 ## 0.2.15
 
 Changes from 0.2.14:
