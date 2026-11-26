@@ -26,7 +26,7 @@ acceptance require separate host evidence.
 background startup to readiness, explains unsaved or pending target changes,
 and bounds waiting without automatically repeating lifecycle actions.
 
-**0.2.16-rc.5 is a preparation-only candidate.** It awaits new exact Agent Connect `0.1.27-rc.5` and Omnigent `0.3.42-rc.5` source/archive tuples, including their paired Pi Web patch identity. No rc5 packages, digests, source locks or acceptance results are available yet. This worktree is based on the held, incomplete rc4 checkpoint; its rc4 package pins and archives are inherited review state and must not be treated as rc5 inputs or copied under rc5 names. The Paseo 0.17.5 runtime remains r4/a7 unchanged. No build, host acceptance or publication is claimed.
+**0.2.16-rc.5 is a preparation-only candidate.** It awaits new exact Agent Connect `0.1.27-rc.5` and Omnigent `0.3.42-rc.5` source/archive tuples, including their paired Pi Web patch identity. No rc5 packages, digests, source locks or acceptance results are available yet. This worktree is based on the held, incomplete rc4 checkpoint; its rc4 package pins and archives are inherited review state and must not be treated as rc5 inputs or copied under rc5 names. The target Paseo 0.17.5 runtime remains r4/a7 unchanged. The inherited rc4 package metadata may still describe r3 and is not valid rc5 input. No build, host acceptance or publication is claimed.
 
 **Previous 0.2.16-rc.3 candidate (superseded; rc.4 is held and rc.5 is pending).** It pairs Agent Connect
 0.1.27-rc.3 and Omnigent 0.3.42-rc.3 with the Paseo 0.17.5 runtime. Its

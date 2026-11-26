@@ -11,7 +11,9 @@
   associated candidate pins are inherited review state only; do not use them as
   rc5 packages or rename/copy them to rc5 filenames. Recompose all native locks
   from the new exact tuples once they arrive.
-- Paseo 0.17.5 runtime r4/a7 remains unchanged. The reported Next and
+- Target Paseo 0.17.5 runtime r4/a7 remains unchanged. The inherited rc4
+  package metadata may still describe r3; it is review-only and must not be
+  treated as the rc5 runtime tuple. The reported Next and
   eslint-config-next 16.4.6 security follow-up belongs to the upstream package
   owners; wait for their new immutable tuples rather than assuming a successful
   Pi Web build here.
