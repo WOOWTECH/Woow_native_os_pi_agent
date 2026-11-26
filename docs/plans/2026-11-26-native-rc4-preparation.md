@@ -2,12 +2,17 @@
 
 This worktree starts at native rc3 HEAD `82d004fbd358439fc38f3c38c1de875cf278313f`.
 The intended candidate is native `0.2.16-rc.4`, pairing Agent Connect
-`0.1.27-rc.4` (Gauss) with Omnigent `0.3.42-rc.4` (Dirac). Their exact source
-commits and frozen archives have not been handed off yet. This is preparation
-only: keep `VERSION`, rc3 archives, pins, manifests, source authority and member
-hashes unchanged until both exact inputs are available. Do not infer or copy
-rc3 hashes for rc4. The Pi Web source and combined adapter must be checked
-against Dirac's exact archive before deciding whether their pins need to move.
+`0.1.27-rc.4` (Gauss) with Omnigent `0.3.42-rc.4` (Dirac). Gauss supplied the
+immutable Agent Connect tuple: source commit
+`a895f725aad645e7594c8405aac17aca409b3558`, archive
+`phone-selected-release-rc4/artifacts/woowtech-pi-paseo-0.1.27-rc.4.tgz`,
+SHA-256 `3fe3f9e7bad463c6a007703a8db67c2de320b061e93ba7bc79339cae68fe937b`.
+Dirac's exact paired source and archive are pending. `VERSION` and native-version
+assertions now say rc4; package pins, manifests, archive bytes, source authority
+and member hashes deliberately remain rc3 until both exact inputs are available.
+Do not infer or copy rc3 hashes for rc4. The Pi Web source and combined adapter
+must be checked against Dirac's exact archive before deciding whether their pins
+need to move.
 
 ## Update sequence after both handoffs
 

@@ -93,7 +93,7 @@ class FixtureNodeTests(unittest.TestCase):
                 self.assertTrue(version.startswith(b'v22.'))
                 run.env['PATH'] = '/no-node-on-this-path'
                 manifest = fixture_manifest(run, selected)
-                self.assertEqual(manifest['version'], '0.2.16-rc.3')
+                self.assertEqual(manifest['version'], '0.2.16-rc.4')
                 self.assertEqual(next(p['sha256'] for p in manifest['packages'] if 'omnigent' in p['file']),
                                  mod.PLUGIN_SHA)
             except BaseException as error:
@@ -482,7 +482,7 @@ class ScenarioTests(unittest.TestCase):
                 self.assertEqual(events[:8], ['fixture-install-' + s for s in mod.INSTALL_STAGES])
                 self.assertEqual(events[8:12], ['static-overlay'] * 3 + ['all37-bound'])
                 self.assertEqual(events.count('owned-loopback-web-fixture'), 2)
-                self.assertEqual(run.ws.read('source/VERSION')[0].strip(), b'0.2.16-rc.3')
+                self.assertEqual(run.ws.read('source/VERSION')[0].strip(), b'0.2.16-rc.4')
             except BaseException as error:
                 failure = error
                 raise
@@ -610,11 +610,11 @@ class ScenarioTests(unittest.TestCase):
             try:
                 mod.stage_source(run, HERE.parent)
                 result = fixture_manifest(run, FIXTURE_NODE)
-                self.assertEqual(result['version'], '0.2.16-rc.3')
+                self.assertEqual(result['version'], '0.2.16-rc.4')
                 self.assertEqual(len(result['packages']), 3)
                 plugin = next(x for x in result['packages'] if 'omnigent' in x['file'])
                 self.assertEqual(plugin['sha256'], mod.PLUGIN_SHA)
-                self.assertEqual(run.ws.read('source/VERSION')[0].strip(), b'0.2.16-rc.3')
+                self.assertEqual(run.ws.read('source/VERSION')[0].strip(), b'0.2.16-rc.4')
             except BaseException as error:
                 failure = error
                 raise
