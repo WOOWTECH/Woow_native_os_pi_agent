@@ -175,7 +175,8 @@ class NamespaceExitWindowTests(unittest.TestCase):
             self.assertIsNone(held.pidfd)
             self.assertEqual(ledger.budget.fds, fds - 2)
             self.assertNotIn(('pid', child.pid), ledger.budget.pins)
-            self.assertEqual({k: v for k, v in pins.items() if k != ('pid', child.pid)}, ledger.budget.pins)
+            self.assertEqual({k: v for k, v in pins.items()
+                              if k not in {('pid', child.pid), ('task', child.pid)}}, ledger.budget.pins)
             self.assertEqual((ledger.lifetime.work_deadline, ledger.budget.deadline), (work, cutoff))
             self.assertIsNone(ledger.lifetime.teardown_deadline)
             self.assertLessEqual(ledger.budget.passes, 128)
@@ -973,13 +974,16 @@ def reaper(children):
 class ExitWindowCutoffTests(unittest.TestCase):
     """M1: an exit-window wait ended by the work cutoff is that known work expiry."""
 
-    def memfd_command(self, run, lead):
-        return [sys.executable, '-I', '-S', '-B', CHILD, 'memfd-exit-at', '256', repr(run.deadline - lead)]
+    def exiting_leader_command(self, run):
+        # A live last thread holds the real exit window across the cutoff.
+        # Kernel memory-reclamation duration is not a timing guarantee.
+        return [sys.executable, '-I', '-S', '-B', CHILD, 'terminal-leader-cutoff',
+                repr(run.deadline + 0.1)]
 
     def test_guardian_exit_window_at_work_cutoff_is_known_expiry_with_verified_cleanup(self):
         fx = fixtures.DetachedCustodyTests()
         with fx.private_run(seconds=1.5) as run:
-            process = run.spawn(self.memfd_command(run, 0.02))
+            process = run.spawn(self.exiting_leader_command(run))
             with self.assertRaises(owned.Hold) as failure:process.wait(4)
             self.assertEqual(str(failure.exception), 'COMMAND_DEADLINE')
             receipt = run.finish(failure.exception)
@@ -995,7 +999,7 @@ class ExitWindowCutoffTests(unittest.TestCase):
     def test_parent_members_in_exit_window_at_cutoff_is_nonsticky_deadline(self):
         fx = fixtures.DetachedCustodyTests()
         with fx.private_run(seconds=1.5) as run:
-            process = run.spawn(self.memfd_command(run, 0.02))
+            process = run.spawn(self.exiting_leader_command(run))
             limit = time.monotonic() + 5
             with self.assertRaises(owned.Hold) as failure:
                 while True:

@@ -52,15 +52,23 @@ elif mode == 'terminal-leader':
     libc.pthread_exit.argtypes = [ctypes.c_void_p]
     libc.pthread_exit.restype = None
     libc.pthread_exit(None)
-elif mode == 'terminal-leader-held':
+elif mode in ('terminal-leader-held', 'terminal-leader-cutoff'):
     # Leader thread exits (its namespace links vanish, PF_EXITING set) while a
     # worker keeps the thread group, and so the PIDfd, nonready until released.
     import ctypes
     import select
     import threading
+    if mode == 'terminal-leader-cutoff':
+        # Keep one real thread alive across the declared work cutoff, then exit
+        # normally inside the cleanup allowance despite the guardian's TERM.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        release_at = float(sys.argv[2])
     def worker():
         print(os.getpid(), flush=True)
-        select.select([0], [], [], 20)
+        if mode == 'terminal-leader-cutoff':
+            time.sleep(max(0, release_at - time.monotonic()))
+        else:
+            select.select([0], [], [], 20)
         os._exit(0)
     thread = threading.Thread(target=worker)
     thread.start()
