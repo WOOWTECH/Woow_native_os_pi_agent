@@ -189,6 +189,8 @@ class _Capability:
         self.proof = None
         self.pinned = False
         self.terminal = False  # An inert terminal leaf: never a live capability.
+        self.tasks = set()  # Charged TIDs stay with this exact capability.
+        self.retirement_error = None
 
 
 class _CensusChanged(Exception):
@@ -576,7 +578,7 @@ class OwnedDescendants:
             # Known work/explicit expiry cannot authorize reuse of an incomplete
             # provisional. Ownership/I/O/exit uncertainty instead retains it.
             if error.custody_code == 'CUSTODY_DEADLINE' and error.phase in ('work', 'explicit') \
-                    and self._provisional.get(pid) is cap:
+                    and cap.procfd is None and self._provisional.get(pid) is cap:
                 self._close_cap(cap)
             raise
         return cap
@@ -594,7 +596,13 @@ class OwnedDescendants:
         if self._provisional.get(cap.pid) is cap:
             del self._provisional[cap.pid]
         failures = [self._close_field(cap, field, cap.pid) for field in ('procfd', 'pidfd')]
-        first = next((item for item in failures if item is not None), None)
+        first = cap.retirement_error or next((item for item in failures if item is not None), None)
+        cap.retirement_error = first  # A second retirement cannot erase failed-close charges.
+        if first is None:
+            for tid in cap.tasks:
+                self.budget.unpin(('task', tid))
+                self.budget.forget(('task', tid))
+            cap.tasks.clear()
         if first is None and cap.pinned:
             cap.pinned = False
             self.budget.unpin(('pid', cap.pid))
@@ -634,7 +642,14 @@ class OwnedDescendants:
             tids = []
             for name in self._entries(fd):
                 need(name.isdecimal(), 'CUSTODY_PROC_INVALID')
-                self.budget.identity(('task', int(name)))
+                tid = int(name)
+                key = ('task', tid)
+                self.budget.identity(key)
+                if tid not in cap.tasks:
+                    # Keep the successfully charged observation even if this
+                    # snapshot later fails. Another ledger can pin the same TID.
+                    self.budget.pins[key] = self.budget.pins.get(key, 0) + 1
+                    cap.tasks.add(tid)
                 tids.append(name)
             if not tids:
                 # Released between the listing's dead check and its first tid:

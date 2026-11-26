@@ -149,9 +149,13 @@ while its capability is pinned, including a handle whose close failed. A
 successful close after retirement or ESRCH before PIDfd acquisition releases
 its identity slot; an uncertain or failed close never does. A positive reap
 record separately proves a completed PID and can discard its unpinned slot;
-the reap record remains in its own bounded ledger. Thread IDs stay charged across all parent snapshots in the operation: a
-completed snapshot alone does not prove a thread departed. This preserves the
-global process/thread bound while allowing proved retired PID charges to clear. Reads
+the reap record remains in its own bounded ledger. Thread IDs remain pinned to the exact capability that observed them across
+parent snapshots and operations; a completed snapshot alone does not prove a
+thread departed. Successful retirement releases that capability's task pins,
+while another ledger's pin or a failed close keeps the shared charge. A repeated
+retirement cannot clear an earlier close error. Long-lived thread churn remains
+conservatively bounded until capability retirement. This preserves the global
+process/thread bound while allowing retired process/thread charges to clear. Reads
 share 4 MiB per operation
 (8192 bytes per proc file, 2 MiB for TCP records), at most 4096 FD entries and
 128 reproof passes, all under the original absolute monotonic deadline. Nested

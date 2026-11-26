@@ -128,6 +128,26 @@ class AccountingBoundaryTests(unittest.TestCase):
             close.assert_not_called()
             ledger._close_cap(cap)  # Mock-only fixture cleanup.
 
+    def test_work_or_explicit_cutoff_keeps_reusable_proc_directory(self):
+        for phase in ('work', 'explicit'):
+            with self.subTest(phase=phase):
+                ledger = empty_ledger()
+                expiry = custody.CustodyError('CUSTODY_DEADLINE', phase=phase)
+                with ledger._operation(), \
+                        mock.patch.object(custody.os, 'pidfd_open', return_value=52001), \
+                        mock.patch.object(custody.os, 'open', return_value=52002), \
+                        mock.patch.object(custody.os, 'close') as close, \
+                        mock.patch.object(ledger, '_fdinfo', return_value=False), \
+                        mock.patch.object(ledger, '_validate', side_effect=expiry):
+                    with self.assertRaises(custody.CustodyError) as caught:
+                        ledger._open_cap(23)
+                    self.assertIs(caught.exception, expiry)
+                    cap = ledger._provisional[23]
+                    self.assertEqual((cap.pidfd, cap.procfd), (52001, 52002))
+                    self.assertEqual(ledger.budget.pins, {('pid', 23): 1})
+                    close.assert_not_called()
+                    ledger._close_cap(cap)
+
     def test_identity_bound_diagnostic_contains_counts_only(self):
         from owned_acceptance_supervisor import uncertainty_record
         budget = custody.Budget(time.monotonic() + 30, identities=2)
@@ -239,7 +259,94 @@ class AccountingBoundaryTests(unittest.TestCase):
             self.assertEqual(ledger._live_children(cap), set())
             self.assertEqual(len(ledger.budget.seen), 70)
             with self.assertRaisesRegex(custody.CustodyError, 'CUSTODY_IDENTITY_BOUND'):
+                other = custody._Capability(13, 50004)
+                other.procfd = 50005
+                ledger._live_children(other)
+
+
+class TaskChargeRetirementTests(unittest.TestCase):
+    def charge_cap(self, ledger, pid, tid):
+        cap = custody._Capability(pid, 60000 + pid)
+        cap.procfd = 70000 + pid
+        cap.pinned = True
+        cap.tasks.add(tid)
+        ledger.budget.acquire()
+        ledger.budget.acquire()
+        ledger.budget.pin(('pid', pid))
+        ledger.budget.pin(('task', tid))
+        ledger._caps[pid] = cap
+        return cap
+
+    def test_repeated_and_failed_task_snapshots_never_drop_or_double_pin(self):
+        ledger = empty_ledger()
+        cap = custody._Capability(24, 53001)
+        cap.procfd = 53002
+        with ledger._operation(), \
+                mock.patch.object(ledger, '_validate', return_value=(24, 1, 1, 'R')), \
+                mock.patch.object(ledger, '_open', return_value=53003), \
+                mock.patch.object(ledger, '_close_fd'), \
+                mock.patch.object(ledger, '_entries', return_value=['24', '25']), \
+                mock.patch.object(ledger, '_read', return_value='') as read:
+            ledger._live_children(cap)
+            ledger._live_children(cap)
+            self.assertEqual(cap.tasks, {24, 25})
+            self.assertEqual(ledger.budget.pins, {('task', 24): 1, ('task', 25): 1})
+            read.side_effect = OSError(errno.EIO, 'uncertain snapshot')
+            with self.assertRaises(OSError):
                 ledger._live_children(cap)
+            self.assertEqual(ledger.budget.pins, {('task', 24): 1, ('task', 25): 1})
+        with ledger._operation():
+            self.assertEqual(ledger.budget.seen, {('task', 24), ('task', 25)})
+
+    def test_task_pin_survives_one_of_two_ledgers_retiring(self):
+        one, two = empty_ledger(), empty_ledger()
+        two.budget = one.budget
+        with one._operation(), mock.patch.object(custody.os, 'close'):
+            a = self.charge_cap(one, 26, 27)
+            b = self.charge_cap(two, 26, 27)
+            one._close_cap(a)
+            self.assertEqual(a.tasks, set())
+            self.assertEqual(one.budget.pins, {('pid', 26): 1, ('task', 27): 1})
+            two._close_cap(b)
+            self.assertEqual(one.budget.seen, set())
+            self.assertEqual(one.budget.pins, {})
+            self.assertEqual(one.budget.fds, 0)
+
+    def test_failed_and_repeated_retirement_preserve_task_pin(self):
+        ledger = empty_ledger()
+        with ledger._operation():
+            cap = self.charge_cap(ledger, 28, 29)
+            with mock.patch.object(custody.os, 'close', side_effect=OSError(errno.EIO, 'uncertain')) as close:
+                for _ in range(2):
+                    with self.assertRaisesRegex(custody.CustodyError, 'CUSTODY_CLOSE_FAILED'):
+                        ledger._close_cap(cap)
+                    self.assertEqual(ledger.budget.pins, {('pid', 28): 1, ('task', 29): 1})
+                    self.assertEqual(ledger.budget.fds, 2)
+                    self.assertEqual(cap.tasks, {29})
+                self.assertEqual(close.call_count, 2)  # Each descriptor attempted once.
+
+    def test_retired_process_task_churn_reuses_the_global_budget(self):
+        ledger = empty_ledger()
+        with ledger._operation(), mock.patch.object(custody.os, 'close'):
+            ledger.budget.pin(('pid', 1))
+            for pid in range(100, 300):
+                cap = self.charge_cap(ledger, pid, pid + 10000)
+                self.assertLessEqual(len(ledger.budget.seen), 128)
+                ledger._close_cap(cap)
+                self.assertEqual(ledger.budget.seen, {('pid', 1)})
+                self.assertEqual(ledger.budget.pins, {('pid', 1): 1})
+                self.assertEqual(ledger.budget.fds, 0)
+
+    def test_newer_capability_keeps_shared_task_charge_when_old_one_retires(self):
+        ledger = empty_ledger()
+        with ledger._operation(), mock.patch.object(custody.os, 'close'):
+            old = self.charge_cap(ledger, 30, 31)
+            new = self.charge_cap(ledger, 30, 31)
+            ledger._close_cap(old)
+            self.assertIs(ledger._caps[30], new)
+            self.assertEqual(ledger.budget.pins, {('pid', 30): 1, ('task', 31): 1})
+            ledger._close_cap(new)
+            self.assertEqual(ledger.budget.pins, {})
 
 
 class SupervisorReapBoundaryTests(unittest.TestCase):

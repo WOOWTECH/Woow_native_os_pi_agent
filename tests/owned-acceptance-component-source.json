@@ -18,12 +18,12 @@
       "sha256": "579da1297fa25586742ea0cc3ad3f3ae57bd4b9abb85f35bd40e6f5d107a90dd"
     },
     {
-      "bytes": 32033,
-      "gitBlob": "73f87a986a803a7e53a3f95e48b5c7c072d9b485",
+      "bytes": 32348,
+      "gitBlob": "23196ee88024f2b702a2c12a680caea94753b5b9",
       "gitMode": "100644",
       "mode": 420,
       "path": "docs/OWNED-NATIVE-ACCEPTANCE.md",
-      "sha256": "a15579956a84fece78546db84cccf5a044a5753f9832e5fb2720545947c6659d"
+      "sha256": "82832604b06bf6549b5fa4f112c395a7b057a1da772a2883c9861c7c2523bd39"
     },
     {
       "bytes": 9108,
@@ -122,12 +122,12 @@
       "sha256": "d73ba71ade8675e68ddcded40c3232e5ca0df4442f82f3f0eb90ec34a87e6ad5"
     },
     {
-      "bytes": 45888,
-      "gitBlob": "233c538991edda39849033c125c375b5a606c5fa",
+      "bytes": 46699,
+      "gitBlob": "e9f09b3ec200c740d111a89162278309250889ad",
       "gitMode": "100644",
       "mode": 420,
       "path": "tests/owned_process_custody.py",
-      "sha256": "ac2ab354892e94169e7ab5792f933903dbbab57c4ae78d378e79e629dda4ff7c"
+      "sha256": "55c00df607a1cc24f7982df06a83a7e0a70e759792fb8cb05a0b9992d385188e"
     },
     {
       "bytes": 380,
@@ -162,12 +162,12 @@
       "sha256": "218731793c9fa53202d0658430a288744b0f85eefb9498d7caa813dad2e3c6ba"
     },
     {
-      "bytes": 14130,
-      "gitBlob": "bcb4e01fc7466515019ed4585828e19b2a67c35b",
+      "bytes": 19630,
+      "gitBlob": "189d80540dee32eaeef64a6322d20bd34c96a81b",
       "gitMode": "100644",
       "mode": 420,
       "path": "tests/test_owned_custody_runtime_p2.py",
-      "sha256": "70448cee74d4ab0756e17db17599be21b92392de4f2b1002adef74888e54d916"
+      "sha256": "6cf8919e8401294656c176f0b4f818b7dbaed30013004b588805d6936b282035"
     },
     {
       "bytes": 49065,
@@ -242,5 +242,5 @@
     ]
   },
   "schema": "owned-component-source/v1",
-  "sourceRowsSha256": "045d92b6ae277b06ab6f746431d18b8e2c8f4c54f9a07466271a1d8a2f719b93"
+  "sourceRowsSha256": "86004fb4b2c3dd61f8b7a4740ba93e256ae4733270c6bd5703af2fc4c69762ad"
 }
