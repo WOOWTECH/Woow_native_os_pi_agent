@@ -61,7 +61,7 @@ def fixture_manifest(run, node):
     code = ("import {expectedManifest} from " + json.dumps(module)
             + ";console.log(JSON.stringify(expectedManifest(process.argv[1], 'linux', 'x64', '0.10.0',"
             + "'6fcd7d44981ab51a21d6cd6eb06d361d0e3d3068',"
-            + "'13775483ce327a544b2604f4205db11ec0eec516e0765c44bebf72a133503dbb')));")
+            + "'5bbbd15bf9b0734bb4964c79dd620ecbc3e0ccda26af3cec2cb6a488d8eba7aa')));")
     return json.loads(run.command([node, '--input-type=module', '-e', code,
                                    str(run.ws.root / 'source')], seconds=5))
 
@@ -93,7 +93,7 @@ class FixtureNodeTests(unittest.TestCase):
                 self.assertTrue(version.startswith(b'v22.'))
                 run.env['PATH'] = '/no-node-on-this-path'
                 manifest = fixture_manifest(run, selected)
-                self.assertEqual(manifest['version'], '0.2.16-rc.4')
+                self.assertEqual(manifest['version'], '0.2.16-rc.5')
                 self.assertEqual(next(p['sha256'] for p in manifest['packages'] if 'omnigent' in p['file']),
                                  mod.PLUGIN_SHA)
             except BaseException as error:
@@ -482,7 +482,7 @@ class ScenarioTests(unittest.TestCase):
                 self.assertEqual(events[:8], ['fixture-install-' + s for s in mod.INSTALL_STAGES])
                 self.assertEqual(events[8:12], ['static-overlay'] * 3 + ['all37-bound'])
                 self.assertEqual(events.count('owned-loopback-web-fixture'), 2)
-                self.assertEqual(run.ws.read('source/VERSION')[0].strip(), b'0.2.16-rc.4')
+                self.assertEqual(run.ws.read('source/VERSION')[0].strip(), b'0.2.16-rc.5')
             except BaseException as error:
                 failure = error
                 raise
@@ -493,7 +493,7 @@ class ScenarioTests(unittest.TestCase):
             self.assertFalse(receipt['realWSL2Acceptance'])
 
     def seed_static_packages(self, run):
-        for name, dest in [('woowtech-pi-omnigent-plugin-0.3.42-rc.4.tgz', 'install/plugins/pi-omnigent-plugin'),
+        for name, dest in [('woowtech-pi-omnigent-plugin-0.3.42-rc.5.tgz', 'install/plugins/pi-omnigent-plugin'),
                            ('woowtech-pi-agent-shared-runtime-0.1.6.tgz', 'install/shared-runtime')]:
             with tarfile.open(HERE.parent / 'candidate-packages' / name) as archive:
                 for member in archive:
@@ -582,7 +582,7 @@ class ScenarioTests(unittest.TestCase):
                 mod.finalize_installed_sources(run, HERE.parent)
                 lock = mod.verify_source(HERE.parent)
                 expected = lock['installedLinuxPluginMembers']
-                self.assertEqual(len(expected), 37)
+                self.assertEqual(len(expected), 40)
                 for name, row in expected.items():
                     data, mode = run.ws.read('install/plugins/pi-omnigent-plugin/' + name)
                     self.assertEqual((mod.digest(data), len(data), mode), (row['sha256'], row['bytes'], row['mode']))
@@ -610,11 +610,11 @@ class ScenarioTests(unittest.TestCase):
             try:
                 mod.stage_source(run, HERE.parent)
                 result = fixture_manifest(run, FIXTURE_NODE)
-                self.assertEqual(result['version'], '0.2.16-rc.4')
+                self.assertEqual(result['version'], '0.2.16-rc.5')
                 self.assertEqual(len(result['packages']), 3)
                 plugin = next(x for x in result['packages'] if 'omnigent' in x['file'])
                 self.assertEqual(plugin['sha256'], mod.PLUGIN_SHA)
-                self.assertEqual(run.ws.read('source/VERSION')[0].strip(), b'0.2.16-rc.4')
+                self.assertEqual(run.ws.read('source/VERSION')[0].strip(), b'0.2.16-rc.5')
             except BaseException as error:
                 failure = error
                 raise

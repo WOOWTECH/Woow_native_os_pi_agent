@@ -26,9 +26,9 @@ acceptance require separate host evidence.
 background startup to readiness, explains unsaved or pending target changes,
 and bounds waiting without automatically repeating lifecycle actions.
 
-**0.2.16-rc.5 is a preparation-only candidate.** Agent Connect `0.1.27-rc.5` tuple is now recorded: source `867d9065f609aa5e32d88f2d55cf07c5d3fadc3e`, archive SHA-256 `581d5468020344dc93728da862118a4f8258a1a9a610ca16336e865345dceaa5`, paired adapter SHA `aefb39dd6c378571ea8146bfa27fa153609da7460bc7198c3cfeb471ce02bcd6`. Omnigent `0.3.42-rc.5` exact tuple is still pending, so the pair, native package swap, digests, source locks and acceptance are not yet complete. This worktree is based on the held, incomplete rc4 checkpoint; its rc4 package pins and archives are inherited review state and must not be treated as rc5 inputs or copied under rc5 names. The target Paseo 0.17.5 runtime remains r4/a7 unchanged. The inherited rc4 package metadata may still describe r3 and is not valid rc5 input. No build, host acceptance or publication is claimed.
+**0.2.16-rc.5 native package and lock candidate is composed locally.** Agent Connect `0.1.27-rc.5` source `867d9065f609aa5e32d88f2d55cf07c5d3fadc3e`, archive SHA-256 `581d5468020344dc93728da862118a4f8258a1a9a610ca16336e865345dceaa5`, adapter SHA `aefb39dd6c378571ea8146bfa27fa153609da7460bc7198c3cfeb471ce02bcd6`; Omnigent `0.3.42-rc.5` source `f6c20d5150a41d76627f2684e5f338c457f80d09`, archive SHA-256 `07a4c4fb0399a04d79bb73f518a088504147fbc5e02b115ef6cca77e80b1b63f`, combined patch SHA `5bbbd15bf9b0734bb4964c79dd620ecbc3e0ccda26af3cec2cb6a488d8eba7aa`. Native manifest, pins, Linux overlay member hashes and source/acceptance locks bind this exact pair. Paseo 0.17.5 runtime r4/a7 remains unchanged, including the five runtime payload files. Local native source and package-lock checks pass; a fresh Pi Web build and host acceptance are not claimed.
 
-**Previous 0.2.16-rc.3 candidate (superseded; rc.4 is held and rc.5 is pending).** It pairs Agent Connect
+**Previous 0.2.16-rc.3 candidate (superseded; rc.4 is held and rc.5 is the active candidate).** It pairs Agent Connect
 0.1.27-rc.3 and Omnigent 0.3.42-rc.3 with the Paseo 0.17.5 runtime. Its
 artifacts remain unpublished candidates; this source change does not claim
 host acceptance.

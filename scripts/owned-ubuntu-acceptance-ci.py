@@ -29,8 +29,8 @@ ARTIFACT = 'piweb-0.10.0-linux-x64.tar.gz'
 LOCK = 'scripts/owned-ubuntu-acceptance-ci.lock.json'
 FREEZE = 'tests/owned-acceptance-component-source.json'
 HANDOFF = 'tests/owned-acceptance-component-handoff.json'
-INSTALLER = {'path': 'tests/owned-native-acceptance.lock.json', 'sha256': 'c9a64aecc8fc86f862c533e02c45fac1ec707bc310ff768afa6b14f47fabe7a1', 'count': 40, 'bytes': 16383}
-PLUGIN_SHA = 'fc0d51131e21efc1d9e94ef5f3b5b7bbf7c811691e46769763dcde667a74bcc8'
+INSTALLER = {'path': 'tests/owned-native-acceptance.lock.json', 'sha256': '460f3d3a89afb6a1bc8b46b2fd79e7a1777ed8c428c24ddffd6c812647835edb', 'count': 40, 'bytes': 16867}
+PLUGIN_SHA = '07a4c4fb0399a04d79bb73f518a088504147fbc5e02b115ef6cca77e80b1b63f'
 PACKAGER = {'path': 'scripts/build-piweb-artifact.sh',
             'sha256': '157eae7044a6dcb641f60306fb60cf1e2d024be9c64130ca714a170648ad0263',
             'bytes': 2416, 'mode': 0o755}

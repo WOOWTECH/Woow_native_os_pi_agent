@@ -3,10 +3,10 @@
   "baseTree": "4ebb37ac864d1a423eccfb6cdd838f1f94bbf21f",
   "componentSource": {
     "archive": {
-      "bytes": 145287,
+      "bytes": 145346,
       "memberCount": 24,
-      "sha256": "afc288c1f8f40751fc8fb2401330705a80c684e524cf3681596467f2bdbf283d",
-      "sourceRowsSha256": "4f26dcc44b29c06aa89b6a840547d53429ddec67e57706702095f67252ed12fe"
+      "sha256": "41d0920fa9bef521177d72fe55427b45d3d5277203d9d319e9a34137e8190ad6",
+      "sourceRowsSha256": "38cc5d711a132c821b22b201f8ce6e9dcd31af8ac9265f615858dd9a11d68cdc"
     },
     "fileCount": 24,
     "files": [
@@ -35,12 +35,12 @@
         "sha256": "bc68c0a878393db0488ca18ffb6524f40e8c4ca3a5cd296f38768763500749e2"
       },
       {
-        "bytes": 9133,
-        "gitBlob": "66c6787c63ad282cc1ed0d2cbdbaeadf6ec82005",
+        "bytes": 9271,
+        "gitBlob": "0449193233db98b4a2990fed93cde579331b0947",
         "gitMode": "100644",
         "mode": 420,
         "path": "docs/OWNED-UBUNTU-GENUINE-CI.md",
-        "sha256": "da4d34dc524377f931bd3202baa78f837efcb48c460c4330d84fe7649386dc25"
+        "sha256": "6c691680435839d6cd475151df58e6200213439de7abb57a161335c28d2e85de"
       },
       {
         "bytes": 48655,
@@ -68,11 +68,11 @@
       },
       {
         "bytes": 35737,
-        "gitBlob": "0f6e58b77e453b8de749fa4e20fad1d09e8df134",
+        "gitBlob": "3034b4b0a99942494d0df013843c3584e5188b17",
         "gitMode": "100644",
         "mode": 420,
         "path": "scripts/owned-ubuntu-acceptance-ci.py",
-        "sha256": "dbae20546a669a25f658aac2e9d6aff7fa30b40ca803fbbb90f5ad4b3d932466"
+        "sha256": "538e3a1924ee606c18a45cbda9eaef07dd224435c4ddebff644c0f7db36630de"
       },
       {
         "bytes": 2974,
@@ -124,11 +124,11 @@
       },
       {
         "bytes": 60268,
-        "gitBlob": "b4becf1c16684a793b85eacf4f3d855bc0de5207",
+        "gitBlob": "35b47175e0c35c9da5deb9f8fe81b61b5e7d41cf",
         "gitMode": "100644",
         "mode": 420,
         "path": "tests/owned_native_acceptance.py",
-        "sha256": "cefa2cd5c53589ca3c8c38a6845725d21020e8e5c6998bd392ef3add2d77fcc6"
+        "sha256": "9392e6509da14bd5042023f45dce9a4d4b79d3eb3cc46f8e678f40c635e77ad6"
       },
       {
         "bytes": 47284,
@@ -180,11 +180,11 @@
       },
       {
         "bytes": 49090,
-        "gitBlob": "7278133a6a7d9037bfbca0e5b3d8c4519ad1937a",
+        "gitBlob": "f2258f2ecbc29cf7dea6b8989421514233757ffa",
         "gitMode": "100644",
         "mode": 420,
         "path": "tests/test_owned_native_acceptance.py",
-        "sha256": "02d0bf19ae89fc90a3fb5dd61840cde7dc20104571278b975f7916163aa7f266"
+        "sha256": "c5424f051929026c8ff176ee1b8504b1c4a3e31f6718d30358ae67ea3f5ad0ec"
       },
       {
         "bytes": 19553,
@@ -207,13 +207,13 @@
       "bytes": 8301,
       "mode": 420,
       "path": "tests/owned-acceptance-component-source.json",
-      "sha256": "fdbe335ad8a2cc71dd12893be7f829f66fb1af5fd3d83c9940bce7186213bccb"
+      "sha256": "56900362aeafe04fa7c36dd5e04d95eacc15ffa33eb0e2fcaf4eb74ad001c7ee"
     },
     "handoff": {
       "bytes": 4466,
       "mode": 420,
       "path": "tests/owned-acceptance-component-handoff.json",
-      "sha256": "c3d8c0107a9feaae08731ea8ddc8a35c8fe7ce10ac185afffb2e5f601ffe1dc8"
+      "sha256": "e822258c47c4d9a5d03e3fe2ec539c9862c4489e0b97bb7b161a6d835fe06699"
     },
     "roles": {
       "compatibilityEntries": [
@@ -262,7 +262,7 @@
         ".github/workflows/owned-ubuntu-acceptance.yml"
       ]
     },
-    "sourceRowsSha256": "4f26dcc44b29c06aa89b6a840547d53429ddec67e57706702095f67252ed12fe"
+    "sourceRowsSha256": "38cc5d711a132c821b22b201f8ce6e9dcd31af8ac9265f615858dd9a11d68cdc"
   },
   "historicalSupersededAuthority": {
     "acceptedCommit": "ec0a52a20958d7ca8ad779a5b5d2391b52248892",
@@ -334,10 +334,10 @@
     "revision": "frozen-v4"
   },
   "installerInputLock": {
-    "bytes": 16383,
+    "bytes": 16867,
     "count": 40,
     "path": "tests/owned-native-acceptance.lock.json",
-    "sha256": "0a435e3fca43668e2a5b10f05fc15dba150bbf5a6471b6dd79ef19cbd0c917d1"
+    "sha256": "460f3d3a89afb6a1bc8b46b2fd79e7a1777ed8c428c24ddffd6c812647835edb"
   },
   "packager": {
     "bytes": 2416,

@@ -1,6 +1,6 @@
 # Native release preparation
 
-## 0.2.16-rc.5 preparation — exact upstream tuples pending
+## 0.2.16-rc.5 exact paired source and native lock candidate
 
 - Target native version: `0.2.16-rc.5`.
 - Agent Connect `0.1.27-rc.5` exact tuple received: source commit
@@ -12,22 +12,31 @@
   The archive's SHA-256 was independently recomputed locally and matched. The
   reported source checks are 128 host tests, typecheck, and Next 16.4.6
   production build; these are upstream-provided results, not native validation.
-- Await Omnigent `0.3.42-rc.5` exact commit/archive tuple paired with this adapter
-  identity before changing native candidate package names, archive bytes, pins,
-  member inventories, or source/acceptance locks. The native manifest still
-  contains inherited rc4 review state and is not an rc5 package manifest.
-- This worktree starts from the held rc4 checkpoint. The rc4 archive files and
-  associated candidate pins are inherited review state only; do not use them as
-  rc5 packages or rename/copy them to rc5 filenames. Recompose all native locks
-  from the new exact tuples once they arrive.
-- Target Paseo 0.17.5 runtime r4/a7 remains unchanged. The inherited rc4
-  package metadata may still describe r3; it is review-only and must not be
-  treated as the rc5 runtime tuple. The reported Next and
-  eslint-config-next 16.4.6 security follow-up belongs to the upstream package
-  owners; wait for their new immutable tuples rather than assuming a successful
-  Pi Web build here.
-- Preparation only: no Pi Web build, old-graph test rerun, host access,
-  publication or release acceptance is performed by this change.
+- Omnigent `0.3.42-rc.5` exact paired tuple received: source commit
+  `f6c20d5150a41d76627f2684e5f338c457f80d09`; archive
+  `next-security-release-rc5/artifacts/woowtech-pi-omnigent-plugin-0.3.42-rc.5.tgz`,
+  SHA-256 `07a4c4fb0399a04d79bb73f518a088504147fbc5e02b115ef6cca77e80b1b63f`;
+  combined patch SHA-256
+  `5bbbd15bf9b0734bb4964c79dd620ecbc3e0ccda26af3cec2cb6a488d8eba7aa`.
+  AC adapter identity matches the AC tuple above. The source reports 348 Node,
+  143 Python, 144 host tests and Next 16.4.6 production build passed; these are
+  upstream-provided results, not native acceptance evidence.
+- Native package archives, manifest, pins, four version overlays, Linux post-overlay
+  member inventory, 40 installer input rows and the component-source/handoff
+  authority chain now bind the exact rc5 pair. Targeted native checks passed. A
+  fresh Pi Web build, image build, host acceptance and publication remain pending.
+- The rc4 checkpoint remains preserved on its own branch. RC5 archive filenames,
+  bytes, pins and locks use only the exact rc5 tuples above; no rc4 archive was
+  copied or renamed into the rc5 package set.
+- Paseo 0.17.5 runtime remains `0.17.5-r4-8664f2c3f8f5`; Better Paseo a7
+  payload source is `a7bfd65a3f39076cf664e28687818c24952e261c`, with its five
+  payload files unchanged. The paired upstream sources report Next and
+  eslint-config-next 16.4.6; this native branch does not claim an independently
+  built Pi Web artifact.
+- Validation performed locally: manifest/package binding, Linux overlay
+  composition, source-authority composition and owned safety fixtures. No old
+  graph rerun, Pi Web build, image build, host access, publication or release
+  acceptance is claimed.
 
 ## 0.2.16-rc.4 held checkpoint — incomplete, not releasable
 
