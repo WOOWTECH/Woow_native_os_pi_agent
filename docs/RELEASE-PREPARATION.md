@@ -1,5 +1,12 @@
 # Native release preparation
 
+## 0.2.16-rc.2 preference persistence candidate
+
+- Agent Connect 0.1.27-rc.2 ships exact Smart a61efefca builtin bytes in a separate 0.17.5-r2 runtime; keeps verified r1 for rollback.
+- Omnigent 0.3.42-rc.2 pins this exact contributor. Combined Pi Web code and patch digest remain unchanged.
+- The frozen archives, source commits, Linux overlay member hashes and acceptance authority are refreshed as one pair.
+- Candidate only; aicoder real UI persistence and data preservation must be verified before describing it as accepted.
+
 ## 0.2.16-rc.1 coordinated candidate
 
 - Agent Connect 0.1.27-rc.1 is paired with the Paseo 0.17.5 runtime at

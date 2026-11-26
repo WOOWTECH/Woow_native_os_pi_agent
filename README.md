@@ -26,8 +26,8 @@ acceptance require separate host evidence.
 background startup to readiness, explains unsaved or pending target changes,
 and bounds waiting without automatically repeating lifecycle actions.
 
-**0.2.16-rc.1 is a coordinated candidate.** It pairs Agent Connect
-0.1.27-rc.1 and Omnigent 0.3.42-rc.1 with the Paseo 0.17.5 runtime. Its
+**0.2.16-rc.2 is a coordinated candidate.** It pairs Agent Connect
+0.1.27-rc.2 and Omnigent 0.3.42-rc.2 with the Paseo 0.17.5 runtime. Its
 artifacts remain unpublished candidates; this source change does not claim
 host acceptance.
 
