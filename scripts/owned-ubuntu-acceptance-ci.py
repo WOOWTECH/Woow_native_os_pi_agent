@@ -589,7 +589,7 @@ def bind_receipt(raw, state, artifact_sha):
          and values['supervisor'] == authority['custodyMode']
          and values['baseSourceReference'] == BASE_COMMIT
          and values['sourceLockSha256'] == INSTALLER['sha256']
-         and values['pluginSha256'] == '4763b1bc98eb64a7f8cba890a9c7fdf8907a3cab001eb5ccaa246cd45642a846', 'RECEIPT_IDENTITY')
+         and values['pluginSha256'] == '7de928d37def9feec4476674da82979c2bdb24adb3cd9413188959410120ad4e', 'RECEIPT_IDENTITY')
     need(all(values[k] is False for k in ('realUbuntuAcceptance', 'realWSL2Acceptance',
                                         'providerAcceptance', 'rebootAcceptance'))
          and type(values['teardownVerified']) is bool

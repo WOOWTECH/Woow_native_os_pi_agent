@@ -1,9 +1,9 @@
 {
   "archive": {
-    "bytes": 144715,
+    "bytes": 144700,
     "memberCount": 24,
-    "sha256": "b734f0580e115100286d24da9f44cd2bad44f932cbacd36337e30a9847a8942e",
-    "sourceRowsSha256": "8e31154ed6d76864b229049700862998b0e7f66e9c4c5c08787d23e0581fef46"
+    "sha256": "822dc50052d6731c4bc7bc25abedd50dcb65677c63543708d99e20be3c5c9640",
+    "sourceRowsSha256": "7edced6e5b74ce9de1fb609f993e1ac44b3a1eccfa79a81ef5cb89e5d119ae30"
   },
   "classification": "REVIEWED_SOURCE_ONLY",
   "closure": [
@@ -32,7 +32,7 @@
     "tests/test_owned_proc_lifecycle.py",
     "tests/test_owned_process_custody.py"
   ],
-  "freezeSha256": "7d21ff71ee96c72082b6fa3510fab7398a61c91be6af47054ae2505d56617614",
+  "freezeSha256": "e1988a12d38448d5d180de95181a5e460f7f3c72871de346eb7285816b12ca99",
   "invocation": {
     "argv": [
       "{python}",
