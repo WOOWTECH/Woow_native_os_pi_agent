@@ -3,10 +3,10 @@
   "baseTree": "4ebb37ac864d1a423eccfb6cdd838f1f94bbf21f",
   "componentSource": {
     "archive": {
-      "bytes": 144500,
+      "bytes": 144641,
       "memberCount": 24,
-      "sha256": "5cd1f16eafb436f741c448fb6b2f50a93b636020b4846df640e6b71629556114",
-      "sourceRowsSha256": "631fb08a0a05a71535813b943e7d364827c25153e36b366b83ee78bedfa77442"
+      "sha256": "51a00c672dd5ff926b761d0267288aea965b86c555f87b14a05a8ff01f183ce1",
+      "sourceRowsSha256": "c63dafc83469561e1a70dd7da12b9a5b1abc5c2ce28e91620152fdd36fe481b9"
     },
     "fileCount": 24,
     "files": [
@@ -27,12 +27,12 @@
         "sha256": "579da1297fa25586742ea0cc3ad3f3ae57bd4b9abb85f35bd40e6f5d107a90dd"
       },
       {
-        "bytes": 32674,
-        "gitBlob": "f8009667d34779f29a2c4ddf8e68e81560676699",
+        "bytes": 32845,
+        "gitBlob": "5c9539c9afe8eab74a2b63f4e76f59400994e3a1",
         "gitMode": "100644",
         "mode": 420,
         "path": "docs/OWNED-NATIVE-ACCEPTANCE.md",
-        "sha256": "8c6b6bb823a6aae78fb58519e067bc0f32891c10b7d75624d63394a2103dff2e"
+        "sha256": "bc68c0a878393db0488ca18ffb6524f40e8c4ca3a5cd296f38768763500749e2"
       },
       {
         "bytes": 9108,
@@ -207,13 +207,13 @@
       "bytes": 8301,
       "mode": 420,
       "path": "tests/owned-acceptance-component-source.json",
-      "sha256": "f130af6d20bc2762603390f190ef570a442e2c6572146d6748b9cb8ac851708f"
+      "sha256": "9a86533af19b4b9961964402357cd80886cb416c50dc7daa9a74dbdb13cb6bf7"
     },
     "handoff": {
       "bytes": 4466,
       "mode": 420,
       "path": "tests/owned-acceptance-component-handoff.json",
-      "sha256": "e32f20f66fd41a8e9e8cebb33ae210bb7e2bf21b29ce9ac80b2f43793a0cd78a"
+      "sha256": "42fa0f8ccc73bfb7eecb38a1ba62cd1238a6db476ad59722ca553f40a1b1cbb3"
     },
     "roles": {
       "compatibilityEntries": [
@@ -262,7 +262,7 @@
         ".github/workflows/owned-ubuntu-acceptance.yml"
       ]
     },
-    "sourceRowsSha256": "631fb08a0a05a71535813b943e7d364827c25153e36b366b83ee78bedfa77442"
+    "sourceRowsSha256": "c63dafc83469561e1a70dd7da12b9a5b1abc5c2ce28e91620152fdd36fe481b9"
   },
   "historicalSupersededAuthority": {
     "acceptedCommit": "ec0a52a20958d7ca8ad779a5b5d2391b52248892",

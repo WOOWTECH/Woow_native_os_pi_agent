@@ -18,12 +18,12 @@
       "sha256": "579da1297fa25586742ea0cc3ad3f3ae57bd4b9abb85f35bd40e6f5d107a90dd"
     },
     {
-      "bytes": 32674,
-      "gitBlob": "f8009667d34779f29a2c4ddf8e68e81560676699",
+      "bytes": 32845,
+      "gitBlob": "5c9539c9afe8eab74a2b63f4e76f59400994e3a1",
       "gitMode": "100644",
       "mode": 420,
       "path": "docs/OWNED-NATIVE-ACCEPTANCE.md",
-      "sha256": "8c6b6bb823a6aae78fb58519e067bc0f32891c10b7d75624d63394a2103dff2e"
+      "sha256": "bc68c0a878393db0488ca18ffb6524f40e8c4ca3a5cd296f38768763500749e2"
     },
     {
       "bytes": 9108,
@@ -242,5 +242,5 @@
     ]
   },
   "schema": "owned-component-source/v1",
-  "sourceRowsSha256": "631fb08a0a05a71535813b943e7d364827c25153e36b366b83ee78bedfa77442"
+  "sourceRowsSha256": "c63dafc83469561e1a70dd7da12b9a5b1abc5c2ce28e91620152fdd36fe481b9"
 }
