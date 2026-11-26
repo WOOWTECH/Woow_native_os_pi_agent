@@ -28,11 +28,11 @@ from owned_process_custody import Budget, CustodyError, EXIT_WAIT_LIMIT, OwnedDe
 
 BASE_COMMIT = '172522c8a4065f80e813d6d4710b26b13b6094c7'
 BASE_TREE = '4ebb37ac864d1a423eccfb6cdd838f1f94bbf21f'
-PLUGIN_SHA = '4763b1bc98eb64a7f8cba890a9c7fdf8907a3cab001eb5ccaa246cd45642a846'
+PLUGIN_SHA = '7de928d37def9feec4476674da82979c2bdb24adb3cd9413188959410120ad4e'
 SHARED_SHA = '0914069fb0cf83f258cf81034bb16573f6e4242e8779cea47b4a5e841f98a937'
 MAX_FILE = 4 * 1024 * 1024
 NOFOLLOW = os.O_NOFOLLOW
-SOURCE_LOCK_SHA = '1d840f8ebed510e48ba02da6d95172aea9b763b6c91f0d33a88440a0053e2418'
+SOURCE_LOCK_SHA = '85387109a4543e8b5aa3c2f7b4e1e2bd64df7a7d47ac6cf7eddb22f7dd68f60a'
 INSTALL_STAGES = ('node', 'fetch', 'piweb', 'clis', 'shared', 'paseo', 'omnigent', 'wire')
 
 
@@ -843,7 +843,7 @@ def archive_bindings(run, source):
     lock = verify_source(source)
     for package, destination, expected in [
             ('woowtech-pi-agent-shared-runtime-0.1.6.tgz', 'install/shared-runtime', SHARED_SHA),
-            ('woowtech-pi-omnigent-plugin-0.3.40.tgz', 'install/plugins/pi-omnigent-plugin', PLUGIN_SHA)]:
+            ('woowtech-pi-omnigent-plugin-0.3.41.tgz', 'install/plugins/pi-omnigent-plugin', PLUGIN_SHA)]:
         raw, _ = source_file(source, 'candidate-packages/' + package)
         require(digest(raw) == expected, 'ARCHIVE_DRIFT')
         import io
@@ -1116,8 +1116,8 @@ def installed_web(run, port):
     for route in ('/', '/api/home', '/omnigent'):
         endpoint.get(route)
     plugin = json.loads(endpoint.get('/api/omnigent'))
-    require(plugin.get('active') is True and plugin.get('version') == '0.3.40', 'PLUGIN_HTTP_IDENTITY')
-    run.receipt['checks'].append('owned-http-plugin-0.3.40')
+    require(plugin.get('active') is True and plugin.get('version') == '0.3.41', 'PLUGIN_HTTP_IDENTITY')
+    run.receipt['checks'].append('owned-http-plugin-0.3.41')
     return process
 
 

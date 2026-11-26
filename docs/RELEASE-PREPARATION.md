@@ -1,5 +1,42 @@
 # Native release preparation
 
+## 0.2.15
+
+Changes from 0.2.14:
+
+- Agent Connect 0.1.26 (pi-paseo-plugin #27, merged as
+  `23026e2442403ddee8df9f764ded6ea1a75b121e`) fixes the Start service feedback.
+  A scheduled start remains tracked until ready, can still be stopped while
+  preparing, and does not become a repeatable action after a failed status
+  read. Unsaved or pending target changes require an explicit save and
+  stop/start. Requests and startup tracking have finite deadlines; an unknown
+  result is shown without automatically retrying a state-changing request.
+  The verified release archive SHA256 is
+  `87fcc99b371ef8acbb694884ae3b8654e50f9270651062ac55d37090734f3825`.
+- Omnigent 0.3.41 (pi-omnigent-plugin #38, merged as
+  `b481f9cd74e269a3f52a5cbf62713e252573c075`) contains the matching combined
+  Pi Web adapter and requires Agent Connect 0.1.26. Its verified release
+  archive SHA256 is
+  `7de928d37def9feec4476674da82979c2bdb24adb3cd9413188959410120ad4e`;
+  the combined adapter SHA256 is
+  `13775483ce327a544b2604f4205db11ec0eec516e0765c44bebf72a133503dbb`.
+- The four reviewed Omnigent overlays accept 0.3.41. The candidate manifest,
+  installed Linux member inventory and owned acceptance authority are updated
+  together, using the merged sources and byte-verified public release assets.
+
+Paseo 0.17.4, runtime revision `0.17.4-r2-a651f42711da`, Better Paseo 1.7.0,
+Pi Web 0.10.0, shared runtime 0.1.6 and managed Omnigent 0.16.0 stay unchanged.
+The UI fix does not change saved authentication, pairing identities or data
+formats. Reload Pi Web after installing to use the new settings component;
+this UI-only update does not require restarting a healthy r2 daemon.
+
+The Agent Connect and Omnigent PR checks passed, including 128 Agent Connect
+host tests, 144 combined UI tests, TypeScript and production builds. Isolated
+Chromium tests cover all three brands at desktop and 390px widths. These
+results do not establish field acceptance or authorize interrupting a host
+reserved for another test session. Existing moderate dependency advisories
+remain outside this UI fix.
+
 ## 0.2.14
 
 Changes from 0.2.13:

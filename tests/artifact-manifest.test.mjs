@@ -81,9 +81,9 @@ test('every frozen candidate binds the source commit it was packed from', () => 
     assert.equal(row.sourceFreezeSha256, undefined, row.file);
     assert.equal(row.releaseHandoffSha256, undefined, row.file);
   }
-  // pi-omnigent-plugin #33, squash-merged; git archive + npm pack reproduces the archive.
-  assert.equal(expected().packages.find(x => x.file.includes('omnigent-plugin-0.3.40')).sourceCommit,
-    'a36f260d680d8334206e4b794a7c4bcd8dd2e99f');
+  // pi-omnigent-plugin #38, squash-merged; git archive + npm pack reproduces the archive.
+  assert.equal(expected().packages.find(x => x.file.includes('omnigent-plugin-0.3.41')).sourceCommit,
+    'b481f9cd74e269a3f52a5cbf62713e252573c075');
 });
 // A reviewed candidate frozen before it had a commit (as 0.3.35 was) keeps its
 // freeze and handoff identity instead; never both kinds of provenance.
@@ -95,13 +95,13 @@ function withPluginRow(t, mutate) {
   fs.cpSync(path.join(repo,'candidate-packages'),path.join(dir,'candidate-packages'),{recursive:true});
   const file=path.join(dir,'candidate-packages/manifest.json');
   const value=JSON.parse(fs.readFileSync(file));
-  mutate(value.artifacts.find(x => x.file.includes('omnigent-plugin-0.3.40')));
+  mutate(value.artifacts.find(x => x.file.includes('omnigent-plugin-0.3.41')));
   fs.writeFileSync(file,JSON.stringify(value));
   return dir;
 }
 test('a pre-commit candidate retains exact freeze and handoff provenance', t => {
   const dir = withPluginRow(t, freezeOnly);
-  const row = expectedManifest(dir,'linux','x64',pins.version,pins.ref,pins.adapter).packages.find(x => x.file.includes('omnigent-plugin-0.3.40'));
+  const row = expectedManifest(dir,'linux','x64',pins.version,pins.ref,pins.adapter).packages.find(x => x.file.includes('omnigent-plugin-0.3.41'));
   assert.equal(row.sourceCommit, undefined);
   assert.equal(row.sourceFreezeSha256, 'b'.repeat(64));
   assert.equal(row.releaseHandoffSha256, 'c'.repeat(64));

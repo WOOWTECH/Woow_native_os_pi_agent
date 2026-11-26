@@ -27,11 +27,11 @@
     },
     {
       "bytes": 9113,
-      "gitBlob": "2142092c6090455ae67cbefd3f5d750fa5054b3f",
+      "gitBlob": "7d6573f37a6ee1717f61363a624a29a54886208a",
       "gitMode": "100644",
       "mode": 420,
       "path": "docs/OWNED-UBUNTU-GENUINE-CI.md",
-      "sha256": "9b5f5cf4a3f6497a11079e160006e6a485678534d659b22001aee739f4ebbabb"
+      "sha256": "f506f1091fa13b226ca6a8ceddcdacdca4bc52b790fded829d916ac693a0415d"
     },
     {
       "bytes": 48655,
@@ -58,12 +58,12 @@
       "sha256": "0ecbb8fc544d9e3cf0c5ed74e42da93d0005ba04900e9054580627e98c8f74f8"
     },
     {
-      "bytes": 35726,
-      "gitBlob": "585761fea4b5ecdc4992a753893f03be30699ced",
+      "bytes": 35713,
+      "gitBlob": "850ca5f04b8d145c5daa095fea8b84325c69d43d",
       "gitMode": "100644",
       "mode": 420,
       "path": "scripts/owned-ubuntu-acceptance-ci.py",
-      "sha256": "f6eeba52683834d6630004665dce9fe2f89f57e00cc95ac186005757894b4013"
+      "sha256": "8e087db8e1f45b9849dafb83487f9cf32bf1f395c6c16e22a68ef43f0cd293d9"
     },
     {
       "bytes": 2974,
@@ -115,11 +115,11 @@
     },
     {
       "bytes": 60253,
-      "gitBlob": "a77ed749673de6f73420d89b6c7ddb6b4dcd7168",
+      "gitBlob": "f646a5292db3cdc53352b4ce6f9f075e60df8485",
       "gitMode": "100644",
       "mode": 420,
       "path": "tests/owned_native_acceptance.py",
-      "sha256": "f0cb1f43ed19645e996a159a8f6f9b3b78f3b6ba27db421742a0854a2d6ba7b5"
+      "sha256": "fa41e21bcbf4908410e218849f1eaf9f3bc61c9b212d6ccf22ed5e9da5169432"
     },
     {
       "bytes": 46960,
@@ -171,11 +171,11 @@
     },
     {
       "bytes": 49065,
-      "gitBlob": "2900e8bf4c32565157f8bd4205a382f3447d670b",
+      "gitBlob": "fd4cefa62419823fbb4068a729b4c607171ba016",
       "gitMode": "100644",
       "mode": 420,
       "path": "tests/test_owned_native_acceptance.py",
-      "sha256": "b37951fcc8c72c0aee9a5e1daafa0b099131ee3b09ad894c5aa8d1aaa39df502"
+      "sha256": "863946a4bc9ee1b7a08e8e3c1b1c5f32e57cb945b4596177870825c7cba85a29"
     },
     {
       "bytes": 19553,
@@ -242,5 +242,5 @@
     ]
   },
   "schema": "owned-component-source/v1",
-  "sourceRowsSha256": "c4bd0256ba1ede178cec1de94b3f47ad81a56de277247e35a575eb9dd7494a00"
+  "sourceRowsSha256": "8e31154ed6d76864b229049700862998b0e7f66e9c4c5c08787d23e0581fef46"
 }
