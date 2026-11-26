@@ -26,17 +26,9 @@ acceptance require separate host evidence.
 background startup to readiness, explains unsaved or pending target changes,
 and bounds waiting without automatically repeating lifecycle actions.
 
-**0.2.16-rc.4 preparation is in progress.** Agent Connect `0.1.27-rc.4` is
-identified by source commit `a895f725aad645e7594c8405aac17aca409b3558` and
-candidate archive SHA-256
-`3fe3f9e7bad463c6a007703a8db67c2de320b061e93ba7bc79339cae68fe937b`.
-Omnigent `0.3.42-rc.4`'s exact paired source and archive are pending. This
-worktree has only advanced its native version and version-level documentation
-and tests; its package pins, archives and acceptance locks are still rc3, so it
-is not yet a buildable or testable rc4 candidate. Do not use rc3 hashes as rc4
-inputs or claim host acceptance.
+**0.2.16-rc.4 is held and incomplete.** The received Agent Connect `0.1.27-rc.4` tuple is source `a895f725aad645e7594c8405aac17aca409b3558`, archive SHA-256 `3fe3f9e7bad463c6a007703a8db67c2de320b061e93ba7bc79339cae68fe937b`; Omnigent `0.3.42-rc.4` is source `05d5d596f4759ac372a210d5eff8e0a11463a44d`, archive SHA-256 `fc0d51131e21efc1d9e94ef5f3b5b7bbf7c811691e46769763dcde667a74bcc8`. Their combined Pi Web patch tuple is `13775483ce327a544b2604f4205db11ec0eec516e0765c44bebf72a133503dbb`; Agent Connect reports Paseo runtime r3 and Tasks chunk `f9f9101d9d59ec1a`. These tuple facts are retained for review only. Native archive/pin edits are an unfinished checkpoint: the source authority and installer-input lock chain was not recomposed, and Next 16.4.3's final Pi Web safety gate failed. Do not use this tree as a releasable candidate or claim acceptance. The security follow-up is being prepared as a separate rc5 line; Paseo runtime r4/a7 remains unchanged.
 
-**0.2.16-rc.3 is a coordinated candidate.** It pairs Agent Connect
+**Previous 0.2.16-rc.3 candidate (superseded by rc.4 above).** It pairs Agent Connect
 0.1.27-rc.3 and Omnigent 0.3.42-rc.3 with the Paseo 0.17.5 runtime. Its
 artifacts remain unpublished candidates; this source change does not claim
 host acceptance.

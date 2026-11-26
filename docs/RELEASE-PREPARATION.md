@@ -1,23 +1,29 @@
 # Native release preparation
 
-## 0.2.16-rc.4 preparation — paired Omnigent input pending
+## 0.2.16-rc.4 held checkpoint — incomplete, not releasable
 
-- Agent Connect `0.1.27-rc.4` immutable tuple received: source commit
-  `a895f725aad645e7594c8405aac17aca409b3558`; candidate archive
+- Agent Connect `0.1.27-rc.4` tuple evidence: source commit
+  `a895f725aad645e7594c8405aac17aca409b3558`; artifact
   `phone-selected-release-rc4/artifacts/woowtech-pi-paseo-0.1.27-rc.4.tgz`,
   SHA-256 `3fe3f9e7bad463c6a007703a8db67c2de320b061e93ba7bc79339cae68fe937b`.
-- Omnigent `0.3.42-rc.4` exact paired source and archive are pending from Dirac.
-  Do not swap either package into `candidate-packages/`, refresh package pins,
-  overlay guards, Linux member hashes, or owned-acceptance locks until that
-  tuple arrives and the pair metadata is verified.
-- Native `VERSION` is `0.2.16-rc.4`; only native-version assertions and this
-  preparation documentation have advanced. The frozen packages and hash-bound
-  controls intentionally still describe rc3, so this intermediate tree is not
-  an rc4 build and must not be packaged or accepted as one.
-- Once both tuples are present, follow
-  [`docs/plans/2026-11-26-native-rc4-preparation.md`](plans/2026-11-26-native-rc4-preparation.md)
-  and the non-circular source-authority procedure below before running final
-  native checks.
+- Omnigent `0.3.42-rc.4` paired tuple evidence: source commit
+  `05d5d596f4759ac372a210d5eff8e0a11463a44d`; artifact
+  `phone-selected-release-rc4/artifacts/woowtech-pi-omnigent-plugin-0.3.42-rc.4.tgz`,
+  SHA-256 `fc0d51131e21efc1d9e94ef5f3b5b7bbf7c811691e46769763dcde667a74bcc8`.
+- Their combined Pi Web patch SHA-256 remains
+  `13775483ce327a544b2604f4205db11ec0eec516e0765c44bebf72a133503dbb`.
+  The Agent Connect archive reports Paseo 0.17.5 runtime r3 and Tasks chunk
+  `f9f9101d9d59ec1a`; these are recorded as tuple evidence, not a runtime update.
+- The native worktree contains package/pin/overlay/acceptance edits made before
+  the security-scope change. Its source authority and installer-input lock chain
+  was not recomposed. Treat this commit as an auditable, incomplete checkpoint;
+  do not build, test the old graph, publish, or claim release acceptance from it.
+- Next 16.4.3's final security gate rejected the Pi Web build. The reported
+  follow-up is owned by the upstream lines (standalone adapter and combined
+  patch changes plus Next/eslint-config-next 16.4.6); this native worktree does
+  not assert those fixes or contain a passing Pi Web result. A separate rc5
+  preparation line awaits new exact Agent Connect and Omnigent tuples. Paseo
+  runtime remains r4/a7 unchanged as directed.
 
 ## 0.2.16-rc.3 shortcut recording candidate
 

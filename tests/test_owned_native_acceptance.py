@@ -493,7 +493,7 @@ class ScenarioTests(unittest.TestCase):
             self.assertFalse(receipt['realWSL2Acceptance'])
 
     def seed_static_packages(self, run):
-        for name, dest in [('woowtech-pi-omnigent-plugin-0.3.42-rc.3.tgz', 'install/plugins/pi-omnigent-plugin'),
+        for name, dest in [('woowtech-pi-omnigent-plugin-0.3.42-rc.4.tgz', 'install/plugins/pi-omnigent-plugin'),
                            ('woowtech-pi-agent-shared-runtime-0.1.6.tgz', 'install/shared-runtime')]:
             with tarfile.open(HERE.parent / 'candidate-packages' / name) as archive:
                 for member in archive:

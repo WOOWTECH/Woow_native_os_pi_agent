@@ -40,8 +40,8 @@ import path from 'node:path';
 // combined adapter; 0.3.41 adds the Agent Connect 0.1.26 startup UI fix. The
 // 0.3.42-rc.1 candidate changes only package, changelog, README and adapter metadata.
 // The exact candidate archive is locked in lib/pins.sh.
-const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35', '0.3.36', '0.3.37', '0.3.38', '0.3.39', '0.3.40', '0.3.41', '0.3.42-rc.1', '0.3.42-rc.2', '0.3.42-rc.3'];
-const MAINTENANCE_AWARE_VERSIONS = ['0.3.35', '0.3.36', '0.3.37', '0.3.38', '0.3.39', '0.3.40', '0.3.41', '0.3.42-rc.1', '0.3.42-rc.2', '0.3.42-rc.3'];
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35', '0.3.36', '0.3.37', '0.3.38', '0.3.39', '0.3.40', '0.3.41', '0.3.42-rc.1', '0.3.42-rc.2', '0.3.42-rc.3', '0.3.42-rc.4'];
+const MAINTENANCE_AWARE_VERSIONS = ['0.3.35', '0.3.36', '0.3.37', '0.3.38', '0.3.39', '0.3.40', '0.3.41', '0.3.42-rc.1', '0.3.42-rc.2', '0.3.42-rc.3', '0.3.42-rc.4'];
 
 // src/installer.mjs: the re-discovery right after the plugin's own `uv tool install omnigent`.
 const HOOK_MARKER = 'model-options-hook (Woow native installer)';

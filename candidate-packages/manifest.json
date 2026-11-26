@@ -8,17 +8,17 @@
       "sourceCommit": "e51849dfa340a2f91bcc7041092749d1b4859c70"
     },
     {
-      "file": "woowtech-pi-paseo-0.1.27-rc.3.tgz",
-      "sha256": "ee3a2f8b35bb42f87b85d4811362d134dcbcb9ae8e8845af69cc6d75d27248f4",
+      "file": "woowtech-pi-paseo-0.1.27-rc.4.tgz",
+      "sha256": "3fe3f9e7bad463c6a007703a8db67c2de320b061e93ba7bc79339cae68fe937b",
       "status": "unpublished coordinated candidate; not a registry/release asset",
-      "sourceCommit": "88857bd86a4bf982aef6d85122f16b7d4a03d009",
+      "sourceCommit": "a895f725aad645e7594c8405aac17aca409b3558",
       "runtimeRevision": "0.17.5-r3-8664f2c3f8f5"
     },
     {
-      "file": "woowtech-pi-omnigent-plugin-0.3.42-rc.3.tgz",
-      "sha256": "fe9eb04b44da3e509723889de77c00d1da44daff44c81b5cba6df43b117ab80e",
+      "file": "woowtech-pi-omnigent-plugin-0.3.42-rc.4.tgz",
+      "sha256": "fc0d51131e21efc1d9e94ef5f3b5b7bbf7c811691e46769763dcde667a74bcc8",
       "status": "unpublished coordinated candidate; not a registry/release asset",
-      "sourceCommit": "828d136eca97f9f985250b14be3e43715ec2bf4d"
+      "sourceCommit": "05d5d596f4759ac372a210d5eff8e0a11463a44d"
     }
   ]
 }
