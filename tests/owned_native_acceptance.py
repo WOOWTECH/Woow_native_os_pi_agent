@@ -23,7 +23,8 @@ import time
 import shutil
 import tarfile
 import tomllib
-from owned_acceptance_supervisor import identity, descendants
+from owned_acceptance_supervisor import identity, descendants, uncertainty_record
+from owned_process_custody import Budget, CustodyError, EXIT_WAIT_LIMIT, OwnedDescendants, TreeLifetime
 
 BASE_COMMIT = '172522c8a4065f80e813d6d4710b26b13b6094c7'
 BASE_TREE = '4ebb37ac864d1a423eccfb6cdd838f1f94bbf21f'
@@ -262,11 +263,20 @@ def child_environment(ws):
 
 class OwnedProcess:
     """A fresh Linux session with a subreaper and bounded, private output."""
-    def __init__(self, command, ws, env, *, maximum=2 * 1024 * 1024, cwd=None, on_spawn=None):
+    def __init__(self, command, ws, env, *, maximum=2 * 1024 * 1024, cwd=None, on_spawn=None,
+                 supervisor='owned-pgid', deadline=None, custody_budget=None):
         ws.guard()
         require(bool(command) and Path(command[0]).is_absolute(), 'COMMAND_NOT_ABSOLUTE')
         self.ws, self.maximum = ws, maximum
+        require(supervisor in ('owned-pgid', 'owned-subreaper'), 'UNSUPPORTED_SUPERVISOR')
+        self.supervisor = supervisor
+        self.custody = None
+        self.custody_budget = custody_budget or Budget(deadline if deadline is not None else time.monotonic() + 1800)
+        self.lifetime = TreeLifetime(self.custody_budget.deadline)
+        self.work_expired = False
+        self.require_work()
         self.proof = None
+        self.uncertainty = None
         self.total = 0
         self.buffers = {'out': bytearray(), 'err': bytearray(), 'control': bytearray()}
         self.selector = selectors.DefaultSelector()
@@ -278,7 +288,10 @@ class OwnedProcess:
                 os.close(cwd_fd)
                 cwd_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | NOFOLLOW, dir_fd=fd)
         try:
-            self.process = subprocess.Popen([sys.executable, '-I', '-S', '-B', guardian, str(write), *map(str, command)],
+            arguments = [sys.executable, '-I', '-S', '-B', guardian, str(write)]
+            if supervisor == 'owned-subreaper':
+                arguments += ['--supervisor', supervisor, '--deadline', str(self.custody_budget.deadline), '--']
+            self.process = subprocess.Popen([*arguments, *map(str, command)],
                                             cwd='/proc/' + str(os.getpid()) + '/fd/' + str(cwd_fd), env=env, start_new_session=True,
                                             umask=0o022,
                                             pass_fds=(write,), stdin=subprocess.PIPE,
@@ -296,12 +309,85 @@ class OwnedProcess:
         for channel, stream in [('out', self.process.stdout), ('err', self.process.stderr), ('control', self.control)]:
             os.set_blocking(stream.fileno(), False)
             self.selector.register(stream, selectors.EVENT_READ, channel)
+        if supervisor == 'owned-subreaper':
+            self.ensure_custody()
+
+    def custody_call(self, function, *args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except CustodyError as error:
+            expected_exit = error.custody_code == 'CUSTODY_ANCHOR_GONE' and self.guardian_exited()
+            if error.custody_code not in ('LISTENER_MISSING', 'CUSTODY_DEADLINE') \
+                    and not expected_exit and self.uncertainty is None:
+                self.uncertainty = uncertainty_record(error, 'CUSTODY')
+            raise Hold(error.custody_code) from error
+
+    def guardian_exited(self):
+        """After a proved CUSTODY_ANCHOR_GONE (same held PIDfd ready, or the same
+        guardian birth exiting with PF_EXITING), wait only for this exact Popen,
+        at most min(EXIT_WAIT_LIMIT, the tree's current cutoff). Not exited by
+        then stays sticky uncertainty; the final treeEmpty proof is still needed."""
+        if self.process.poll() is None:
+            cutoff = self.lifetime.teardown_deadline
+            cutoff = self.lifetime.work_deadline if cutoff is None else cutoff
+            try:
+                self.process.wait(max(0.0, min(EXIT_WAIT_LIMIT, cutoff - time.monotonic())))
+            except subprocess.TimeoutExpired:
+                pass
+        return self.process.poll() is not None
+
+    def ensure_custody(self):
+        if self.custody is None:
+            self.custody = self._new_custody()
+        return self.custody
+
+    def _new_custody(self):
+        return self.custody_call(OwnedDescendants, self.proof, budget=self.custody_budget,
+                                 strict=self.supervisor == 'owned-pgid', lifetime=self.lifetime)
+
+    def require_work(self):
+        require(not self.work_expired, 'COMMAND_DEADLINE')
+        try:
+            self.lifetime.require_work()
+        except CustodyError as error:
+            raise Hold('COMMAND_DEADLINE' if error.custody_code == 'CUSTODY_DEADLINE'
+                       else error.custody_code) from error
 
     def validate(self):
         self.ws.guard()
         observed = identity(self.process.pid)
         require(observed is not None and observed[:5] == self.proof[:5], 'PID_IDENTITY_CHANGED')
-        require(b'uncertain' not in self.buffers['control'], 'CHILD_TREE_UNCERTAIN')
+        self.check_control()
+
+    def check_control(self):
+        """Fail promptly on a complete bounded guardian record, not child output."""
+        require(len(self.buffers['control']) <= 8192, 'CONTROL_BOUND')
+        for line in self.buffers['control'].splitlines(keepends=True):
+            if not line.endswith(b'\n'):
+                continue
+            try:
+                record = json.loads(line)
+            except (ValueError, UnicodeError) as error:
+                raise Hold('CONTROL_INVALID') from error
+            require(isinstance(record, dict), 'CONTROL_INVALID')
+            if 'workExpired' in record:
+                require(set(record) == {'workExpired'} and record['workExpired'] is True, 'CONTROL_INVALID')
+                self.work_expired = True
+            if 'uncertain' in record:
+                require(set(record) <= {'uncertain', 'errno', 'identityCounts'}
+                        and isinstance(record['uncertain'], str)
+                        and re.fullmatch(r'[A-Z_]{1,64}', record['uncertain'])
+                        and (record.get('errno') is None or
+                             type(record['errno']) is int and 0 < record['errno'] <= 4095),
+                        'CONTROL_INVALID')
+                counts = record.get('identityCounts')
+                require(counts is None or (record['uncertain'] == 'CUSTODY_IDENTITY_BOUND'
+                        and type(counts) is dict and set(counts) == {'pid', 'task', 'pinned', 'unique', 'limit'}
+                        and all(type(n) is int and 0 <= n <= 8192 for n in counts.values())),
+                        'CONTROL_INVALID')
+                if self.uncertainty is None:
+                    self.uncertainty = record
+        require(self.uncertainty is None, 'CHILD_TREE_UNCERTAIN')
 
     def pump(self, seconds=0.02):
         for key, _ in self.selector.select(seconds):
@@ -311,6 +397,7 @@ class OwnedProcess:
             else:
                 self.buffers[key.data].extend(data)
                 self.total += len(data)
+        self.check_control()
         require(self.total <= self.maximum, 'COMMAND_OUTPUT_BOUND')
 
     def prove_empty(self):
@@ -322,33 +409,41 @@ class OwnedProcess:
                 elif key.data == 'control':
                     self.buffers['control'].extend(data)
         require(len(self.buffers['control']) <= 8192, 'CONTROL_BOUND')
+        self.check_control()
         records = [json.loads(line) for line in self.buffers['control'].splitlines()]
         require(records and records[-1] == {'treeEmpty': True}, 'TEARDOWN_UNCERTAIN')
 
     def line(self, seconds):
-        deadline = time.monotonic() + seconds
+        self.require_work()
+        deadline = min(time.monotonic() + seconds, self.custody_budget.deadline)
         while b'\n' not in self.buffers['out']:
             require(time.monotonic() < deadline, 'COMMAND_DEADLINE')
             self.pump()
+            self.require_work()
             require(self.process.poll() is None or self.buffers['out'], 'COMMAND_EARLY_EXIT')
         raw, _, rest = self.buffers['out'].partition(b'\n')
         self.buffers['out'][:] = rest
         return raw.decode()
 
     def wait(self, seconds):
-        deadline = time.monotonic() + seconds
+        self.require_work()
+        deadline = min(time.monotonic() + seconds, self.custody_budget.deadline)
         while self.process.poll() is None:
             require(time.monotonic() < deadline, 'COMMAND_DEADLINE')
             self.pump()
+            self.require_work()
         for _ in range(4):
             self.pump(0)
         self.prove_empty()
+        self.require_work()
         self.stopped = True
         require(self.process.returncode == 0, 'COMMAND_FAILED')
         return bytes(self.buffers['out'])
 
     def members(self):
         self.validate()
+        if self.supervisor == 'owned-subreaper':
+            return self.custody_call(self.ensure_custody().refresh)
         result = []
         for pid in [self.process.pid, *descendants(self.process.pid)]:
             p = identity(pid)
@@ -363,23 +458,34 @@ class OwnedProcess:
         if self.stopped:
             self.close_pipes()
             return
+        if self.lifetime.teardown_deadline is None and time.monotonic() >= self.lifetime.work_deadline:
+            self.work_expired = True
+        deadline = self.lifetime.begin_teardown(seconds)
         # A completed subreaper has already reaped its entire tree.
         if self.process.poll() is not None:
             self.prove_empty()
             self.stopped = True
             self.close_pipes()
             return
-        self.validate()
-        self.members()
-        # Signal the retained guardian PID through a pidfd; it signals only its
-        # verified descendants. Never race a recycled process-group number.
-        pidfd = os.pidfd_open(self.proof[0])
         try:
+            require(time.monotonic() < deadline, 'TEARDOWN_UNCERTAIN')
             self.validate()
-            signal.pidfd_send_signal(pidfd, signal.SIGTERM)
-        finally:
-            os.close(pidfd)
-        deadline = time.monotonic() + seconds
+            self.members()
+            # The per-tree cleanup lifetime cannot authorize new target work.
+            if self.supervisor == 'owned-subreaper':
+                self.custody_call(self.ensure_custody().signal_anchor, signal.SIGTERM)
+            else:
+                pidfd = os.pidfd_open(self.proof[0])
+                try:
+                    self.validate()
+                    require(time.monotonic() < deadline, 'TEARDOWN_UNCERTAIN')
+                    signal.pidfd_send_signal(pidfd, signal.SIGTERM)
+                finally:
+                    os.close(pidfd)
+        except Hold as error:
+            if str(error) not in ('PID_IDENTITY_CHANGED', 'CUSTODY_ANCHOR_GONE') \
+                    or self.process.poll() is None:
+                raise
         while self.process.poll() is None:
             require(time.monotonic() < deadline, 'TEARDOWN_UNCERTAIN')
             # Continue draining without allowing an output failure to hide teardown.
@@ -390,12 +496,21 @@ class OwnedProcess:
                 elif key.data == 'control':
                     self.buffers['control'].extend(data)
             if self.process.poll() is None:
-                self.validate()
+                try:
+                    self.validate()
+                except Hold as error:
+                    # Exit can occur between poll and identity. Only the real
+                    # Popen exit plus final treeEmpty below resolves that race.
+                    if str(error) != 'PID_IDENTITY_CHANGED' or self.process.poll() is None:
+                        raise
         self.prove_empty()
         self.stopped = True
         self.close_pipes()
 
     def close_pipes(self):
+        self.lifetime.begin_teardown()
+        if self.custody is not None and not self.custody.closed:
+            self.custody_call(self.custody.close)
         self.selector.close()
         for stream in (self.process.stdin, self.process.stdout, self.process.stderr, self.control):
             stream.close()
@@ -416,6 +531,11 @@ class Endpoint:
         self.process, self.port = process, port
 
     def verify(self):
+        self.process.require_work()
+        if self.process.supervisor == 'owned-subreaper':
+            self.process.validate()
+            self.process.custody_call(self.process.ensure_custody().verify_listener, self.port)
+            return
         members = self.process.members()
         sockets = set()
         for proof in members:
@@ -454,28 +574,36 @@ class Endpoint:
         self.process.validate()
 
     def get(self, route, seconds=3):
-        import io
         require(re.fullmatch(r'/[A-Za-z0-9/_-]*', route) and len(route) <= 128, 'HTTP_ROUTE')
         require(0 < seconds <= 3, 'HTTP_DEADLINE_BOUND')
         self.verify()
-        deadline = time.monotonic() + seconds
+        deadline = min(time.monotonic() + seconds, self.process.custody_budget.deadline)
         # A wall deadline applies even to a slow peer that trickles bytes before
         # each socket timeout. Parse HTTP only after bounded transport completes.
+        try:
+            connection = self.process.ensure_custody().connect_owned(self.port, deadline)
+            with connection as conn:
+                return self._response(conn, route, deadline)
+        except CustodyError as error:
+            raise Hold(error.custody_code) from error
+
+    def _response(self, conn, route, deadline):
+        import io
+        self.process.require_work()
         wire = bytearray()
-        with socket.create_connection(('127.0.0.1', self.port), timeout=seconds) as conn:
-            conn.settimeout(max(0.001, deadline - time.monotonic()))
-            conn.sendall(('GET ' + route + ' HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n').encode())
-            conn.setblocking(False)
-            with selectors.DefaultSelector() as selector:
-                selector.register(conn, selectors.EVENT_READ)
-                while True:
-                    remaining = deadline - time.monotonic()
-                    require(remaining > 0 and selector.select(remaining), 'HTTP_DEADLINE')
-                    block = conn.recv(8192)
-                    if not block:
-                        break
-                    wire.extend(block)
-                    require(len(wire) <= 131072, 'HTTP_WIRE_BOUND')
+        conn.settimeout(max(0.001, deadline - time.monotonic()))
+        conn.sendall(('GET ' + route + ' HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n').encode())
+        conn.setblocking(False)
+        with selectors.DefaultSelector() as selector:
+            selector.register(conn, selectors.EVENT_READ)
+            while True:
+                remaining = deadline - time.monotonic()
+                require(remaining > 0 and selector.select(remaining), 'HTTP_DEADLINE')
+                block = conn.recv(8192)
+                if not block:
+                    break
+                wire.extend(block)
+                require(len(wire) <= 131072, 'HTTP_WIRE_BOUND')
         class MemorySocket:
             def makefile(self, mode):
                 return io.BytesIO(wire)
@@ -486,7 +614,6 @@ class Endpoint:
             require(response.status == 200 and len(body) <= 65536, 'HTTP_RESPONSE')
         finally:
             response.close()
-        self.verify()
         return body
 
 
@@ -527,7 +654,7 @@ def verify_source(root):
 
 
 def platform_evidence(platform, release_text, kernel, supervisor):
-    require(platform in ('ubuntu', 'wsl2') and supervisor == 'owned-pgid', 'UNSUPPORTED_PLATFORM_OR_SUPERVISOR')
+    require(platform in ('ubuntu', 'wsl2') and supervisor in ('owned-pgid', 'owned-subreaper'), 'UNSUPPORTED_PLATFORM_OR_SUPERVISOR')
     release = dict(line.split('=', 1) for line in release_text.splitlines() if '=' in line)
     require(release.get('ID', '').strip('"') == 'ubuntu', 'UBUNTU_REQUIRED')
     wsl = 'microsoft-standard-wsl2' in kernel.lower()
@@ -641,19 +768,22 @@ def check_sync(ws, previous):
 
 class OwnedRun:
     """Public lifecycle seam shared by future acceptance and synthetic safety tests."""
-    def __init__(self, parent, *, scope, seconds=1800):
+    def __init__(self, parent, *, scope, seconds=1800, supervisor='owned-pgid'):
         require(scope in ('safety-fixture', 'owned-platform-scenario'), 'RUN_SCOPE')
+        require(supervisor in ('owned-pgid', 'owned-subreaper'), 'UNSUPPORTED_SUPERVISOR')
         self.ws = Workspace.create(parent)
         self.env = child_environment(self.ws)
         self.scope = scope
         self.deadline = time.monotonic() + seconds
+        self.supervisor = supervisor
+        self.custody_budget = Budget(self.deadline)
         self.processes = []
         self.receipt = {'schema': 1, 'scope': scope, 'status': 'RUNNING', 'checks': [],
                         'baseSourceReference': BASE_COMMIT, 'baseTreeReference': BASE_TREE,
                         'sourceLockSha256': SOURCE_LOCK_SHA, 'pluginSha256': PLUGIN_SHA,
                         'realUbuntuAcceptance': False, 'realWSL2Acceptance': False,
                         'providerAcceptance': False, 'rebootAcceptance': False,
-                        'persistentServiceTested': False, 'supervisor': 'owned-pgid',
+                        'persistentServiceTested': False, 'supervisor': supervisor,
                         'providerTurns': 0, 'modelCredentialsAdopted': False}
 
     def remaining(self, maximum):
@@ -665,7 +795,8 @@ class OwnedRun:
         self.remaining(1)
         require(len(self.processes) < 32, 'COMMAND_COUNT_BOUND')
         process = OwnedProcess(command, self.ws, self.env if env is None else env, cwd=cwd,
-                               on_spawn=self.processes.append)
+                               on_spawn=self.processes.append, supervisor=self.supervisor,
+                               custody_budget=self.custody_budget)
         return process
 
     def command(self, command, *, seconds=600, env=None):
@@ -682,8 +813,13 @@ class OwnedRun:
                 process.stop()
             except BaseException:
                 proof = process.proof or (process.process.pid, None, None, None, None)
-                uncertain.append({'pid': proof[0], 'birthTicks': proof[1],
-                                  'uid': proof[2], 'pgid': proof[3], 'session': proof[4]})
+                entry = {'pid': proof[0], 'birthTicks': proof[1],
+                         'uid': proof[2], 'pgid': proof[3], 'session': proof[4]}
+                if process.uncertainty is not None:
+                    entry['firstUncertainty'] = dict(process.uncertainty)
+                uncertain.append(entry)
+        if failure is None and any(process.work_expired for process in self.processes):
+            failure = Hold('COMMAND_DEADLINE')
         self.receipt['teardownVerified'] = not uncertain
         self.receipt['uncertainProcesses'] = uncertain
         self.receipt['status'] = ('HOLD' if failure or uncertain else
@@ -1050,13 +1186,15 @@ def arm_interrupts():
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument('--mode', choices=('source-plan', 'acceptance'), required=True)
     parser.add_argument('--platform', choices=('ubuntu', 'wsl2'), required=True)
-    parser.add_argument('--supervisor', choices=('owned-pgid',), required=True)
+    parser.add_argument('--supervisor', choices=('owned-pgid', 'owned-subreaper'), default='owned-pgid')
     parser.add_argument('--parent', type=Path)
     parser.add_argument('--piweb-artifact', type=Path)
     parser.add_argument('--piweb-artifact-sha256')
+    parser.add_argument('--run-token')
+    parser.add_argument('--source-authority-sha256')
     parser.add_argument('--deadline-seconds', type=int, default=1800)
     args = parser.parse_args(argv)
     source = Path(__file__).resolve().parent.parent
@@ -1072,10 +1210,18 @@ def main(argv=None):
             return 0
         require(args.parent is not None and args.piweb_artifact is not None, 'PRIVATE_PARENT_AND_ARTIFACT_REQUIRED')
         require(os.geteuid() != 0, 'NORMAL_USER_REQUIRED')
+        binding = {'runToken': args.run_token, 'sourceAuthoritySha256': args.source_authority_sha256,
+                   'piwebArtifactSha256': args.piweb_artifact_sha256}
+        require(all(isinstance(value, str) and re.fullmatch(r'[0-9a-f]{64}', value)
+                    for value in binding.values()), 'RUN_BINDING_REQUIRED')
         require(60 <= args.deadline_seconds <= 3600, 'DEADLINE_BOUND')
         platform = platform_evidence(args.platform, Path('/etc/os-release').read_text(), os.uname().release, args.supervisor)
         prerequisites()
-        run = OwnedRun(args.parent, scope='owned-platform-scenario', seconds=args.deadline_seconds)
+        run = OwnedRun(args.parent, scope='owned-platform-scenario', seconds=args.deadline_seconds,
+                       supervisor=args.supervisor)
+        # External identity transport, not a local authority grant. The caller
+        # validates source authority; artifact bytes still pass copy_artifact.
+        run.receipt.update(binding)
         report_name = run.ws.name + '.receipt.json'
         report = os.open(report_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | NOFOLLOW, 0o600, dir_fd=run.ws.pfd)
         os.fchmod(report, 0o600)

@@ -1,0 +1,134 @@
+{
+  "archive": {
+    "bytes": 144731,
+    "memberCount": 24,
+    "sha256": "aea483aea538a731cc368e7c76cbfe30f3e2c5776ab4e48c359cecb79f70dbb3",
+    "sourceRowsSha256": "ac937af13748f7142251880ed6801cf9c8877b2bf3ed803ccef21d0ca2aacbaf"
+  },
+  "classification": "REVIEWED_SOURCE_ONLY",
+  "closure": [
+    ".github/workflows/deployment-ci.yml",
+    ".github/workflows/owned-ubuntu-acceptance.yml",
+    "docs/OWNED-NATIVE-ACCEPTANCE.md",
+    "docs/OWNED-UBUNTU-GENUINE-CI.md",
+    "docs/TESTING.md",
+    "docs/plans/2026-11-22-owned-native-acceptance.md",
+    "docs/plans/2026-11-22-owned-ubuntu-genuine-ci.md",
+    "scripts/owned-ubuntu-acceptance-ci.py",
+    "tests/fixtures/owned_acceptance_child.py",
+    "tests/fixtures/owned_custody_child.py",
+    "tests/fixtures/owned_custody_signal_guardian.py",
+    "tests/fixtures/owned_detached_child.mjs",
+    "tests/fixtures/owned_proc_fault_guardian.py",
+    "tests/owned_acceptance_supervisor.py",
+    "tests/owned_native_acceptance.py",
+    "tests/owned_process_custody.py",
+    "tests/smoke.sh",
+    "tests/test_owned_ci_authority.py",
+    "tests/test_owned_custody_departure.py",
+    "tests/test_owned_custody_reproof.py",
+    "tests/test_owned_custody_runtime_p2.py",
+    "tests/test_owned_native_acceptance.py",
+    "tests/test_owned_proc_lifecycle.py",
+    "tests/test_owned_process_custody.py"
+  ],
+  "freezeSha256": "278eb3ffcc92914a2bce81958378d892effca999c3177cbf6758fdf2111357b6",
+  "invocation": {
+    "argv": [
+      "{python}",
+      "-B",
+      "{driver}",
+      "--mode",
+      "acceptance",
+      "--platform",
+      "ubuntu",
+      "--supervisor",
+      "{custody_mode}",
+      "--parent",
+      "{parent}",
+      "--piweb-artifact",
+      "{artifact}",
+      "--piweb-artifact-sha256",
+      "{artifact_sha256}",
+      "--run-token",
+      "{run_token}",
+      "--source-authority-sha256",
+      "{authority_sha256}"
+    ],
+    "custodyMode": "owned-subreaper",
+    "receiptContract": {
+      "completedStatus": "OWNED_SCENARIO_COMPLETED",
+      "fields": {
+        "baseSourceReference": "/baseSourceReference",
+        "piwebArtifactSha256": "/piwebArtifactSha256",
+        "pluginSha256": "/pluginSha256",
+        "privateRootRetained": "/privateRootRetained",
+        "providerAcceptance": "/providerAcceptance",
+        "realUbuntuAcceptance": "/realUbuntuAcceptance",
+        "realWSL2Acceptance": "/realWSL2Acceptance",
+        "rebootAcceptance": "/rebootAcceptance",
+        "runToken": "/runToken",
+        "schema": "/schema",
+        "scope": "/scope",
+        "sourceAuthoritySha256": "/sourceAuthoritySha256",
+        "sourceLockSha256": "/sourceLockSha256",
+        "status": "/status",
+        "supervisor": "/supervisor",
+        "teardownVerified": "/teardownVerified"
+      },
+      "filePattern": "native-acceptance-*.receipt.json",
+      "schema": "owned-driver-receipt-contract/v1",
+      "schemaValue": 1,
+      "scopeValue": "owned-platform-scenario"
+    },
+    "schema": "owned-driver-invocation/v1"
+  },
+  "roles": {
+    "compatibilityEntries": [
+      "tests/smoke.sh"
+    ],
+    "controller": [
+      "scripts/owned-ubuntu-acceptance-ci.py"
+    ],
+    "custodyHelpers": [
+      "tests/owned_process_custody.py"
+    ],
+    "docs": [
+      "docs/OWNED-NATIVE-ACCEPTANCE.md",
+      "docs/OWNED-UBUNTU-GENUINE-CI.md",
+      "docs/TESTING.md",
+      "docs/plans/2026-11-22-owned-native-acceptance.md",
+      "docs/plans/2026-11-22-owned-ubuntu-genuine-ci.md"
+    ],
+    "driver": [
+      "tests/owned_native_acceptance.py"
+    ],
+    "fixtures": [
+      "tests/fixtures/owned_acceptance_child.py",
+      "tests/fixtures/owned_custody_child.py",
+      "tests/fixtures/owned_custody_signal_guardian.py",
+      "tests/fixtures/owned_detached_child.mjs",
+      "tests/fixtures/owned_proc_fault_guardian.py"
+    ],
+    "procHelpers": [
+      "tests/fixtures/owned_proc_fault_guardian.py"
+    ],
+    "safetySuites": [
+      "tests/test_owned_ci_authority.py",
+      "tests/test_owned_custody_departure.py",
+      "tests/test_owned_custody_reproof.py",
+      "tests/test_owned_custody_runtime_p2.py",
+      "tests/test_owned_native_acceptance.py",
+      "tests/test_owned_proc_lifecycle.py",
+      "tests/test_owned_process_custody.py"
+    ],
+    "supervisor": [
+      "tests/owned_acceptance_supervisor.py"
+    ],
+    "workflows": [
+      ".github/workflows/deployment-ci.yml",
+      ".github/workflows/owned-ubuntu-acceptance.yml"
+    ]
+  },
+  "schema": "owned-component-handoff/v1"
+}

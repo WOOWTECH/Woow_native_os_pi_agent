@@ -1,0 +1,350 @@
+{
+  "baseCommit": "172522c8a4065f80e813d6d4710b26b13b6094c7",
+  "baseTree": "4ebb37ac864d1a423eccfb6cdd838f1f94bbf21f",
+  "componentSource": {
+    "archive": {
+      "bytes": 144731,
+      "memberCount": 24,
+      "sha256": "aea483aea538a731cc368e7c76cbfe30f3e2c5776ab4e48c359cecb79f70dbb3",
+      "sourceRowsSha256": "ac937af13748f7142251880ed6801cf9c8877b2bf3ed803ccef21d0ca2aacbaf"
+    },
+    "fileCount": 24,
+    "files": [
+      {
+        "bytes": 4783,
+        "gitBlob": "7883304669c21924df8a11810b346f0126853723",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": ".github/workflows/deployment-ci.yml",
+        "sha256": "8976b119adc5886aeecd8a5c6272c139e3ddc117933dfcdc8cd9b39a46ef8cd4"
+      },
+      {
+        "bytes": 3768,
+        "gitBlob": "058268faa408222fde2c90a73fa316ca77341162",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": ".github/workflows/owned-ubuntu-acceptance.yml",
+        "sha256": "579da1297fa25586742ea0cc3ad3f3ae57bd4b9abb85f35bd40e6f5d107a90dd"
+      },
+      {
+        "bytes": 32845,
+        "gitBlob": "5c9539c9afe8eab74a2b63f4e76f59400994e3a1",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "docs/OWNED-NATIVE-ACCEPTANCE.md",
+        "sha256": "bc68c0a878393db0488ca18ffb6524f40e8c4ca3a5cd296f38768763500749e2"
+      },
+      {
+        "bytes": 9108,
+        "gitBlob": "d7777a9de3e911bd248077e92368c5ed0a578fc8",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "docs/OWNED-UBUNTU-GENUINE-CI.md",
+        "sha256": "3bf3c81068fbfe694fb91b7e03dd21f488fd394937b96e694eb8df2e16ff44a5"
+      },
+      {
+        "bytes": 48655,
+        "gitBlob": "584cfefa4ee62c3d763018b1bddfdcce3f1b895b",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "docs/TESTING.md",
+        "sha256": "a2df1df87e7126b93e8bf5da8f27e6642052abcb04c7af0b65cd4f652bc4212f"
+      },
+      {
+        "bytes": 3477,
+        "gitBlob": "a45097a7a265ff38c0f94d0066180d73fcc99ca3",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "docs/plans/2026-11-22-owned-native-acceptance.md",
+        "sha256": "a933b487707809b13f894cb1ad650d2ef42476db0abbb02a51e4cb1439779415"
+      },
+      {
+        "bytes": 1589,
+        "gitBlob": "aa2f6953cf8a1e72cdf473778d05fafae351366b",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "docs/plans/2026-11-22-owned-ubuntu-genuine-ci.md",
+        "sha256": "0ecbb8fc544d9e3cf0c5ed74e42da93d0005ba04900e9054580627e98c8f74f8"
+      },
+      {
+        "bytes": 35726,
+        "gitBlob": "24d642f9c4b601e475d43c696277a47cb708973a",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "scripts/owned-ubuntu-acceptance-ci.py",
+        "sha256": "ab6c75bf9905922f09c6c456a8c38882e140ad51f1b2a9bd194791406b789671"
+      },
+      {
+        "bytes": 2974,
+        "gitBlob": "43c249ae5ca5db514402df78ca3d3ee3bdda8b59",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/fixtures/owned_acceptance_child.py",
+        "sha256": "6745af03f8b8cad6418aa4068a22626d32b64dc1f266cebef02572fe28ddc0fc"
+      },
+      {
+        "bytes": 8424,
+        "gitBlob": "d09a235086564157f365b3daabb552e8e93956cf",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/fixtures/owned_custody_child.py",
+        "sha256": "db5fef316650cba982df6a974ef0fa05832855d9f13cd36861127c056f544e72"
+      },
+      {
+        "bytes": 9887,
+        "gitBlob": "a44b25bad28396405279e8aadcd33df6aac3791c",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/fixtures/owned_custody_signal_guardian.py",
+        "sha256": "5ca5cfaeae80c5832b4c8a27cf548bc32c246eb35669b3bbf26c0b1a7deefdb6"
+      },
+      {
+        "bytes": 1735,
+        "gitBlob": "d7bf3a61562ba18369390a80954fa837a6f7161f",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/fixtures/owned_detached_child.mjs",
+        "sha256": "4e95cc34f8e703c1a107a8b685adcc8b4845db7a064a119a521f3361821bbff4"
+      },
+      {
+        "bytes": 1447,
+        "gitBlob": "d0f3b99b2fdb82c568e89b051fa50840843c8c27",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/fixtures/owned_proc_fault_guardian.py",
+        "sha256": "1f1098f25f698f0cb7d67b9776da29b14c79c8e7ed5d8db310b9999d3f1d258c"
+      },
+      {
+        "bytes": 17327,
+        "gitBlob": "76e64cd8c221510b6de784347e27be48e2e663cc",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/owned_acceptance_supervisor.py",
+        "sha256": "f73c0043a2edde3cbe4d08698ba374346a6d0d54a434e9e7a82747c31a5ed49e"
+      },
+      {
+        "bytes": 60253,
+        "gitBlob": "3774d06b1d31128363bbf76fe23aeb48010b0a10",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/owned_native_acceptance.py",
+        "sha256": "06d26041ff29996fd7f704cff128d24d5d1cf233529cbd1d67d8ffefaac474b0"
+      },
+      {
+        "bytes": 46960,
+        "gitBlob": "05f9038acba5f0bee94278a45e298ceb78c44b01",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/owned_process_custody.py",
+        "sha256": "5aaaa75ccb237f4c94206e28e5266f70ab197f92905b832282af9a7ad40a7185"
+      },
+      {
+        "bytes": 380,
+        "gitBlob": "364e917cd7e24671a7a3cfed0fe4525e7f20655a",
+        "gitMode": "100755",
+        "mode": 493,
+        "path": "tests/smoke.sh",
+        "sha256": "2023ab29ae20656a3adfa1b646342c4ca515759b07337c56adc5cbd27429e6dd"
+      },
+      {
+        "bytes": 42080,
+        "gitBlob": "d7063461d78df762c3a6730a9440429acd99a8a1",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/test_owned_ci_authority.py",
+        "sha256": "416298b7ef46ba2b466fb142b37d4eeef801a5ae6160044eb21c976bfd4a8fbb"
+      },
+      {
+        "bytes": 82665,
+        "gitBlob": "06335e0af79aa95b16cb28c927f64792ac52abe1",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/test_owned_custody_departure.py",
+        "sha256": "7fcc39d22e478f5984c2def7165f52d34c2292dca10ddc70de1d3b568bfe1e56"
+      },
+      {
+        "bytes": 10776,
+        "gitBlob": "1fed12be7eb700f330b22e634c4548e29af95aea",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/test_owned_custody_reproof.py",
+        "sha256": "218731793c9fa53202d0658430a288744b0f85eefb9498d7caa813dad2e3c6ba"
+      },
+      {
+        "bytes": 21031,
+        "gitBlob": "2ddfbe4a89386bcb7fe7a7eedff387958099b8f5",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/test_owned_custody_runtime_p2.py",
+        "sha256": "ffef5fd125836259593c422dabb47e2da7af421daa1ad711dc8d5cd44f57162d"
+      },
+      {
+        "bytes": 49065,
+        "gitBlob": "0c1dabfca29e69efdcb8963d807447f1c04faab8",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/test_owned_native_acceptance.py",
+        "sha256": "17fe29e2900f109b832cf25998224f59a694fb584b5d84cb7307bba8f6818785"
+      },
+      {
+        "bytes": 19553,
+        "gitBlob": "3423a9ba3fe25d94f38db073f290cf5017d88174",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/test_owned_proc_lifecycle.py",
+        "sha256": "06e1ca5c780d05b80ad1e14e9904ade2df3d2ad7653413c749110aef6efdf5ef"
+      },
+      {
+        "bytes": 70534,
+        "gitBlob": "f860fa7fcfae438abcbd0e6d5c5836b2f5459ceb",
+        "gitMode": "100644",
+        "mode": 420,
+        "path": "tests/test_owned_process_custody.py",
+        "sha256": "3b1c86252fc93ae6f67a9330fb9c83fb18c2eaa2c493b45bdea750e722cf1c44"
+      }
+    ],
+    "freeze": {
+      "bytes": 8301,
+      "mode": 420,
+      "path": "tests/owned-acceptance-component-source.json",
+      "sha256": "278eb3ffcc92914a2bce81958378d892effca999c3177cbf6758fdf2111357b6"
+    },
+    "handoff": {
+      "bytes": 4466,
+      "mode": 420,
+      "path": "tests/owned-acceptance-component-handoff.json",
+      "sha256": "ecdd312e4ccff771a992aa01b03007e26e420ce7e6219b1d2ca8fe151bf383a0"
+    },
+    "roles": {
+      "compatibilityEntries": [
+        "tests/smoke.sh"
+      ],
+      "controller": [
+        "scripts/owned-ubuntu-acceptance-ci.py"
+      ],
+      "custodyHelpers": [
+        "tests/owned_process_custody.py"
+      ],
+      "docs": [
+        "docs/OWNED-NATIVE-ACCEPTANCE.md",
+        "docs/OWNED-UBUNTU-GENUINE-CI.md",
+        "docs/TESTING.md",
+        "docs/plans/2026-11-22-owned-native-acceptance.md",
+        "docs/plans/2026-11-22-owned-ubuntu-genuine-ci.md"
+      ],
+      "driver": [
+        "tests/owned_native_acceptance.py"
+      ],
+      "fixtures": [
+        "tests/fixtures/owned_acceptance_child.py",
+        "tests/fixtures/owned_custody_child.py",
+        "tests/fixtures/owned_custody_signal_guardian.py",
+        "tests/fixtures/owned_detached_child.mjs",
+        "tests/fixtures/owned_proc_fault_guardian.py"
+      ],
+      "procHelpers": [
+        "tests/fixtures/owned_proc_fault_guardian.py"
+      ],
+      "safetySuites": [
+        "tests/test_owned_ci_authority.py",
+        "tests/test_owned_custody_departure.py",
+        "tests/test_owned_custody_reproof.py",
+        "tests/test_owned_custody_runtime_p2.py",
+        "tests/test_owned_native_acceptance.py",
+        "tests/test_owned_proc_lifecycle.py",
+        "tests/test_owned_process_custody.py"
+      ],
+      "supervisor": [
+        "tests/owned_acceptance_supervisor.py"
+      ],
+      "workflows": [
+        ".github/workflows/deployment-ci.yml",
+        ".github/workflows/owned-ubuntu-acceptance.yml"
+      ]
+    },
+    "sourceRowsSha256": "ac937af13748f7142251880ed6801cf9c8877b2bf3ed803ccef21d0ca2aacbaf"
+  },
+  "historicalSupersededAuthority": {
+    "acceptedCommit": "ec0a52a20958d7ca8ad779a5b5d2391b52248892",
+    "acceptedTree": "982e0f89ace1acf2cd8753f9a6434d829ce1ee13",
+    "files": [
+      {
+        "bytes": 4132,
+        "mode": 420,
+        "path": ".github/workflows/deployment-ci.yml",
+        "sha256": "ecff97943056dfde8ba0c0dd1f8cda5fbed30088d1cddae4f53881e437f2c416"
+      },
+      {
+        "bytes": 9313,
+        "mode": 420,
+        "path": "docs/OWNED-NATIVE-ACCEPTANCE.md",
+        "sha256": "b05264ffe7ccd951348630c5960d36dde1d3b5f60c3fad94f9a68a074de45ada"
+      },
+      {
+        "bytes": 48655,
+        "mode": 420,
+        "path": "docs/TESTING.md",
+        "sha256": "a2df1df87e7126b93e8bf5da8f27e6642052abcb04c7af0b65cd4f652bc4212f"
+      },
+      {
+        "bytes": 3477,
+        "mode": 420,
+        "path": "docs/plans/2026-11-22-owned-native-acceptance.md",
+        "sha256": "a933b487707809b13f894cb1ad650d2ef42476db0abbb02a51e4cb1439779415"
+      },
+      {
+        "bytes": 2974,
+        "mode": 420,
+        "path": "tests/fixtures/owned_acceptance_child.py",
+        "sha256": "6745af03f8b8cad6418aa4068a22626d32b64dc1f266cebef02572fe28ddc0fc"
+      },
+      {
+        "bytes": 16117,
+        "mode": 420,
+        "path": "tests/owned-native-acceptance.lock.json",
+        "sha256": "62f53c599ea777759c846c6a5c14e768bce0c5d1ac888027a999606a4d3b4805"
+      },
+      {
+        "bytes": 5359,
+        "mode": 420,
+        "path": "tests/owned_acceptance_supervisor.py",
+        "sha256": "8c575ef79954250d03d7f1d9ae4624a786db164b77c586796df24d32196ab1d4"
+      },
+      {
+        "bytes": 52324,
+        "mode": 420,
+        "path": "tests/owned_native_acceptance.py",
+        "sha256": "9210654c7d54d52f6d5ad64c056ef4a18ae6f509dc1257ca678eba3d8c89a62d"
+      },
+      {
+        "bytes": 380,
+        "mode": 493,
+        "path": "tests/smoke.sh",
+        "sha256": "2023ab29ae20656a3adfa1b646342c4ca515759b07337c56adc5cbd27429e6dd"
+      },
+      {
+        "bytes": 49061,
+        "mode": 420,
+        "path": "tests/test_owned_native_acceptance.py",
+        "sha256": "a40c4919ea9cde2473f418643c5dfa97ee2c7d989839d563f925890247b688f0"
+      }
+    ],
+    "freezeSha256": "f221a00da7ab2a9aee07f5f337b53d7ccfff48befd60b2cb8aa80350901f9800",
+    "handoffSha256": "0b40b9395f638161fb730f33121ce6c64e327bbae8e8f8a0c420b4fe2369a39e",
+    "revision": "frozen-v4"
+  },
+  "installerInputLock": {
+    "bytes": 16371,
+    "count": 40,
+    "path": "tests/owned-native-acceptance.lock.json",
+    "sha256": "ec6d66ec9aeb87943a28cb6d254bb1aa298348faba1519d73e802a22358b6998"
+  },
+  "packager": {
+    "bytes": 2416,
+    "mode": 493,
+    "path": "scripts/build-piweb-artifact.sh",
+    "sha256": "157eae7044a6dcb641f60306fb60cf1e2d024be9c64130ca714a170648ad0263"
+  },
+  "schema": "owned-ubuntu-genuine-ci-inputs/v2",
+  "status": "COMPOSED"
+}
