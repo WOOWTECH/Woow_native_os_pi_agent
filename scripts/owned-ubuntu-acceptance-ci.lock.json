@@ -3,10 +3,10 @@
   "baseTree": "4ebb37ac864d1a423eccfb6cdd838f1f94bbf21f",
   "componentSource": {
     "archive": {
-      "bytes": 142109,
+      "bytes": 142290,
       "memberCount": 24,
-      "sha256": "616c5456a3475480bfc0db919d67f3fa57d2da8407e07b10eff4d4013e9ebc54",
-      "sourceRowsSha256": "e6efc5df9811afd143a2fadd177e169e25d296d049738319c45b587532c00f7c"
+      "sha256": "96eee744fe7a900c3d1e99dda7df854d916b9942c7ee84732e7a95716899fd55",
+      "sourceRowsSha256": "66b8b7d42c823197d493f2a6530b294defb0cadfca7fc569109eb6bb9f3cd793"
     },
     "fileCount": 24,
     "files": [
@@ -195,25 +195,25 @@
         "sha256": "06e1ca5c780d05b80ad1e14e9904ade2df3d2ad7653413c749110aef6efdf5ef"
       },
       {
-        "bytes": 69468,
-        "gitBlob": "58142c8476a272472e7b0e74ea0b7244af5a5c94",
+        "bytes": 70234,
+        "gitBlob": "cc3dbb1f29ef9887aa8e5bf52428601613042819",
         "gitMode": "100644",
         "mode": 420,
         "path": "tests/test_owned_process_custody.py",
-        "sha256": "4a497f59b19eb15e8c201a08e5dde51b194a467f3c80e96e6bb79dc6c4dcc839"
+        "sha256": "b4d7ded286bebb4b77659ac5b2df131048634834e8986e57dd2f1ed615a2413d"
       }
     ],
     "freeze": {
       "bytes": 8301,
       "mode": 420,
       "path": "tests/owned-acceptance-component-source.json",
-      "sha256": "c0c752569568cdf63f7ebcb75f72d5e1ae9e0a0f6f5f95f46c0b68fef206fc35"
+      "sha256": "a26dcfbcd60025a133aa15e159f915f1178bd35244836be9f602a1b8aa9231dc"
     },
     "handoff": {
       "bytes": 4466,
       "mode": 420,
       "path": "tests/owned-acceptance-component-handoff.json",
-      "sha256": "89c78e341530a8af2dc72ad682f837d96f23d4f69747fd723c48a230366aa8c7"
+      "sha256": "2494db492a252b6db34ad7049f1323190db3fb5f03e2f9ae96c9149ccb96439d"
     },
     "roles": {
       "compatibilityEntries": [
@@ -262,7 +262,7 @@
         ".github/workflows/owned-ubuntu-acceptance.yml"
       ]
     },
-    "sourceRowsSha256": "e6efc5df9811afd143a2fadd177e169e25d296d049738319c45b587532c00f7c"
+    "sourceRowsSha256": "66b8b7d42c823197d493f2a6530b294defb0cadfca7fc569109eb6bb9f3cd793"
   },
   "historicalSupersededAuthority": {
     "acceptedCommit": "ec0a52a20958d7ca8ad779a5b5d2391b52248892",

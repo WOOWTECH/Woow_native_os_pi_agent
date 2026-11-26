@@ -521,8 +521,22 @@ class DetachedCustodyTests(unittest.TestCase):
     def test_nonready_terminal_leader_retained_until_last_thread_exit(self):
         with self.private_run() as run:
             process = run.spawn([sys.executable, '-I', '-S', '-B',
-                str(HERE / 'fixtures/owned_custody_child.py'), 'terminal-leader'])
+                str(HERE / 'fixtures/owned_custody_child.py'), 'terminal-leader-held'])
             pid = int(process.line(3))
+            # Wait for the actual leader-exit state, not just worker stdout.
+            # Keep the last thread alive until the test explicitly releases it.
+            procfd = os.open('/proc/' + str(pid), os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                limit = time.monotonic() + 3
+                while True:
+                    try:
+                        os.readlink('ns/net', dir_fd=procfd)
+                    except FileNotFoundError:
+                        break
+                    self.assertLess(time.monotonic(), limit, 'leader did not exit')
+                    time.sleep(0.005)
+            finally:
+                os.close(procfd)
             # The leader's namespace links can disappear while another thread
             # remains. This unknown live process must HOLD, never look empty:
             # the bounded PF_EXITING wait on the same PIDfd expires unconfirmed.
@@ -533,6 +547,8 @@ class DetachedCustodyTests(unittest.TestCase):
             self.assertFalse(select.select([cap.pidfd], [], [], 0)[0])
             with self.assertRaisesRegex(custody.CustodyError, 'CUSTODY_LIVE_CLOSE'):
                 process.custody.close()
+            process.process.stdin.write(b'release\n')
+            process.process.stdin.flush()
             self.assertTrue(select.select([cap.pidfd], [], [], 3)[0])
             self.assertIsNone(process.process.poll())  # Sticky HOLD retains the guardian.
 
