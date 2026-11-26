@@ -3,10 +3,19 @@
 ## 0.2.16-rc.5 preparation — exact upstream tuples pending
 
 - Target native version: `0.2.16-rc.5`.
-- Await fresh, exact Agent Connect `0.1.27-rc.5` and Omnigent
-  `0.3.42-rc.5` commit/archive tuples and the paired combined Pi Web patch
-  identity before changing candidate package names, archive bytes, pins, member
-  inventories, or source/acceptance locks. No rc5 tuple or digest is known yet.
+- Agent Connect `0.1.27-rc.5` exact tuple received: source commit
+  `867d9065f609aa5e32d88f2d55cf07c5d3fadc3e`; archive
+  `next-security-release-rc5/artifacts/woowtech-pi-paseo-0.1.27-rc.5.tgz`,
+  SHA-256 `581d5468020344dc93728da862118a4f8258a1a9a610ca16336e865345dceaa5`;
+  paired adapter SHA-256
+  `aefb39dd6c378571ea8146bfa27fa153609da7460bc7198c3cfeb471ce02bcd6`.
+  The archive's SHA-256 was independently recomputed locally and matched. The
+  reported source checks are 128 host tests, typecheck, and Next 16.4.6
+  production build; these are upstream-provided results, not native validation.
+- Await Omnigent `0.3.42-rc.5` exact commit/archive tuple paired with this adapter
+  identity before changing native candidate package names, archive bytes, pins,
+  member inventories, or source/acceptance locks. The native manifest still
+  contains inherited rc4 review state and is not an rc5 package manifest.
 - This worktree starts from the held rc4 checkpoint. The rc4 archive files and
   associated candidate pins are inherited review state only; do not use them as
   rc5 packages or rename/copy them to rc5 filenames. Recompose all native locks
