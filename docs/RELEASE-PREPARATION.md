@@ -1,5 +1,36 @@
 # Native release preparation
 
+## 0.2.14
+
+Changes from 0.2.13:
+
+- Agent Connect 0.1.24 → 0.1.25 (pi-paseo-plugin #25, merged into main as
+  `43cc7b0623c47afdbad6e35e0df7bd03dd5c72d3`); the frozen archive remains
+  `woowtech-pi-paseo-0.1.25.tgz`, sha256
+  `9717988c00a4c830a3fa458ab1ae778515c90257faaac0e68e695fefbf7cd8d1`.
+  The source provenance pin uses the final merge commit. Official Paseo remains
+  0.17.4; Agent Connect adds Better Paseo Tasks from runtime revision
+  `0.17.4-r2-a651f42711da`. Tasks is enabled by default, while chat enhancement
+  and automatic update checks are disabled by default. A normal stop/start
+  switches the daemon to r2 while retaining the existing `PASEO_HOME`, including
+  Tasks data, server identity, pairing key, conversations and settings. Rollback
+  keeps that data directory and can reuse the retained r1 runtime.
+- Omnigent plugin 0.3.40 (pi-omnigent-plugin #37, squash merge
+  `a36f260d680d8334206e4b794a7c4bcd8dd2e99f`) is paired with Agent Connect
+  0.1.25. The full PR CI passed; the frozen archive SHA256 is
+  `4763b1bc98eb64a7f8cba890a9c7fdf8907a3cab001eb5ccaa246cd45642a846` and its
+  combined Pi Web adapter SHA256 is `5e2c36b43f56e9ca8c3c2873d94102a86c75b74973cc23b278c34a2556e678a5`.
+- The four Omnigent overlays extend their reviewed maintenance-aware version
+  gates through 0.3.40. Host-name fixture output checks include the two-digit
+  version 0.3.40.
+- Pi Web 0.10.0, shared runtime 0.1.6, and managed Omnigent 0.16.0 stay
+  unchanged. The official Paseo CLI stays 0.17.4; only the managed runtime
+  revision changes to r2.
+
+The frozen Omnigent archive, combined adapter digest, candidate manifest,
+installed Linux member inventory, owned source lock, and installer-input lock
+are pinned together to the merged source and the byte-verified release archive.
+
 ## 0.2.13
 
 Changes from 0.2.12:

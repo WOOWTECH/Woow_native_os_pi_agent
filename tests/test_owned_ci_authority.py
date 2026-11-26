@@ -150,7 +150,7 @@ class SyntheticAuthority:
                    'providerAcceptance': False, 'rebootAcceptance': False,
                    'baseSourceReference': controller.BASE_COMMIT,
                    'sourceLockSha256': controller.INSTALLER['sha256'],
-                   'pluginSha256': 'a5eb78fedabb3671cc4d70cc88e5826e1bf6d60075eba444288f3c4478a1ff58'}
+                   'pluginSha256': '4763b1bc98eb64a7f8cba890a9c7fdf8907a3cab001eb5ccaa246cd45642a846'}
         return state, receipt
 
 
