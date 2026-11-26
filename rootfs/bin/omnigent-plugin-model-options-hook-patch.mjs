@@ -33,8 +33,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-// 0.3.35 maintenance-aware layout; exact candidate archive is locked in lib/pins.sh.
-const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35'];
+// 0.3.35+ maintenance-aware layout (0.3.36 adds only refusal reasons and the
+// Agent Connect 0.1.21 adapter pin, 0.3.37 only the Agent Connect 0.1.22 combined
+// adapter, 0.3.38 only the Agent Connect 0.1.23 combined adapter, 0.3.39 only the
+// Agent Connect 0.1.24 combined adapter); exact candidate archive is locked in lib/pins.sh.
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35', '0.3.36', '0.3.37', '0.3.38', '0.3.39'];
+const MAINTENANCE_AWARE_VERSIONS = ['0.3.35', '0.3.36', '0.3.37', '0.3.38', '0.3.39'];
 
 // src/installer.mjs: the re-discovery right after the plugin's own `uv tool install omnigent`.
 const HOOK_MARKER = 'model-options-hook (Woow native installer)';
@@ -100,7 +104,7 @@ function main() {
     return 0;
   }
 
-  if (version === '0.3.35') {
+  if (MAINTENANCE_AWARE_VERSIONS.includes(version)) {
     let source;
     try { source = fs.readFileSync(path.join(root, 'src/installer.mjs'), 'utf8'); }
     catch { log('reviewed maintenance source unavailable — SKIPPING'); return 0; }
