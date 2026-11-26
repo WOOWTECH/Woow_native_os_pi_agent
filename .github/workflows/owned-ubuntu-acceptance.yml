@@ -1,4 +1,6 @@
 name: owned-ubuntu-acceptance
+# Exact reviewed source closure is checked before isolated target execution.
+# This job grants no provider, user-host or production acceptance.
 
 'on':
   pull_request:
@@ -21,7 +23,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify source and preprovisioned runner
+      - name: Verify composed source authority and preprovisioned runner
         timeout-minutes: 5
         env:
           CI_EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -44,7 +46,7 @@ jobs:
             /usr/bin/python3 -I -S -B "$GITHUB_WORKSPACE/scripts/owned-ubuntu-acceptance-ci.py" \
             build "$RUNNER_TEMP/owned-ubuntu-control" "$RUNNER_TEMP/owned-ubuntu-evidence"
 
-      - name: Run the real owned Ubuntu driver with the recorded artifact SHA
+      - name: Run the frozen custody invocation with the recorded artifact SHA
         timeout-minutes: 35
         run: |
           umask 022
@@ -52,7 +54,7 @@ jobs:
             /usr/bin/python3 -I -S -B "$GITHUB_WORKSPACE/scripts/owned-ubuntu-acceptance-ci.py" \
             accept "$RUNNER_TEMP/owned-ubuntu-control" "$RUNNER_TEMP/owned-ubuntu-evidence"
 
-      - name: Collect only the bounded driver receipt
+      - name: Collect raw driver receipt and bind source identity in collect-result
         if: always()
         timeout-minutes: 2
         run: |
