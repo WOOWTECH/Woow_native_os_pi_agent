@@ -490,7 +490,11 @@ class DetachedCustodyTests(unittest.TestCase):
 
     def test_global_identity_descriptor_read_deadline_and_permission_bounds(self):
         with self.private_run() as run:
-            process = run.spawn(['/bin/sleep', '2'])
+            process = run.spawn([sys.executable, '-I', '-S', '-B',
+                str(HERE / 'fixtures/owned_custody_child.py'), 'idle'])
+            # Prove that the child exists before testing the distinct-ID cap;
+            # one guardian's PID and leader TID correctly consume only one slot.
+            self.assertEqual(process.line(3), 'ready')
             ledger = process.ensure_custody()
             for field, value, expected in [('identities', 1, 'IDENTITY_BOUND'),
                     ('descriptors', ledger.budget.fds, 'DESCRIPTOR_BOUND'),
