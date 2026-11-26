@@ -3,10 +3,10 @@
   "baseTree": "4ebb37ac864d1a423eccfb6cdd838f1f94bbf21f",
   "componentSource": {
     "archive": {
-      "bytes": 145295,
+      "bytes": 145297,
       "memberCount": 24,
-      "sha256": "02736d280c3163dd419293cdbe376f9c2a5c0bee7af030ea18788b303ab97fd2",
-      "sourceRowsSha256": "c739898ea0bfa542534980f782ca620157f97e7d49212d1f8cd1bd652d14815f"
+      "sha256": "b2edde6ad9bd23e4dda9c6b0c271f17b02acf3aad4ab9ef274fc96c427fc065f",
+      "sourceRowsSha256": "d68fb631465b0238b9f51b961749a21cd0f63f5d9150ab1a1407cb35b249db0f"
     },
     "fileCount": 24,
     "files": [
@@ -68,11 +68,11 @@
       },
       {
         "bytes": 35737,
-        "gitBlob": "12c2145b59fd8c431860780e908b83e27d4cbb49",
+        "gitBlob": "94fc1370a725309d682cd68f19be8ccccd807400",
         "gitMode": "100644",
         "mode": 420,
         "path": "scripts/owned-ubuntu-acceptance-ci.py",
-        "sha256": "3c48f0ed5d845c145f843d72ca4a9ded66f089ca029a13a3bd81da7e9c4b6cf3"
+        "sha256": "d2db08e6b09f046afe3b571d0a014a4fef41474be1018f08411d75a9be60cdbb"
       },
       {
         "bytes": 2974,
@@ -124,11 +124,11 @@
       },
       {
         "bytes": 60268,
-        "gitBlob": "8a08e67c5bd8cc506cc0870c6a271e79affd0f97",
+        "gitBlob": "0b010b060a142e1aa777e4b67334ed3cbfe143f2",
         "gitMode": "100644",
         "mode": 420,
         "path": "tests/owned_native_acceptance.py",
-        "sha256": "50de50abab9af5fc26ee22e84f6ff0c803908d8d9d88296263f10b7a2904ad9c"
+        "sha256": "7ca58265c4e5824208b1369e1a3a1575a450b998b3ccbf6a9ff5e4aa8986826b"
       },
       {
         "bytes": 47284,
@@ -207,13 +207,13 @@
       "bytes": 8301,
       "mode": 420,
       "path": "tests/owned-acceptance-component-source.json",
-      "sha256": "8a7dc2f64aa0fd318f258d0594a50b19c04f677ef3a9229d743f67ffcb058079"
+      "sha256": "0d78921942888cceefe9c8e145b8a184b9d719bbb037728b675fbfbd6336ffef"
     },
     "handoff": {
       "bytes": 4466,
       "mode": 420,
       "path": "tests/owned-acceptance-component-handoff.json",
-      "sha256": "bacdf1434ef64c67cf8897532147abc68f899d2c9f8f3fd6e103281cad4863de"
+      "sha256": "f000017d24433fa445e0f6e50fab0d69e155810d8b670db91af571bcb984867a"
     },
     "roles": {
       "compatibilityEntries": [
@@ -262,7 +262,7 @@
         ".github/workflows/owned-ubuntu-acceptance.yml"
       ]
     },
-    "sourceRowsSha256": "c739898ea0bfa542534980f782ca620157f97e7d49212d1f8cd1bd652d14815f"
+    "sourceRowsSha256": "d68fb631465b0238b9f51b961749a21cd0f63f5d9150ab1a1407cb35b249db0f"
   },
   "historicalSupersededAuthority": {
     "acceptedCommit": "ec0a52a20958d7ca8ad779a5b5d2391b52248892",
@@ -337,7 +337,7 @@
     "bytes": 16383,
     "count": 40,
     "path": "tests/owned-native-acceptance.lock.json",
-    "sha256": "695bd3084a9b6faf3eef48c50497bf55ce21fcb3c1892e73d0027923e7a0981a"
+    "sha256": "d07563e21b1096b368702de1911482a80ad09e481875035f9a3f099638d40b63"
   },
   "packager": {
     "bytes": 2416,

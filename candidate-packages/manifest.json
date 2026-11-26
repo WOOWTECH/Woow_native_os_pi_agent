@@ -12,7 +12,7 @@
       "sha256": "4ce635291b8c87780c54e23410fde27cc0b582c1036e4f36bf08ca8ba9c31143",
       "status": "unpublished coordinated candidate; not a registry/release asset",
       "sourceCommit": "bf563b8171ba64b38bfb117d57619ec814052714",
-      "runtimeRevision": "0.17.5-r1-8664f2c3f8f5"
+      "runtimeRevision": "0.17.5-r2-8664f2c3f8f5"
     },
     {
       "file": "woowtech-pi-omnigent-plugin-0.3.42-rc.2.tgz",

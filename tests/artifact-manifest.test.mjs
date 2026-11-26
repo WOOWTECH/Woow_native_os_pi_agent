@@ -119,10 +119,10 @@ for (const [label, mutate] of [
 
 test('0.17.5 release candidate archives bind their exact source commits without stable-release claims', () => {
   const rows = JSON.parse(fs.readFileSync(path.join(repo, 'candidate-packages/manifest.json'))).artifacts;
-  const paseo = rows.find(x => x.file === 'woowtech-pi-paseo-0.1.27-rc.1.tgz');
+  const paseo = rows.find(x => x.file === 'woowtech-pi-paseo-0.1.27-rc.2.tgz');
   const omni = rows.find(x => x.file === 'woowtech-pi-omnigent-plugin-0.3.42-rc.2.tgz');
-  assert.equal(paseo.sourceCommit, 'e4c568ce3214592574f11243acf5ed7db743d47e');
-  assert.equal(paseo.runtimeRevision, '0.17.5-r1-8664f2c3f8f5');
+  assert.equal(paseo.sourceCommit, 'bf563b8171ba64b38bfb117d57619ec814052714');
+  assert.equal(paseo.runtimeRevision, '0.17.5-r2-8664f2c3f8f5');
   assert.equal(omni.sourceCommit, '1ef572bf92a24afaac37a277f992f9efb7f3b7f6');
   for (const row of [paseo, omni]) {
     assert.equal(row.status, 'unpublished coordinated candidate; not a registry/release asset');
@@ -130,7 +130,7 @@ test('0.17.5 release candidate archives bind their exact source commits without 
   }
 });
 
-function prereleaseFixture(t, rename = true) {
+function prereleaseFixture(t, assertCurrentRc2 = true) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'native-prerelease-manifest-'));
   t.after(() => fs.rmSync(dir, { recursive:true, force:true }));
   fs.writeFileSync(path.join(dir, 'VERSION'), '0.2.16-rc.1\n');
@@ -138,10 +138,8 @@ function prereleaseFixture(t, rename = true) {
   const file = path.join(dir, 'candidate-packages/manifest.json');
   const value = JSON.parse(fs.readFileSync(file));
   const row = value.artifacts.find(x => x.file.includes('paseo-'));
-  if (rename) {
-    const next = row.file.replace('0.1.26.tgz', '0.1.27-rc.1.tgz');
-    fs.copyFileSync(path.join(dir, 'candidate-packages', row.file), path.join(dir, 'candidate-packages', next));
-    row.file = next;
+  if (assertCurrentRc2) {
+    assert.match(row.file, /^woowtech-pi-paseo-0\.1\.27-rc\.2\.tgz$/);
   }
   fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
   return dir;
@@ -150,10 +148,10 @@ test('native prerelease accepts a package archive with a valid SemVer prerelease
   const dir = prereleaseFixture(t);
   const expected = expectedManifest(dir, 'linux', 'x64', pins.version, pins.ref, pins.adapter);
   assert.equal(expected.version, '0.2.16-rc.1');
-  assert.ok(expected.packages.some(x => x.file === 'woowtech-pi-paseo-0.1.27-rc.1.tgz'));
+  assert.ok(expected.packages.some(x => x.file === 'woowtech-pi-paseo-0.1.27-rc.2.tgz'));
 });
 for (const invalid of [
-  '../woowtech-pi-paseo-0.1.27-rc.1.tgz',
+  '../woowtech-pi-paseo-0.1.27-rc.2.tgz',
   'woowtech-pi-paseo-0.1.27-rc.01.tgz',
   'woowtech-pi-paseo-0.1.27-.tgz',
 ]) test(`native prerelease refuses unsafe or invalid archive filename ${invalid}`, t => {
