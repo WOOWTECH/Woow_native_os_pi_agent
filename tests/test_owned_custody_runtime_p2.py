@@ -158,7 +158,7 @@ class AccountingBoundaryTests(unittest.TestCase):
                 budget.identity(('task', 34567))
             record = uncertainty_record(caught.exception, 'CUSTODY')
             self.assertEqual(record, {'uncertain': 'CUSTODY_IDENTITY_BOUND',
-                'identityCounts': {'pid': 1, 'task': 2, 'pinned': 1, 'limit': 2}})
+                'identityCounts': {'pid': 1, 'task': 2, 'pinned': 1, 'unique': 3, 'limit': 2}})
             caught.exception.identity_counts['task'] = 'PRIVATE-DO-NOT-EXPORT'
             self.assertEqual(uncertainty_record(caught.exception, 'CUSTODY'),
                              {'uncertain': 'CUSTODY_IDENTITY_BOUND'})
@@ -188,6 +188,33 @@ class AccountingBoundaryTests(unittest.TestCase):
                             self.assertEqual(caught.exception.phase, 'work')
                             self.assertEqual(ledger.budget.pins, {})
                             self.assertEqual(ledger.budget.fds, 0)
+
+    def test_process_leader_and_its_tid_share_one_slot_but_keep_role_pins(self):
+        budget = custody.Budget(time.monotonic() + 30, identities=2)
+        with budget.operation():
+            budget.pin(('pid', 1))
+            budget.pin(('task', 1))
+            budget.pin(('task', 2))
+            self.assertEqual(len(budget.seen), 3)
+            budget.unpin(('pid', 1))
+            budget.forget(('pid', 1))
+            self.assertIn(('task', 1), budget.seen)
+            with self.assertRaises(custody.CustodyError) as caught:
+                budget.identity(('pid', 3))
+            self.assertEqual(caught.exception.identity_counts['unique'], 3)
+            self.assertEqual(budget.pins, {('task', 1): 1, ('task', 2): 1})
+
+    def test_128_distinct_tasks_pass_and_129th_still_refuses(self):
+        budget = custody.Budget(time.monotonic() + 30)
+        with budget.operation():
+            for pid in range(1, 129):
+                budget.identity(('pid', pid))
+                budget.identity(('task', pid))
+            self.assertEqual(len(budget.seen), 256)  # Two bounded role entries per OS ID.
+            with self.assertRaisesRegex(custody.CustodyError, 'CUSTODY_IDENTITY_BOUND') as caught:
+                budget.identity(('task', 129))
+            self.assertEqual(caught.exception.identity_counts['unique'], 129)
+            self.assertEqual(budget.identities, 128)
 
     def test_positive_reap_is_recorded_before_post_wait_expiry(self):
         budget = custody.Budget(time.monotonic() + 30)

@@ -143,9 +143,15 @@ lifetimes, ancestry census and connection lease. The parent shares one budget
 across all its command ledgers. Each independently running guardian has its own
 controller budget for autonomous cleanup after parent death. Within each
 controller, traversal, retained/provisional custody, retries and connection
-proof share at most 128 currently charged process/thread identities and 128
-descriptors; these are not per-parent limits. A PID identity stays charged
-while its capability is pinned, including a handle whose close failed. A
+proof share at most 128 distinct charged Linux task IDs and 128
+descriptors; these are not per-parent limits. A process leader's PID and its
+TID are the same OS task in the verified PID namespace, as specified by [gettid(2)](https://man7.org/linux/man-pages/man2/gettid.2.html).
+They consume one identity slot while retaining separate role reference counts
+(up to 256 role entries for 128 IDs). No different live task or different
+namespace is merged. Numeric deduplication is only resource accounting; it
+does not establish identity or replace birth, ownership, retirement or signal
+authority checks when an ID is reused. A PID role stays charged while its
+capability is pinned, including a handle whose close failed. A
 successful close after retirement or ESRCH before PIDfd acquisition releases
 its identity slot; an uncertain or failed close never does. A positive reap
 record separately proves a completed PID and can discard its unpinned slot;

@@ -109,11 +109,14 @@ class Budget:
     def identity(self, key):
         self.check()
         self.seen.add(key)
-        if len(self.seen) > self.identities:
+        # In the verified PID namespace, a process leader PID and its TID name
+        # the same Linux task. Keep role pins separate, but charge it once.
+        unique = {('task', item[1]) if item[0] == 'pid' else item for item in self.seen}
+        if len(unique) > self.identities:
             error = CustodyError('CUSTODY_IDENTITY_BOUND')
             error.identity_counts = {kind: sum(k[0] == kind for k in self.seen)
                                      for kind in ('pid', 'task')}
-            error.identity_counts.update(pinned=len(self.pins), limit=self.identities)
+            error.identity_counts.update(pinned=len(self.pins), unique=len(unique), limit=self.identities)
             raise error
 
     def forget(self, key):

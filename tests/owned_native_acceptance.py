@@ -382,7 +382,7 @@ class OwnedProcess:
                         'CONTROL_INVALID')
                 counts = record.get('identityCounts')
                 require(counts is None or (record['uncertain'] == 'CUSTODY_IDENTITY_BOUND'
-                        and type(counts) is dict and set(counts) == {'pid', 'task', 'pinned', 'limit'}
+                        and type(counts) is dict and set(counts) == {'pid', 'task', 'pinned', 'unique', 'limit'}
                         and all(type(n) is int and 0 <= n <= 8192 for n in counts.values())),
                         'CONTROL_INVALID')
                 if self.uncertainty is None:
