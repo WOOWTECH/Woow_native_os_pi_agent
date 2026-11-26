@@ -78,9 +78,10 @@ import path from 'node:path';
 // Agent Connect 0.1.21 adapter pin, 0.3.37 only the Agent Connect 0.1.22 combined
 // adapter, 0.3.38 only the Agent Connect 0.1.23 combined adapter, 0.3.39 only the
 // Agent Connect 0.1.24 combined adapter, 0.3.40 only the Agent Connect 0.1.25
-// combined adapter); exact candidate archive is locked in lib/pins.sh.
-const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35', '0.3.36', '0.3.37', '0.3.38', '0.3.39', '0.3.40'];
-const MAINTENANCE_AWARE_VERSIONS = ['0.3.35', '0.3.36', '0.3.37', '0.3.38', '0.3.39', '0.3.40'];
+// combined adapter; 0.3.41 adds the Agent Connect 0.1.26 startup UI fix).
+// The exact candidate archive is locked in lib/pins.sh.
+const EXPECTED_VERSIONS = ['0.3.31', '0.3.32', '0.3.33', '0.3.34', '0.3.35', '0.3.36', '0.3.37', '0.3.38', '0.3.39', '0.3.40', '0.3.41'];
+const MAINTENANCE_AWARE_VERSIONS = ['0.3.35', '0.3.36', '0.3.37', '0.3.38', '0.3.39', '0.3.40', '0.3.41'];
 const MARKER = 'host-name-guard (Woow native installer)';
 
 // 1. The method goes right above ensure_host.

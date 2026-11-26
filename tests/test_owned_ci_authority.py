@@ -150,7 +150,9 @@ class SyntheticAuthority:
                    'providerAcceptance': False, 'rebootAcceptance': False,
                    'baseSourceReference': controller.BASE_COMMIT,
                    'sourceLockSha256': controller.INSTALLER['sha256'],
-                   'pluginSha256': '4763b1bc98eb64a7f8cba890a9c7fdf8907a3cab001eb5ccaa246cd45642a846'}
+                   # Match the driver's reviewed installer inputs, independently of
+                   # the receipt consumer's version constant.
+                   'pluginSha256': json.loads((ROOT / 'tests/owned-native-acceptance.lock.json').read_text())['pluginSha256']}
         return state, receipt
 
 
