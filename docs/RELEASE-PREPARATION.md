@@ -1,5 +1,23 @@
 # Native release preparation
 
+## 0.2.16-rc.5 preparation — exact upstream tuples pending
+
+- Target native version: `0.2.16-rc.5`.
+- Await fresh, exact Agent Connect `0.1.27-rc.5` and Omnigent
+  `0.3.42-rc.5` commit/archive tuples and the paired combined Pi Web patch
+  identity before changing candidate package names, archive bytes, pins, member
+  inventories, or source/acceptance locks. No rc5 tuple or digest is known yet.
+- This worktree starts from the held rc4 checkpoint. The rc4 archive files and
+  associated candidate pins are inherited review state only; do not use them as
+  rc5 packages or rename/copy them to rc5 filenames. Recompose all native locks
+  from the new exact tuples once they arrive.
+- Paseo 0.17.5 runtime r4/a7 remains unchanged. The reported Next and
+  eslint-config-next 16.4.6 security follow-up belongs to the upstream package
+  owners; wait for their new immutable tuples rather than assuming a successful
+  Pi Web build here.
+- Preparation only: no Pi Web build, old-graph test rerun, host access,
+  publication or release acceptance is performed by this change.
+
 ## 0.2.16-rc.4 held checkpoint — incomplete, not releasable
 
 - Agent Connect `0.1.27-rc.4` tuple evidence: source commit
