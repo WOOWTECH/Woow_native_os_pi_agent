@@ -59,11 +59,11 @@
     },
     {
       "bytes": 35726,
-      "gitBlob": "1918ca37ca2ed9a9d785db480425241676378a8d",
+      "gitBlob": "585761fea4b5ecdc4992a753893f03be30699ced",
       "gitMode": "100644",
       "mode": 420,
       "path": "scripts/owned-ubuntu-acceptance-ci.py",
-      "sha256": "19bd6a1398e72458c02a669eb9e46ac9e6eaf9f5ed51faaf59f9e78e93387a53"
+      "sha256": "f6eeba52683834d6630004665dce9fe2f89f57e00cc95ac186005757894b4013"
     },
     {
       "bytes": 2974,
@@ -115,11 +115,11 @@
     },
     {
       "bytes": 60253,
-      "gitBlob": "9086f18de8b45d288f5cc920df56adc3e79f8e55",
+      "gitBlob": "a77ed749673de6f73420d89b6c7ddb6b4dcd7168",
       "gitMode": "100644",
       "mode": 420,
       "path": "tests/owned_native_acceptance.py",
-      "sha256": "b8bcab253b1dc9dfe6eb650476e8835b5a294aeebb257289c4c4b1b011f99d16"
+      "sha256": "f0cb1f43ed19645e996a159a8f6f9b3b78f3b6ba27db421742a0854a2d6ba7b5"
     },
     {
       "bytes": 46960,
@@ -242,5 +242,5 @@
     ]
   },
   "schema": "owned-component-source/v1",
-  "sourceRowsSha256": "42d0b91b69ea41b9bde05d50af7ffe9fcd4e9e1f5eb97db230f0ec189e2d0f3f"
+  "sourceRowsSha256": "c4bd0256ba1ede178cec1de94b3f47ad81a56de277247e35a575eb9dd7494a00"
 }

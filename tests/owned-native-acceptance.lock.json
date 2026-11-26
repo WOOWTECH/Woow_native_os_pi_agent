@@ -14,10 +14,10 @@
     },
     {
       "path": "candidate-packages/manifest.json",
-      "bytes": 951,
+      "bytes": 1164,
       "mode": 420,
-      "sha256": "7c91111a354857303136ba0a068c2cc6ff12a56760a35a6f47f059ffe14c2b0b",
-      "gitBlob": "b53ff993c2d435a3a00187f7977ecb7c1d527fa1"
+      "sha256": "a152eabb2f4c514049592522df5538cf3baa4906c27b4279659b88c788afefe4",
+      "gitBlob": "ac8f73a8d8c60d8a74834520a835b7ab8becf2d4"
     },
     {
       "path": "candidate-packages/woowtech-pi-agent-shared-runtime-0.1.6.tgz",
