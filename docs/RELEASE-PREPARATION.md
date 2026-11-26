@@ -1,5 +1,13 @@
 # Native release preparation
 
+## 0.2.16-rc.3 shortcut recording candidate
+
+- Agent Connect 0.1.27-rc.3 includes the exact Smart `2b012f9f91377908c75b076c40a5917c712b66aa` builtin payload in `0.17.5-r3-8664f2c3f8f5`. Verified r2 and r1 control paths remain available; existing runtime directories are not overwritten.
+- Omnigent 0.3.42-rc.3 requires this exact Agent Connect version. Pi Web source and combined adapter code remain unchanged.
+- Shortcut recording needs both this builtin payload and the matching Smart Web keyboard guard. Installing the runtime alone does not fix an older Web client.
+- Frozen archives, source commits, Linux overlay member hashes and acceptance authority are regenerated together. Isolated r2→r3→r2 and 0.17.4→r3→0.17.4 checks retain identities, pairing, workspaces, Tasks and configuration.
+- Candidate only. aicoder acceptance uses the exact preview origins and separate evidence; this does not promote the Woowtech/Apporo production Web or update other hosts.
+
 ## 0.2.16-rc.2 preference persistence candidate
 
 - Agent Connect 0.1.27-rc.2 ships exact Smart a61efefca builtin bytes in a separate 0.17.5-r2 runtime; keeps verified r1 for rollback.

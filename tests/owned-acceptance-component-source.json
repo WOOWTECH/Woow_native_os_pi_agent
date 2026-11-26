@@ -27,11 +27,11 @@
     },
     {
       "bytes": 9133,
-      "gitBlob": "b5db63a155c514f74ffa4158bb6ef70f011b5fae",
+      "gitBlob": "66c6787c63ad282cc1ed0d2cbdbaeadf6ec82005",
       "gitMode": "100644",
       "mode": 420,
       "path": "docs/OWNED-UBUNTU-GENUINE-CI.md",
-      "sha256": "597239e382d39047cf0dffb68b1e7d559842dff3c64fd8831bd110e6d21b92f1"
+      "sha256": "da4d34dc524377f931bd3202baa78f837efcb48c460c4330d84fe7649386dc25"
     },
     {
       "bytes": 48655,
@@ -59,11 +59,11 @@
     },
     {
       "bytes": 35737,
-      "gitBlob": "94fc1370a725309d682cd68f19be8ccccd807400",
+      "gitBlob": "0f6e58b77e453b8de749fa4e20fad1d09e8df134",
       "gitMode": "100644",
       "mode": 420,
       "path": "scripts/owned-ubuntu-acceptance-ci.py",
-      "sha256": "d2db08e6b09f046afe3b571d0a014a4fef41474be1018f08411d75a9be60cdbb"
+      "sha256": "dbae20546a669a25f658aac2e9d6aff7fa30b40ca803fbbb90f5ad4b3d932466"
     },
     {
       "bytes": 2974,
@@ -115,11 +115,11 @@
     },
     {
       "bytes": 60268,
-      "gitBlob": "0b010b060a142e1aa777e4b67334ed3cbfe143f2",
+      "gitBlob": "b4becf1c16684a793b85eacf4f3d855bc0de5207",
       "gitMode": "100644",
       "mode": 420,
       "path": "tests/owned_native_acceptance.py",
-      "sha256": "7ca58265c4e5824208b1369e1a3a1575a450b998b3ccbf6a9ff5e4aa8986826b"
+      "sha256": "cefa2cd5c53589ca3c8c38a6845725d21020e8e5c6998bd392ef3add2d77fcc6"
     },
     {
       "bytes": 47284,
@@ -171,11 +171,11 @@
     },
     {
       "bytes": 49090,
-      "gitBlob": "ada952c17a2aa0613a010568bd0727628210d71f",
+      "gitBlob": "7278133a6a7d9037bfbca0e5b3d8c4519ad1937a",
       "gitMode": "100644",
       "mode": 420,
       "path": "tests/test_owned_native_acceptance.py",
-      "sha256": "c3b5ec709358fcd6496de1149e9f4c6ba5567b29fd4e1437785e6b53929628d3"
+      "sha256": "02d0bf19ae89fc90a3fb5dd61840cde7dc20104571278b975f7916163aa7f266"
     },
     {
       "bytes": 19553,
@@ -242,5 +242,5 @@
     ]
   },
   "schema": "owned-component-source/v1",
-  "sourceRowsSha256": "d68fb631465b0238b9f51b961749a21cd0f63f5d9150ab1a1407cb35b249db0f"
+  "sourceRowsSha256": "4f26dcc44b29c06aa89b6a840547d53429ddec67e57706702095f67252ed12fe"
 }
