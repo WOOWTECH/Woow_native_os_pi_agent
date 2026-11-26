@@ -30,7 +30,7 @@ LOCK = 'scripts/owned-ubuntu-acceptance-ci.lock.json'
 FREEZE = 'tests/owned-acceptance-component-source.json'
 HANDOFF = 'tests/owned-acceptance-component-handoff.json'
 INSTALLER = {'path': 'tests/owned-native-acceptance.lock.json',
-             'sha256': 'ec6d66ec9aeb87943a28cb6d254bb1aa298348faba1519d73e802a22358b6998', 'count': 40, 'bytes': 16371}
+             'sha256': 'ab68396c6169eaf6e823383ff4ed5a391808e4c97b87c9b5af21c7029ae33126', 'count': 40, 'bytes': 16372}
 PACKAGER = {'path': 'scripts/build-piweb-artifact.sh',
             'sha256': '157eae7044a6dcb641f60306fb60cf1e2d024be9c64130ca714a170648ad0263',
             'bytes': 2416, 'mode': 0o755}
@@ -590,7 +590,7 @@ def bind_receipt(raw, state, artifact_sha):
          and values['supervisor'] == authority['custodyMode']
          and values['baseSourceReference'] == BASE_COMMIT
          and values['sourceLockSha256'] == INSTALLER['sha256']
-         and values['pluginSha256'] == 'a5eb78fedabb3671cc4d70cc88e5826e1bf6d60075eba444288f3c4478a1ff58', 'RECEIPT_IDENTITY')
+         and values['pluginSha256'] == '4763b1bc98eb64a7f8cba890a9c7fdf8907a3cab001eb5ccaa246cd45642a846', 'RECEIPT_IDENTITY')
     need(all(values[k] is False for k in ('realUbuntuAcceptance', 'realWSL2Acceptance',
                                         'providerAcceptance', 'rebootAcceptance'))
          and type(values['teardownVerified']) is bool
