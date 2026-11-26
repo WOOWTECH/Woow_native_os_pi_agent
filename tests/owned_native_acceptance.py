@@ -23,7 +23,7 @@ import time
 import shutil
 import tarfile
 import tomllib
-from owned_acceptance_supervisor import identity, descendants
+from owned_acceptance_supervisor import identity, descendants, uncertainty_record
 from owned_process_custody import Budget, CustodyError, EXIT_WAIT_LIMIT, OwnedDescendants, TreeLifetime
 
 BASE_COMMIT = '172522c8a4065f80e813d6d4710b26b13b6094c7'
@@ -319,9 +319,7 @@ class OwnedProcess:
             expected_exit = error.custody_code == 'CUSTODY_ANCHOR_GONE' and self.guardian_exited()
             if error.custody_code not in ('LISTENER_MISSING', 'CUSTODY_DEADLINE') \
                     and not expected_exit and self.uncertainty is None:
-                self.uncertainty = {'uncertain': error.custody_code}
-                if error.errno is not None:
-                    self.uncertainty['errno'] = error.errno
+                self.uncertainty = uncertainty_record(error, 'CUSTODY')
             raise Hold(error.custody_code) from error
 
     def guardian_exited(self):
@@ -376,11 +374,16 @@ class OwnedProcess:
                 require(set(record) == {'workExpired'} and record['workExpired'] is True, 'CONTROL_INVALID')
                 self.work_expired = True
             if 'uncertain' in record:
-                require(set(record) <= {'uncertain', 'errno'}
+                require(set(record) <= {'uncertain', 'errno', 'identityCounts'}
                         and isinstance(record['uncertain'], str)
                         and re.fullmatch(r'[A-Z_]{1,64}', record['uncertain'])
                         and (record.get('errno') is None or
                              type(record['errno']) is int and 0 < record['errno'] <= 4095),
+                        'CONTROL_INVALID')
+                counts = record.get('identityCounts')
+                require(counts is None or (record['uncertain'] == 'CUSTODY_IDENTITY_BOUND'
+                        and type(counts) is dict and set(counts) == {'pid', 'task', 'pinned', 'limit'}
+                        and all(type(n) is int and 0 <= n <= 8192 for n in counts.values())),
                         'CONTROL_INVALID')
                 if self.uncertainty is None:
                     self.uncertainty = record

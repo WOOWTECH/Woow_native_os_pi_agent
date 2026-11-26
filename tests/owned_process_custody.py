@@ -109,7 +109,12 @@ class Budget:
     def identity(self, key):
         self.check()
         self.seen.add(key)
-        need(len(self.seen) <= self.identities, 'CUSTODY_IDENTITY_BOUND')
+        if len(self.seen) > self.identities:
+            error = CustodyError('CUSTODY_IDENTITY_BOUND')
+            error.identity_counts = {kind: sum(k[0] == kind for k in self.seen)
+                                     for kind in ('pid', 'task')}
+            error.identity_counts.update(pinned=len(self.pins), limit=self.identities)
+            raise error
 
     def forget(self, key):
         """Release a census slot only after no held capability pins it."""
@@ -548,40 +553,30 @@ class OwnedDescendants:
         self.budget.pins[key] = self.budget.pins.get(key, 0) + 1
         cap.pinned = True
         try:
-            if self._fdinfo(cap):
-                if terminal is True and discovered is True and self._census_depth \
-                        and pid != self.anchor_proof[0]:
-                    # Ready at discovery under a held parent edge: an inert terminal
-                    # leaf owned by the calling census pass, which closes it. It is
-                    # never provisional, signalled, adopted or traversed.
-                    del self._provisional[pid]
-                    cap.terminal = True
-                    return cap
-                self._close_cap(cap)
-                return None
-            cap.procfd = self._open(str(pid), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                                    dir_fd=self.rootfd)
-            if self._validate(cap) is None:
-                self._close_cap(cap)  # Its own new provisional object only.
-                return None
-        except OSError as error:
             try:
-                departed = self._departed(cap, error, 'procdir')
-            except BaseException:
-                if self._provisional.get(pid) is cap:
+                if self._fdinfo(cap):
+                    if terminal is True and discovered is True and self._census_depth \
+                            and pid != self.anchor_proof[0]:
+                        del self._provisional[pid]
+                        cap.terminal = True
+                        return cap
                     self._close_cap(cap)
+                    return None
+                cap.procfd = self._open(str(pid), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                        dir_fd=self.rootfd)
+                if self._validate(cap) is None:
+                    self._close_cap(cap)
+                    return None
+            except OSError as error:
+                if self._departed(cap, error, 'procdir'):
+                    self._close_cap(cap)
+                    return None
                 raise
-            if departed:
-                self._close_cap(cap)
-                return None
-            if self._provisional.get(pid) is cap:
-                self._close_cap(cap)
-            raise
-        except BaseException:
-            # Work/explicit cutoff and other non-I/O failures can occur after
-            # PIDfd registration too. Do not leave a procfd-less provisional
-            # object for the next census to misread as CUSTODY_IO_ERROR.
-            if self._provisional.get(pid) is cap:
+        except CustodyError as error:
+            # Known work/explicit expiry cannot authorize reuse of an incomplete
+            # provisional. Ownership/I/O/exit uncertainty instead retains it.
+            if error.custody_code == 'CUSTODY_DEADLINE' and error.phase in ('work', 'explicit') \
+                    and self._provisional.get(pid) is cap:
                 self._close_cap(cap)
             raise
         return cap

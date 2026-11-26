@@ -109,6 +109,40 @@ class BoundedChurnAccountingTests(unittest.TestCase):
 
 
 class AccountingBoundaryTests(unittest.TestCase):
+    def test_exit_uncertainty_retains_provisional_handles_and_charges(self):
+        ledger = empty_ledger()
+        uncertainty = custody.CustodyError('CUSTODY_EXIT_UNCONFIRMED')
+        with ledger._operation(), \
+                mock.patch.object(custody.os, 'pidfd_open', return_value=51001), \
+                mock.patch.object(custody.os, 'open', return_value=51002), \
+                mock.patch.object(custody.os, 'close') as close, \
+                mock.patch.object(ledger, '_fdinfo', return_value=False), \
+                mock.patch.object(ledger, '_validate', side_effect=uncertainty):
+            with self.assertRaises(custody.CustodyError) as caught:
+                ledger._open_cap(22)
+            self.assertIs(caught.exception, uncertainty)
+            cap = ledger._provisional[22]
+            self.assertEqual((cap.pidfd, cap.procfd), (51001, 51002))
+            self.assertEqual(ledger.budget.pins, {('pid', 22): 1})
+            self.assertEqual(ledger.budget.fds, 2)
+            close.assert_not_called()
+            ledger._close_cap(cap)  # Mock-only fixture cleanup.
+
+    def test_identity_bound_diagnostic_contains_counts_only(self):
+        from owned_acceptance_supervisor import uncertainty_record
+        budget = custody.Budget(time.monotonic() + 30, identities=2)
+        with budget.operation():
+            budget.pin(('pid', 12345))
+            budget.identity(('task', 23456))
+            with self.assertRaises(custody.CustodyError) as caught:
+                budget.identity(('task', 34567))
+            record = uncertainty_record(caught.exception, 'CUSTODY')
+            self.assertEqual(record, {'uncertain': 'CUSTODY_IDENTITY_BOUND',
+                'identityCounts': {'pid': 1, 'task': 2, 'pinned': 1, 'limit': 2}})
+            caught.exception.identity_counts['task'] = 'PRIVATE-DO-NOT-EXPORT'
+            self.assertEqual(uncertainty_record(caught.exception, 'CUSTODY'),
+                             {'uncertain': 'CUSTODY_IDENTITY_BOUND'})
+
     def test_cutoff_immediately_after_pidfd_acquisition_closes_or_retains_charge(self):
         for fail_close in (False, True):
             with self.subTest(fail_close=fail_close):

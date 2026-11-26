@@ -104,6 +104,11 @@ def uncertainty_record(error, operation):
     if isinstance(custody_code, str) and custody_code.startswith('CUSTODY_') \
             and len(custody_code) <= 64 and all(c == '_' or 'A' <= c <= 'Z' for c in custody_code):
         result = {'uncertain': custody_code}
+        counts = getattr(error, 'identity_counts', None)
+        if custody_code == 'CUSTODY_IDENTITY_BOUND' and type(counts) is dict \
+                and set(counts) == {'pid', 'task', 'pinned', 'limit'} \
+                and all(type(n) is int and 0 <= n <= 8192 for n in counts.values()):
+            result['identityCounts'] = counts.copy()
         number = getattr(error, 'errno', None)
         if type(number) is int and 0 < number <= 4095:
             result['errno'] = number
