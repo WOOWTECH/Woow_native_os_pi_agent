@@ -3,10 +3,10 @@
   "baseTree": "4ebb37ac864d1a423eccfb6cdd838f1f94bbf21f",
   "componentSource": {
     "archive": {
-      "bytes": 144740,
+      "bytes": 145288,
       "memberCount": 24,
-      "sha256": "18355c4ada956f67a824cd5713cf3f6f541061f3311846e50754ad49a099dd04",
-      "sourceRowsSha256": "bb4f54c661e546715c62ab7ba45e895363436e2ed12b409520e79753c55a2050"
+      "sha256": "0f826b7ccdb12b3719658ced800d5da075a683ce54e8f65342f9458bd25734e4",
+      "sourceRowsSha256": "65e8164767a082990a3c0581fb46c9d7f9044b4fb2cd860889cc5cc80be04b0d"
     },
     "fileCount": 24,
     "files": [
@@ -131,12 +131,12 @@
         "sha256": "3177799f4a27873e756fb81730a75e2fbbcbda4d11ca3aaac78a8edaaee081d9"
       },
       {
-        "bytes": 46960,
-        "gitBlob": "05f9038acba5f0bee94278a45e298ceb78c44b01",
+        "bytes": 47284,
+        "gitBlob": "0be2c3d707bd184c6c198f581b2091d558ea8ba8",
         "gitMode": "100644",
         "mode": 420,
         "path": "tests/owned_process_custody.py",
-        "sha256": "5aaaa75ccb237f4c94206e28e5266f70ab197f92905b832282af9a7ad40a7185"
+        "sha256": "498286591c26be8b6b64893a897e094d5789154999f3453e7e960e6437e16cba"
       },
       {
         "bytes": 380,
@@ -195,25 +195,25 @@
         "sha256": "06e1ca5c780d05b80ad1e14e9904ade2df3d2ad7653413c749110aef6efdf5ef"
       },
       {
-        "bytes": 70534,
-        "gitBlob": "f860fa7fcfae438abcbd0e6d5c5836b2f5459ceb",
+        "bytes": 72029,
+        "gitBlob": "ff7ee894566ecc8f7f02da8c2be29e8485d9a8af",
         "gitMode": "100644",
         "mode": 420,
         "path": "tests/test_owned_process_custody.py",
-        "sha256": "3b1c86252fc93ae6f67a9330fb9c83fb18c2eaa2c493b45bdea750e722cf1c44"
+        "sha256": "68c5d109ac086634fb3cd8bb3444f25ed510b2eb4d7fbf7431a2ff644f337959"
       }
     ],
     "freeze": {
       "bytes": 8301,
       "mode": 420,
       "path": "tests/owned-acceptance-component-source.json",
-      "sha256": "bb3ea64ce81ea1f0ded24881912172d11f828b939226740f7e5b4fce9c03e5f1"
+      "sha256": "71a8a8e1eb5c62530e4ee1ef6e73fbb3acbe15c5916ba2f147358dec83003aa0"
     },
     "handoff": {
       "bytes": 4466,
       "mode": 420,
       "path": "tests/owned-acceptance-component-handoff.json",
-      "sha256": "56bebca762ddcfd65f5eaa90b16f34cce1eb958301a279702bd761356b27961d"
+      "sha256": "3d7e59e9374dca8231156469658462902cb8ff4687976fbdc52735b768c6501f"
     },
     "roles": {
       "compatibilityEntries": [
@@ -262,7 +262,7 @@
         ".github/workflows/owned-ubuntu-acceptance.yml"
       ]
     },
-    "sourceRowsSha256": "bb4f54c661e546715c62ab7ba45e895363436e2ed12b409520e79753c55a2050"
+    "sourceRowsSha256": "65e8164767a082990a3c0581fb46c9d7f9044b4fb2cd860889cc5cc80be04b0d"
   },
   "historicalSupersededAuthority": {
     "acceptedCommit": "ec0a52a20958d7ca8ad779a5b5d2391b52248892",

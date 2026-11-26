@@ -318,6 +318,34 @@ class DetachedCustodyTests(unittest.TestCase):
                 self.assertIn(b'owned-detached-response', wire)
             self.assertEqual(conn.fileno(), -1)
 
+    def test_pending_accept_wait_does_not_repeat_full_owned_census(self):
+        with self.private_run() as run:
+            code = (
+                'import socket,time\n'
+                's=socket.socket();s.bind(("127.0.0.1",0));s.listen(2)\n'
+                'print(s.getsockname()[1],flush=True);time.sleep(0.35)\n'
+                'c,_=s.accept();c.settimeout(2);c.recv(8192)\n'
+                'body=b"owned-serving-peer"\n'
+                'c.sendall(b"HTTP/1.1 200 OK\\r\\nContent-Length: "+str(len(body)).encode()+b"\\r\\nConnection: close\\r\\n\\r\\n"+body)\n'
+                'c.close();s.close()\n'
+            )
+            process = run.spawn([sys.executable, '-I', '-S', '-B', '-c', code])
+            port = int(process.line(3))
+            ledger = process.ensure_custody()
+            refreshes = []
+            real_refresh = ledger.refresh
+
+            def count_refreshes():
+                refreshes.append(True)
+                return real_refresh()
+
+            with mock.patch.object(ledger, 'refresh', side_effect=count_refreshes):
+                self.assertEqual(owned.Endpoint(process, port).get('/'), b'owned-serving-peer')
+            # The pre-accept TCP row has inode 0, so it cannot be attributed to
+            # an owner. Poll it without recensus; perform fresh full ancestry
+            # proofs once the kernel publishes the accepted socket inode.
+            self.assertLessEqual(len(refreshes), 8, 'pending accept caused repeated full ancestry scans')
+
     def test_failed_teardown_is_hold_without_signalling_substituted_proof(self):
         with self.private_run() as run:
             process, _ = self.node_server(run)

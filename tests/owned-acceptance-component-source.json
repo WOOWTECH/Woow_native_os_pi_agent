@@ -122,12 +122,12 @@
       "sha256": "3177799f4a27873e756fb81730a75e2fbbcbda4d11ca3aaac78a8edaaee081d9"
     },
     {
-      "bytes": 46960,
-      "gitBlob": "05f9038acba5f0bee94278a45e298ceb78c44b01",
+      "bytes": 47284,
+      "gitBlob": "0be2c3d707bd184c6c198f581b2091d558ea8ba8",
       "gitMode": "100644",
       "mode": 420,
       "path": "tests/owned_process_custody.py",
-      "sha256": "5aaaa75ccb237f4c94206e28e5266f70ab197f92905b832282af9a7ad40a7185"
+      "sha256": "498286591c26be8b6b64893a897e094d5789154999f3453e7e960e6437e16cba"
     },
     {
       "bytes": 380,
@@ -186,12 +186,12 @@
       "sha256": "06e1ca5c780d05b80ad1e14e9904ade2df3d2ad7653413c749110aef6efdf5ef"
     },
     {
-      "bytes": 70534,
-      "gitBlob": "f860fa7fcfae438abcbd0e6d5c5836b2f5459ceb",
+      "bytes": 72029,
+      "gitBlob": "ff7ee894566ecc8f7f02da8c2be29e8485d9a8af",
       "gitMode": "100644",
       "mode": 420,
       "path": "tests/test_owned_process_custody.py",
-      "sha256": "3b1c86252fc93ae6f67a9330fb9c83fb18c2eaa2c493b45bdea750e722cf1c44"
+      "sha256": "68c5d109ac086634fb3cd8bb3444f25ed510b2eb4d7fbf7431a2ff644f337959"
     }
   ],
   "roles": {
@@ -242,5 +242,5 @@
     ]
   },
   "schema": "owned-component-source/v1",
-  "sourceRowsSha256": "bb4f54c661e546715c62ab7ba45e895363436e2ed12b409520e79753c55a2050"
+  "sourceRowsSha256": "65e8164767a082990a3c0581fb46c9d7f9044b4fb2cd860889cc5cc80be04b0d"
 }

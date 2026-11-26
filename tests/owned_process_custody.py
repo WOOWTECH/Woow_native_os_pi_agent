@@ -969,12 +969,16 @@ class OwnedDescendants:
                      'CUSTODY_PEER_INVALID')
                 while True:
                     self.budget.check()
-                    self.refresh()
+                    # Until the kernel reports an established peer socket, no
+                    # process is being trusted. Poll only the bounded TCP table;
+                    # a full ancestry census is required as soon as a candidate
+                    # accepted socket appears, before inspecting or granting it.
                     matches = [r for r in self._tcp() if r[0] == peer and r[1] == local and r[2] == '01']
                     need(len(matches) <= 1, 'CUSTODY_PEER_AMBIGUOUS')
                     if matches and matches[0][4] > 0:
                         row = matches[0]
                         need(row[3] == self.anchor_proof[2], 'CUSTODY_PEER_FOREIGN')
+                        self.refresh()
                         owned_fd = self._socket_fd(row[4])
                         if owned_fd is DEPARTED:
                             continue  # Fresh bounded census and fresh objects.
