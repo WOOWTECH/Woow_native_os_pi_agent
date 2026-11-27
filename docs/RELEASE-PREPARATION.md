@@ -1,5 +1,113 @@
 # Native release preparation
 
+## 0.2.16 — stable
+
+**0.2.16 stable.** Pairs Agent Connect `0.1.27` (source `053a39a7b72e83787a419b97206adc34f45e35bb`, archive SHA-256 `aecf3bdff1505d3745ddc694f1e50fead50a0fc19b3fa2c82205174917143b6f`, adapter SHA-256 `22d3a604d0c3ddc9305afe07f9f68524bec906fddb16636c08ac2783b4442a6c`) with Omnigent `0.3.42` (source `7b56ad586711e6a707c6c3f36ff5dc5fef2790a4`, archive SHA-256 `7ffa8983e3bb2d9790f3122fd53db3e7adca4e24aed33f37aa4cc86bbeea5bb5`, combined patch SHA-256 `8d55d6824307023eed5ead7fa89080650d3981fae1746378db9a400fab8a9632`); both are GitHub release assets. The code is the accepted 0.2.16-rc.6: the JSON helper returns uncompressed content so Next 16.4.6 does its own output compression and `fetch().json()` can parse `/api/sessions` (RC5 failed that real check and was rolled back). Paseo runtime r4 `0.17.5-r4-8664f2c3f8f5` and the exact a7 five-file Better Paseo payload are unchanged. rc.6 passed host installation, lifecycle, phone Tasks and task-title acceptance on the aicoder host on 2026-11-27; the stable installation is recorded separately.
+
+## 0.2.16-rc.6 — HTTP JSON compatibility
+
+**0.2.16-rc.6 HTTP JSON compatibility candidate.** Agent Connect `0.1.27-rc.6` source `ba9f1c408a61193efc47c2914c6edd67c6f681b7`, archive SHA-256 `224c819fc14876c86f5febe0996a26e73ce618682faf611bac1b340b08b71335`, adapter SHA `22d3a604d0c3ddc9305afe07f9f68524bec906fddb16636c08ac2783b4442a6c`; Omnigent `0.3.42-rc.6` source `d4640bac3fd48b338c1f81230cb3d31fb75f79b2`, archive SHA-256 `91321ee0af4a8500317b726113e0c24332026f26142c4400b283cd55883f12e0`, combined patch SHA `8d55d6824307023eed5ead7fa89080650d3981fae1746378db9a400fab8a9632`. The JSON helper returns uncompressed content for Next 16.4.6 egress compression. RC5 failed real /api/sessions JSON parsing and was rolled back; its build success is not installation acceptance. Paseo runtime r4 and the exact a7 five-file builtin payload are unchanged. Validation and host installation are recorded separately.
+
+## 0.2.16-rc.5 exact paired source and native lock candidate
+
+- Target native version: `0.2.16-rc.5`.
+- Agent Connect `0.1.27-rc.5` exact tuple received: source commit
+  `867d9065f609aa5e32d88f2d55cf07c5d3fadc3e`; archive
+  `next-security-release-rc5/artifacts/woowtech-pi-paseo-0.1.27-rc.5.tgz`,
+  SHA-256 `581d5468020344dc93728da862118a4f8258a1a9a610ca16336e865345dceaa5`;
+  paired adapter SHA-256
+  `aefb39dd6c378571ea8146bfa27fa153609da7460bc7198c3cfeb471ce02bcd6`.
+  The archive's SHA-256 was independently recomputed locally and matched. The
+  reported source checks are 128 host tests, typecheck, and Next 16.4.6
+  production build; these are upstream-provided results, not native validation.
+- Omnigent `0.3.42-rc.5` exact paired tuple received: source commit
+  `f6c20d5150a41d76627f2684e5f338c457f80d09`; archive
+  `next-security-release-rc5/artifacts/woowtech-pi-omnigent-plugin-0.3.42-rc.5.tgz`,
+  SHA-256 `07a4c4fb0399a04d79bb73f518a088504147fbc5e02b115ef6cca77e80b1b63f`;
+  combined patch SHA-256
+  `5bbbd15bf9b0734bb4964c79dd620ecbc3e0ccda26af3cec2cb6a488d8eba7aa`.
+  AC adapter identity matches the AC tuple above. The source reports 348 Node,
+  143 Python, 144 host tests and Next 16.4.6 production build passed; these are
+  upstream-provided results, not native acceptance evidence.
+- Native package archives, manifest, pins, four version overlays, Linux post-overlay
+  member inventory, 40 installer input rows and the component-source/handoff
+  authority chain now bind the exact rc5 pair. Targeted native checks passed. A
+  fresh Pi Web build, image build, host acceptance and publication remain pending.
+- The rc4 checkpoint remains preserved on its own branch. RC5 archive filenames,
+  bytes, pins and locks use only the exact rc5 tuples above; no rc4 archive was
+  copied or renamed into the rc5 package set.
+- Paseo 0.17.5 runtime remains `0.17.5-r4-8664f2c3f8f5`; Better Paseo a7
+  payload source is `a7bfd65a3f39076cf664e28687818c24952e261c`, with its five
+  payload files unchanged. The paired upstream sources report Next and
+  eslint-config-next 16.4.6; this native branch does not claim an independently
+  built Pi Web artifact.
+- Validation performed locally: manifest/package binding, Linux overlay
+  composition, source-authority composition and owned safety fixtures. No old
+  graph rerun, Pi Web build, image build, host access, publication or release
+  acceptance is claimed.
+
+## 0.2.16-rc.4 held checkpoint — incomplete, not releasable
+
+- Agent Connect `0.1.27-rc.4` tuple evidence: source commit
+  `a895f725aad645e7594c8405aac17aca409b3558`; artifact
+  `phone-selected-release-rc4/artifacts/woowtech-pi-paseo-0.1.27-rc.4.tgz`,
+  SHA-256 `3fe3f9e7bad463c6a007703a8db67c2de320b061e93ba7bc79339cae68fe937b`.
+- Omnigent `0.3.42-rc.4` paired tuple evidence: source commit
+  `05d5d596f4759ac372a210d5eff8e0a11463a44d`; artifact
+  `phone-selected-release-rc4/artifacts/woowtech-pi-omnigent-plugin-0.3.42-rc.4.tgz`,
+  SHA-256 `fc0d51131e21efc1d9e94ef5f3b5b7bbf7c811691e46769763dcde667a74bcc8`.
+- Their combined Pi Web patch SHA-256 remains
+  `13775483ce327a544b2604f4205db11ec0eec516e0765c44bebf72a133503dbb`.
+  The Agent Connect archive reports Paseo 0.17.5 runtime r3 and Tasks chunk
+  `f9f9101d9d59ec1a`; these are recorded as tuple evidence, not a runtime update.
+- The native worktree contains package/pin/overlay/acceptance edits made before
+  the security-scope change. Its source authority and installer-input lock chain
+  was not recomposed. Treat this commit as an auditable, incomplete checkpoint;
+  do not build, test the old graph, publish, or claim release acceptance from it.
+- Next 16.4.3's final security gate rejected the Pi Web build. The reported
+  follow-up is owned by the upstream lines (standalone adapter and combined
+  patch changes plus Next/eslint-config-next 16.4.6); this native worktree does
+  not assert those fixes or contain a passing Pi Web result. A separate rc5
+  preparation line awaits new exact Agent Connect and Omnigent tuples. Paseo
+  runtime remains r4/a7 unchanged as directed.
+
+## 0.2.16-rc.3 shortcut recording candidate
+
+- Agent Connect 0.1.27-rc.3 includes the exact Smart `2b012f9f91377908c75b076c40a5917c712b66aa` builtin payload in `0.17.5-r3-8664f2c3f8f5`. Verified r2 and r1 control paths remain available; existing runtime directories are not overwritten.
+- Omnigent 0.3.42-rc.3 requires this exact Agent Connect version. Pi Web source and combined adapter code remain unchanged.
+- Shortcut recording needs both this builtin payload and the matching Smart Web keyboard guard. Installing the runtime alone does not fix an older Web client.
+- Frozen archives, source commits, Linux overlay member hashes and acceptance authority are regenerated together. Isolated r2→r3→r2 and 0.17.4→r3→0.17.4 checks retain identities, pairing, workspaces, Tasks and configuration.
+- Candidate only. aicoder acceptance uses the exact preview origins and separate evidence; this does not promote the Woowtech/Apporo production Web or update other hosts.
+
+## 0.2.16-rc.2 preference persistence candidate
+
+- Agent Connect 0.1.27-rc.2 ships exact Smart a61efefca builtin bytes in a separate 0.17.5-r2 runtime; keeps verified r1 for rollback.
+- Omnigent 0.3.42-rc.2 pins this exact contributor. Combined Pi Web code and patch digest remain unchanged.
+- The frozen archives, source commits, Linux overlay member hashes and acceptance authority are refreshed as one pair.
+- Candidate only; aicoder real UI persistence and data preservation must be verified before describing it as accepted.
+
+## 0.2.16-rc.1 coordinated candidate
+
+- Agent Connect 0.1.27-rc.1 is paired with the Paseo 0.17.5 runtime at
+  `0.17.5-r1-8664f2c3f8f5`; source commit
+  `e4c568ce3214592574f11243acf5ed7db743d47e`, archive SHA256
+  `f91b7daa16cc0d86907507fc21d5f87ec021c0ee0a9a93b47c7864debd10c52b`.
+- Omnigent 0.3.42-rc.1 is paired to that Agent Connect source; commit
+  `a79eb5cb891a7807f8aa665c6ef0b59b25fcc860`, archive SHA256
+  `ada685198ba0a06d3a73e935c063857dfc7bbef5ab612d74c1a80d4bb41d4ede`.
+  Its combined adapter bytes remain SHA256
+  `13775483ce327a544b2604f4205db11ec0eec516e0765c44bebf72a133503dbb`.
+- The four native Omnigent overlays accept only the exact new prerelease in
+  addition to their reviewed versions. The three Linux overlays were regenerated
+  against the paired archive and their installed member hashes are locked.
+- Native artifact receipts now accept valid SemVer prerelease package filenames
+  while retaining exact source, archive digest and receipt checks. Candidate
+  archives have no stable release URL or stable-release status.
+- The official CLI pin is 0.17.5. Pi Web remains pinned to source
+  `6fcd7d44981ab51a21d6cd6eb06d361d0e3d3068`; the coordinated build is performed
+  separately from this source change and must write its receipt against the
+  final native candidate commit.
+
 ## 0.2.15
 
 Changes from 0.2.14:

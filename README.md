@@ -26,6 +26,13 @@ acceptance require separate host evidence.
 background startup to readiness, explains unsaved or pending target changes,
 and bounds waiting without automatically repeating lifecycle actions.
 
+**0.2.16 stable.** Pairs Agent Connect `0.1.27` (source `053a39a7b72e83787a419b97206adc34f45e35bb`, archive SHA-256 `aecf3bdff1505d3745ddc694f1e50fead50a0fc19b3fa2c82205174917143b6f`, adapter SHA-256 `22d3a604d0c3ddc9305afe07f9f68524bec906fddb16636c08ac2783b4442a6c`) with Omnigent `0.3.42` (source `7b56ad586711e6a707c6c3f36ff5dc5fef2790a4`, archive SHA-256 `7ffa8983e3bb2d9790f3122fd53db3e7adca4e24aed33f37aa4cc86bbeea5bb5`, combined patch SHA-256 `8d55d6824307023eed5ead7fa89080650d3981fae1746378db9a400fab8a9632`); both are GitHub release assets. The code is the accepted 0.2.16-rc.6: the JSON helper returns uncompressed content so Next 16.4.6 does its own output compression and `fetch().json()` can parse `/api/sessions` (RC5 failed that real check and was rolled back). Paseo runtime r4 `0.17.5-r4-8664f2c3f8f5` and the exact a7 five-file Better Paseo payload are unchanged. rc.6 passed host installation, lifecycle, phone Tasks and task-title acceptance on the aicoder host on 2026-11-27; the stable installation is recorded separately.
+
+**Previous 0.2.16-rc.3 candidate (superseded; rc.4 was held, rc.5 failed live HTTP verification and rc.6 was accepted and released as 0.2.16).** It pairs Agent Connect
+0.1.27-rc.3 and Omnigent 0.3.42-rc.3 with the Paseo 0.17.5 runtime. Its
+artifacts remain unpublished candidates; this source change does not claim
+host acceptance.
+
 **v0.2.14 added Tasks to Agent Connect.** The bundled Agent Connect 0.1.25
 uses Better Paseo Tasks with the official Paseo 0.17.4 runtime. Tasks defaults
 to enabled; chat enhancements and automatic update checks default to disabled.
