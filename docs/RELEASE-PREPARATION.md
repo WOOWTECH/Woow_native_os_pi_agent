@@ -1,3 +1,7 @@
+## 0.2.16-rc.6 — HTTP JSON compatibility
+
+**0.2.16-rc.6 HTTP JSON compatibility candidate.** Agent Connect `0.1.27-rc.6` source `ba9f1c408a61193efc47c2914c6edd67c6f681b7`, archive SHA-256 `224c819fc14876c86f5febe0996a26e73ce618682faf611bac1b340b08b71335`, adapter SHA `22d3a604d0c3ddc9305afe07f9f68524bec906fddb16636c08ac2783b4442a6c`; Omnigent `0.3.42-rc.6` source `d4640bac3fd48b338c1f81230cb3d31fb75f79b2`, archive SHA-256 `91321ee0af4a8500317b726113e0c24332026f26142c4400b283cd55883f12e0`, combined patch SHA `8d55d6824307023eed5ead7fa89080650d3981fae1746378db9a400fab8a9632`. The JSON helper returns uncompressed content for Next 16.4.6 egress compression. RC5 failed real /api/sessions JSON parsing and was rolled back; its build success is not installation acceptance. Paseo runtime r4 and the exact a7 five-file builtin payload are unchanged. Validation and host installation are recorded separately.
+
 # Native release preparation
 
 ## 0.2.16-rc.5 exact paired source and native lock candidate

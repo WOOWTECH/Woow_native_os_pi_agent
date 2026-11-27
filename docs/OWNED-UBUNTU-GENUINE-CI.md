@@ -1,12 +1,12 @@
 # Owned Ubuntu CI source authority
 
-The v2 consumer lock binds the reviewed custody runtime, controller and the native v0.2.16-rc.5 candidate installer inputs. The pull-request job builds Pi Web and exercises installation and teardown on a disposable Ubuntu runner. Source composition alone is not a successful test result; only receipts from the exact candidate commit describe a run. Next 16.4.6 upstream build success is reported for the paired sources; this source lock is not a Pi Web build receipt or host acceptance.
+The v2 consumer lock binds the reviewed custody runtime, controller and the native v0.2.16-rc.6 candidate installer inputs. The pull-request job builds Pi Web and exercises installation and teardown on a disposable Ubuntu runner. Source composition alone is not a successful test result; only receipts from the exact candidate commit describe a run. Next 16.4.6 upstream build success is reported for the paired sources; this source lock is not a Pi Web build receipt or host acceptance.
 
 The baseline checkout is69963675d7c763ae5ef6e64090baae6aa4fcbd60. Its actual Linux and Mac successes and Ubuntu failed/HOLD attempt describe only that old source. V4 source authority remains historical and cannot authorize a replacement driver.
 
 ## Immutable installer authority
 
-The 40 installer-input rows and expected post-overlay Linux plugin members are pinned for the native v0.2.16-rc.5 candidate in `tests/owned-native-acceptance.lock.json`. They include the hard-link repair, Agent Connect 0.1.27-rc.5 and Omnigent 0.3.42-rc.5. The controller pins that exact lock hash, byte size and row count; it also pins the current packager. The historical base reference is provenance, not a requirement to restore obsolete package bytes. The legacy smoke refusal remains intact.
+The 40 installer-input rows and expected post-overlay Linux plugin members are pinned for the native v0.2.16-rc.6 candidate in `tests/owned-native-acceptance.lock.json`. They include the hard-link repair, Agent Connect 0.1.27-rc.6 and Omnigent 0.3.42-rc.6. The controller pins that exact lock hash, byte size and row count; it also pins the current packager. The historical base reference is provenance, not a requirement to restore obsolete package bytes. The legacy smoke refusal remains intact.
 
 ## Required final documents
 

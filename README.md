@@ -26,9 +26,9 @@ acceptance require separate host evidence.
 background startup to readiness, explains unsaved or pending target changes,
 and bounds waiting without automatically repeating lifecycle actions.
 
-**0.2.16-rc.5 native package and lock candidate is composed locally.** Agent Connect `0.1.27-rc.5` source `867d9065f609aa5e32d88f2d55cf07c5d3fadc3e`, archive SHA-256 `581d5468020344dc93728da862118a4f8258a1a9a610ca16336e865345dceaa5`, adapter SHA `aefb39dd6c378571ea8146bfa27fa153609da7460bc7198c3cfeb471ce02bcd6`; Omnigent `0.3.42-rc.5` source `f6c20d5150a41d76627f2684e5f338c457f80d09`, archive SHA-256 `07a4c4fb0399a04d79bb73f518a088504147fbc5e02b115ef6cca77e80b1b63f`, combined patch SHA `5bbbd15bf9b0734bb4964c79dd620ecbc3e0ccda26af3cec2cb6a488d8eba7aa`. Native manifest, pins, Linux overlay member hashes and source/acceptance locks bind this exact pair. Paseo 0.17.5 runtime r4/a7 remains unchanged, including the five runtime payload files. Local native source and package-lock checks pass; a fresh Pi Web build and host acceptance are not claimed.
+**0.2.16-rc.6 HTTP JSON compatibility candidate.** Agent Connect `0.1.27-rc.6` source `ba9f1c408a61193efc47c2914c6edd67c6f681b7`, archive SHA-256 `224c819fc14876c86f5febe0996a26e73ce618682faf611bac1b340b08b71335`, adapter SHA `22d3a604d0c3ddc9305afe07f9f68524bec906fddb16636c08ac2783b4442a6c`; Omnigent `0.3.42-rc.6` source `d4640bac3fd48b338c1f81230cb3d31fb75f79b2`, archive SHA-256 `91321ee0af4a8500317b726113e0c24332026f26142c4400b283cd55883f12e0`, combined patch SHA `8d55d6824307023eed5ead7fa89080650d3981fae1746378db9a400fab8a9632`. The JSON helper returns uncompressed content for Next 16.4.6 egress compression. RC5 failed real /api/sessions JSON parsing and was rolled back; its build success is not installation acceptance. Paseo runtime r4 and the exact a7 five-file builtin payload are unchanged. Validation and host installation are recorded separately.
 
-**Previous 0.2.16-rc.3 candidate (superseded; rc.4 is held and rc.5 is the active candidate).** It pairs Agent Connect
+**Previous 0.2.16-rc.3 candidate (superseded; rc.4 is held and rc.5 failed live HTTP verification; rc.6 is the active candidate).** It pairs Agent Connect
 0.1.27-rc.3 and Omnigent 0.3.42-rc.3 with the Paseo 0.17.5 runtime. Its
 artifacts remain unpublished candidates; this source change does not claim
 host acceptance.
