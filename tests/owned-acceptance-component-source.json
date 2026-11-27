@@ -26,12 +26,12 @@
       "sha256": "bc68c0a878393db0488ca18ffb6524f40e8c4ca3a5cd296f38768763500749e2"
     },
     {
-      "bytes": 9271,
-      "gitBlob": "336925114ad2eab7718ee4eff76ece76c101faed",
+      "bytes": 9251,
+      "gitBlob": "450cc3e55fed74af46ac84dbf9fdb594aa2be842",
       "gitMode": "100644",
       "mode": 420,
       "path": "docs/OWNED-UBUNTU-GENUINE-CI.md",
-      "sha256": "1e8c53debfe979246b0cb80d1279af1b489a33d5a43d810d77bd9fa500ada8e4"
+      "sha256": "753183e52abf022eb3c3791288312337659c20bee031d05b1e91d95d28f1b6c0"
     },
     {
       "bytes": 48655,
@@ -59,11 +59,11 @@
     },
     {
       "bytes": 35737,
-      "gitBlob": "dce4217f773a3bae200c088894de528354900582",
+      "gitBlob": "fc431b64684501cf6934a909ddcdb24436f53b99",
       "gitMode": "100644",
       "mode": 420,
       "path": "scripts/owned-ubuntu-acceptance-ci.py",
-      "sha256": "38873f4cb705202a83468fcf874566c3abf2fba96831f80c544a9636a8d6eb58"
+      "sha256": "acf8d5dc6bf171a2b754b6f02b64aaff0022cd358c532ca2dc85dc75b7de0d53"
     },
     {
       "bytes": 2974,
@@ -114,12 +114,12 @@
       "sha256": "f73c0043a2edde3cbe4d08698ba374346a6d0d54a434e9e7a82747c31a5ed49e"
     },
     {
-      "bytes": 60268,
-      "gitBlob": "7db7735cff9df5a5e74a6be4018532726c0b2448",
+      "bytes": 60253,
+      "gitBlob": "07a1c8da6052381a728a2cf3f0021236f5d10d9f",
       "gitMode": "100644",
       "mode": 420,
       "path": "tests/owned_native_acceptance.py",
-      "sha256": "a42e5c49a93601a2efce6d1c0b2320d26f80ab64d0aab1fb3a17c2d4fc504a25"
+      "sha256": "868df4bdcf44f55bc49720b02fb72f3959f798a26c3be4cb8cf14750a4c3dc55"
     },
     {
       "bytes": 47284,
@@ -170,12 +170,12 @@
       "sha256": "ffef5fd125836259593c422dabb47e2da7af421daa1ad711dc8d5cd44f57162d"
     },
     {
-      "bytes": 49090,
-      "gitBlob": "7d8924ad77ae984ddb99cba03499de33ed524595",
+      "bytes": 49065,
+      "gitBlob": "1f68883bcc839fb13b1d4dcf53ba896bca2b4e95",
       "gitMode": "100644",
       "mode": 420,
       "path": "tests/test_owned_native_acceptance.py",
-      "sha256": "1350d255475dd6b4dbec7ad81bf7d090892385fb9c1070774bb863e5e80bff59"
+      "sha256": "958d2feb3912ba8398250ab2de0321d44ee6272c433e2e3b19df5c9c1d8e07cc"
     },
     {
       "bytes": 19553,
@@ -242,5 +242,5 @@
     ]
   },
   "schema": "owned-component-source/v1",
-  "sourceRowsSha256": "089ac92fbe09279b74407f25daffdc6e4b3e8aa16f41aea5b9b7b0659ab403ad"
+  "sourceRowsSha256": "20e4ad4ec1d26ff5ba4163db24ca6a1a72ede16c053250b537180e35e4f8dac6"
 }
